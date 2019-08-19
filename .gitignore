@@ -1,0 +1,19 @@
+# Compiled source #
+###################
+*.o
+*.so
+*.pyc
+
+# Logs and temporaries #
+########################
+*.log
+*~
+.coverage
+
+# Folders #
+###########
+build/
+dist/
+pynet.egg-info/
+__pycache__/
+.eggs/
