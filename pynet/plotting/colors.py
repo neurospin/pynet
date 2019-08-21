@@ -13,7 +13,7 @@ Module that defines custom colors.
 """
 
 # Qt import
-from PySide import QtGui, QtCore
+from PySide2 import QtGui, QtCore
 
 
 BLUE_1 = QtGui.QColor.fromRgbF(0.7, 0.7, 0.9, 1)

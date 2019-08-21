@@ -114,56 +114,67 @@ def training(net, dataset, optimizer, criterion, nb_epochs, metrics=None,
     test_history.log((0, 0), loss=loss, **values)
     if verbose > 0:
         test_history.summary()
-    test_history.save(outdir=historydir, epoch=0, fold=0)
+    if outdir is not None:
+        test_history.save(outdir=historydir, epoch=0, fold=0)
 
     return test_history, train_history, valid_history
       
 
 def train(model, dataloader, optimizer, criterion, device, metrics=None, verbose=0):
     metrics = metrics or {}
+    values = {}
     loss = 0
     current_loss = None
-    trange = tqdm.trange(1, len(dataloader) + 1, desc="Batch")
+    nb_batch = len(dataloader)
+    trange = tqdm.trange(1, nb_batch + 1, desc="Batch")
     for iteration in trange:
         trange.set_description("Batch {0}".format(current_loss))
         trange.refresh()
         batch_data = dataloader[iteration - 1]
-        inputs = batch_data["inputs"].to(device)
-        y = batch_data["outputs"].to(device)
-        x = model(inputs)
-        _loss = criterion(x, y)
-        values = {}
-        for name, metric in metrics.items():
-            values[name] = metric(x, y)
+        x = batch_data["inputs"].to(device)
+        if batch_data["outputs"] is not None:
+            y = batch_data["outputs"].to(device)
+        else:
+            y = batch_data["labels"].to(device)
+        optimizer.zero_grad()
+        prediction = model(x)
+        _loss = criterion(prediction, y)
         current_loss = _loss.item()
         loss += current_loss
-        optimizer.zero_grad()
         _loss.backward()
         optimizer.step()
+        for name, metric in metrics.items():
+            if name not in values:
+                values[name] = 0
+            values[name] += metric(prediction, y) / nb_batch
     return loss, values
 
 
 def test(model, dataloader, criterion, device, metrics=None, verbose=0):
     metrics = metrics or {}
+    values = {}
     loss = 0
     current_loss = None
+    nb_batch = len(dataloader)
     with torch.no_grad():
-        trange = tqdm.trange(1, len(dataloader) + 1, desc="Batch")
+        trange = tqdm.trange(1, nb_batch + 1, desc="Batch")
         for iteration in trange:
             trange.set_description("Batch {0}".format(current_loss))
             trange.refresh()
             batch_data = dataloader[iteration - 1]
-            inputs = batch_data["inputs"].to(device)
-            true_masks = batch_data["outputs"].to(device)
-            masks_pred = model(inputs)
-            y = batch_data["outputs"].to(device)
-            x = model(inputs)
-            _loss = criterion(x, y)
-            values = {}
-            for name, metric in metrics.items():
-                values[name] = metric(x, y)
+            x = batch_data["inputs"].to(device)
+            if batch_data["outputs"] is not None:
+                y = batch_data["outputs"].to(device)
+            else:
+                y = batch_data["labels"].to(device)
+            y_pred = model(x)
+            _loss = criterion(y_pred, y)
             current_loss = _loss.item()
             loss += current_loss
+            for name, metric in metrics.items():
+                if name not in values:
+                    values[name] = 0
+                values[name] += metric(y_pred, y) / nb_batch
     return loss, values
 
 

@@ -25,7 +25,7 @@ import operator
 # Third party import
 import torch
 import hiddenlayer as hl
-from PySide import QtCore, QtGui
+from PySide2 import QtCore, QtGui, QtWidgets
 
 # Module import
 from .graph import Graph, GraphNode
@@ -52,9 +52,9 @@ def plot_net(model, shape, static=True, outfileroot=None):
         the path to the generated PDF.
     """
     # Create application
-    app = QtGui.QApplication.instance()
+    app = QtWidgets.QApplication.instance()
     if app is None:
-        app = QtGui.QApplication(sys.argv)
+        app = QtWidgets.QApplication(sys.argv)
 
     # Create view
     hl_graph = hl.build_graph(model, torch.zeros(shape))
@@ -73,7 +73,7 @@ def plot_net(model, shape, static=True, outfileroot=None):
             hl_graph.save(tmpfileroot, format="png")
             tmpfile = tmpfileroot + ".png"
             widget = PDFView(tmpfile)
-            view = QtGui.QScrollArea()
+            view = QtWidgets.QScrollArea()
             view.setWidgetResizable(True)
             view.setWidget(widget)
     else:
@@ -103,7 +103,7 @@ def plot_net(model, shape, static=True, outfileroot=None):
     return outfile
 
 
-class PDFView(QtGui.QWidget):
+class PDFView(QtWidgets.QWidget):
     """ A widget to visualize a PDF graph.
     """
     def __init__(self, path):
@@ -111,14 +111,14 @@ class PDFView(QtGui.QWidget):
         """
         super(PDFView, self).__init__()
         self.path = path
-        layout = QtGui.QVBoxLayout(self)
-        self.label = QtGui.QLabel()
+        layout = QtWidgets.QVBoxLayout(self)
+        self.label = QtWidgets.QLabel()
         layout.addWidget(self.label)
         self.pixmap = QtGui.QPixmap(self.path)
         self.label.setPixmap(self.pixmap)
 
 
-class Control(QtGui.QGraphicsPolygonItem):
+class Control(QtWidgets.QGraphicsPolygonItem):
     """ Create a glyph for each control connection.
     """
 
@@ -190,7 +190,7 @@ class Control(QtGui.QGraphicsPolygonItem):
         return self.mapToParent(point)
 
 
-class Node(QtGui.QGraphicsItem):
+class Node(QtWidgets.QGraphicsItem):
     """ A box node.
     """
     _colors = {
@@ -469,7 +469,7 @@ class Node(QtGui.QGraphicsItem):
                 self.embedded_box.show()
 
 
-class EmbeddedSubGraphItem(QtGui.QGraphicsProxyWidget):
+class EmbeddedSubGraphItem(QtWidgets.QGraphicsProxyWidget):
     """ QGraphicsItem containing a sub-graph box view.
     """
 
@@ -500,7 +500,7 @@ class EmbeddedSubGraphItem(QtGui.QGraphicsProxyWidget):
         #     QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.Preferred)
 
 
-class Link(QtGui.QGraphicsPathItem):
+class Link(QtWidgets.QGraphicsPathItem):
     """ A link between boxes.
     """
 
@@ -552,7 +552,7 @@ class Link(QtGui.QGraphicsPathItem):
         self.setPath(path)
 
 
-class GraphScene(QtGui.QGraphicsScene):
+class GraphScene(QtWidgets.QGraphicsScene):
     """ Define a scene representing a graph.
     """
     # Signal emitted when a sub graph has to be open
@@ -755,7 +755,7 @@ class GraphScene(QtGui.QGraphicsScene):
         super(GraphScene, self).helpEvent(event)
 
 
-class GraphView(QtGui.QGraphicsView):
+class GraphView(QtWidgets.QGraphicsView):
     """ Graph representation (using boxes and arrows).
 
     Based on Qt QGraphicsView, this can be used as a Qt QWidget.
