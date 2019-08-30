@@ -93,7 +93,7 @@ def checkpoint(model, epoch, fold, outdir):
     return outfile
 
 
-def get_named_layers(model, allowed_layers=ALLOWED_LAYERS):
+def get_named_layers(model, allowed_layers=ALLOWED_LAYERS, resume=False):
     """ Function that returned a dictionary with named layers.
 
     Parameters
@@ -102,6 +102,8 @@ def get_named_layers(model, allowed_layers=ALLOWED_LAYERS):
         the network model.
     allowed_layers: list of str, default ALLOWED_LAYERS
         the allowed modules.
+    resume: bool, default False
+        simplify layer names and skip type checking.
 
     Returns
     -------
@@ -113,14 +115,17 @@ def get_named_layers(model, allowed_layers=ALLOWED_LAYERS):
         name = name.replace("ops.", "")
         for klass in allowed_layers:        
             if isinstance(mod, klass):
-                if hasattr(mod, "in_channels") and hasattr(mod, "out_channels"):
-                    name = "{0}-{1}.{2}".format(
-                        name, mod.in_channels, mod.out_channels)
-                elif hasattr(mod, "num_features"):
-                    name = "{0}-{1}".format(name, mod.num_features)
-                else:
-                    raise ValueError("Layer of type '{0}' is not yet "
-                                     "supported.".format(klass.__name__))
+                if not resume:
+                    if hasattr(mod, "in_channels") and hasattr(mod, "out_channels"):
+                        name = "{0}-{1}.{2}".format(
+                            name, mod.in_channels, mod.out_channels)
+                    elif hasattr(mod, "num_features"):
+                        name = "{0}-{1}".format(name, mod.num_features)
+                    elif hasattr(mod, "in_features"):
+                        name = "{0}-{1}".format(name, mod.in_features)
+                    else:
+                        raise ValueError("Layer of type '{0}' is not yet "
+                                         "supported.".format(klass.__name__))
                 layers[name] = mod
     return layers
 
@@ -169,4 +174,35 @@ def layer_at(model, layer_name, x, allowed_layers=ALLOWED_LAYERS):
     _hook.remove()
     return hook_x.numpy(), layer.weight.detach().numpy()
 
+
+def freeze_layers(model, layer_names):
+    """ Freeze some wights in a network based on layer names.
+
+    Parameters
+    ----------
+    model: Net
+        the network model.
+    layer_names: list of str
+        the layer associated weights to be frozen.
+    """
+    layers = get_named_layers(model, allowed_layers=[torch.nn.Module],
+                              resume=True)
+    for name in layer_names:
+        layer = layers[name]
+        for param in layer.parameters():
+            param.requires_grad = False
+
+
+def reset_weights(model):
+    """ Reset all the weights of a model.
+
+    Parameters
+    ----------
+    model: Net
+        the network model.
+    """
+    def weight_reset(m):
+        if hasattr(m, "reset_parameters"):
+            m.reset_parameters()
+    model.apply(weight_reset)
 

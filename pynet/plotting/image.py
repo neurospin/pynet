@@ -8,54 +8,41 @@
 ##########################################################################
 
 # Import
+import torch
 import numpy as np
-from pyqtgraph.Qt import QtGui
-import pyqtgraph
+import matplotlib.pyplot as plt
+import torchvision
 
 
-def plot_data(data, extradata=None, scroll_axis=2):
+def plot_data(data, slice_axis=2):
     """ Plot an image associated data.
-    Currently support on 1D, 2D or 3D data.
+
+    Currently support 2D or 3D dataset of the form (samples, channels, dim).
 
     Parameters
     ----------
-    data: array
+    data: array (samples, channels, dim)
         the data to be displayed.
-    extradata: list of array
-        if specified concatenate this array with the input data.
-    scroll_axis: int (optional, default 2)
-        the scroll axis for 3D data.
+    slice_axis: int (optional, default 2)
+        the slice axis for 3D data.
     """
     # Check input parameters
-    if data.ndim not in range(1, 4):
+    if data.ndim not in range(4, 6):
         raise ValueError("Unsupported data dimension.")
 
-    # Concatenate
-    if extradata is not None:
-        concat_axis = 0 if scroll_axis != 0 else 1
-        extradata = [
-            rescale_intensity(
-                arr=_data,
-                in_range=(_data.min(), _data.max()),
-                out_range=(data.min(), data.max()))
-            for _data in extradata]
-        data = np.concatenate([data] + extradata, axis=concat_axis)
-
-    # Create application
-    app = pyqtgraph.mkQApp()
-
-    # Create the widget
+    # Reorganize 3D data
     if data.ndim == 3:
-        indices = [i for i in range(3) if i != scroll_axis]
-        indices = [scroll_axis] + indices
-        widget = pyqtgraph.image(np.transpose(data, indices))
-    elif data.ndim == 2:
-        widget = pyqtgraph.image(data)
-    else:
-        widget = pyqtgraph.plot(data)
+        indices = [0, 1, 2]
+        assert slice_axis in indices
+        indices.remove(slice_axis)
+        indices  = [slice_axis + 1, 0, indices[0] + 1, indices[1] + 1]
+        slices = [img.transpose(indices) for img in data]
+        data = np.concatenate(slices, axis=0)
 
-    # Run application
-    app.exec_()
+    # Plot data on grid
+    _data = torchvision.utils.make_grid(torch.from_numpy(data))
+    _data = _data.numpy()
+    plt.imshow(np.transpose(_data, (1, 2, 0)))
 
 
 def rescale_intensity(arr, in_range, out_range):

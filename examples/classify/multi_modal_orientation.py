@@ -27,19 +27,21 @@ import os
 import glob
 
 # Net tools
+from pynet.models.mlp import OneLayerMLP
 from pynet.dataset import split_dataset
 from pynet.dataset import LoadDataset
 from pynet.plotting import plot_net
+from pynet.plotting import plot_data
 from pynet.optim import training
+from pynet.classifier import Classifier
+from pynet.observers import PredictObserver
 
 # To plot pretty figures
-# %matplotlib inline
 import matplotlib
 import matplotlib.pyplot as plt
 plt.rcParams["axes.labelsize"]  = 14
 plt.rcParams["xtick.labelsize"] = 12
 plt.rcParams["ytick.labelsize"] = 12
-
 def plot_image(image):
     if torch.is_tensor(image):
         image = image.cpu().detach().numpy()
@@ -108,15 +110,16 @@ dataloader_kwargs = {
 dataset = split_dataset(
     path=dataset_desc,
     dataloader=LoadDataset,
-    batch_size=3000,
     inputs=["slice"],
     outputs=None,
     label="label",
     number_of_folds=1,
+    number_of_batch=1,
     transforms=None,
     test_size=0.25,
     validation_size=0.1,
     verbose=0,
+    nb_samples=1000,
     **dataloader_kwargs)
 
 #############################################################################
@@ -133,7 +136,7 @@ y_test = dataset["test"][batch_index]["labels"]
 print(X_train.shape , y_train.shape)
 print(X_valid.shape, y_valid.shape )
 print(X_test.shape, y_test.shape)
-print(X_train.dtype, y_train.dtype, X_train.device, y_train.device)
+print(X_train.dtype, y_train.dtype)
 
 #############################################################################
 # Displaying some images in the train dataset.
@@ -145,6 +148,7 @@ for cnt in range(nb_x * nb_y):
     plt.subplot(nb_x, nb_y , cnt + 1)
     plot_image(X_train[cnt].reshape(width, height))
     plt.title(rev_med_view[y_train[cnt].item()])
+
 
 #############################################################################
 # Simple neural network
@@ -159,40 +163,35 @@ for cnt in range(nb_x * nb_y):
 
 image_size = height * width
 nb_neurons = 16
-model = torch.nn.Sequential(
-    torch.nn.Linear(image_size, nb_neurons),  # first layer, fully-connected
-    torch.nn.ReLU(),                          # activation function
+# model = torch.nn.Sequential(
+#     torch.nn.Linear(image_size, nb_neurons),  # first layer, fully-connected
+#     torch.nn.ReLU(),                          # activation function
 #    torch.nn.Dropout(p=0.1),
-    torch.nn.Linear(nb_neurons, 9),
-    torch.nn.LogSoftmax(dim=1)
-)
+#     torch.nn.Linear(nb_neurons, 9),
+#     torch.nn.LogSoftmax(dim=1)
+# )
+model = OneLayerMLP(image_size, nb_neurons, 9)
 print(model)
 # plot_net(model, shape=(1, image_size), static=True, outfileroot=None)
 
 #############################################################################
 #  Then we configure the parameters of the training step and train the model.
 
-nb_epochs = 100
-learning_rate = 1e-4
-loss = torch.nn.NLLLoss()  # negative log likelihood loss
-my_optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-def evaluate(prediction, ground_truth):  # define the method to evaluate the model
-    y_pred = prediction.data.max(dim=1)[1] # [1] for the max position
-    accuracy = y_pred.eq(ground_truth).sum().cpu().numpy() / ground_truth.size()[0]
-    return accuracy
-metrics = {
-    "accuracy": evaluate
-}
-test_history, train_history, valid_history = training(
-    net=model,
+cl = Classifier(
+    batch_size=50,
+    optimizer_name="Adam",
+    learning_rate=1e-4,
+    loss_name="NLLLoss",
+    metrics=["accuracy"],
+    model=model,
+    observers=[PredictObserver(X_valid, y_valid, "valid")])
+test_history, train_history = training(
+    model=cl,
     dataset=dataset,
-    optimizer=my_optimizer,
-    criterion=loss,
-    nb_epochs=nb_epochs,
-    metrics=metrics,
-    use_cuda=False,
+    nb_epochs=100,
     outdir=None,
     verbose=1)
+torch.save(model, os.path.join(datadir, "pytorch_mlp.pth"))
 
 #############################################################################
 # Focus on one test prediction.
@@ -203,14 +202,14 @@ test_history, train_history, valid_history = training(
 
 i = 0
 test_input = X_test[i].reshape(1, -1)
-y_t = model(test_input)
+y_t = cl.predict_proba(test_input)
 print(" ** Label probabilities: ", y_t)
 print(" ** true label      : ", y_test[i] )
-print(" ** predicted label : ", torch.argmax(y_t))
+print(" ** predicted label : ", np.argmax(y_t))
 plt.figure()
 plot_image(X_test[i].reshape(width, height))
 plt.title("true: " + rev_med_view[int(y_test[i])] +
-          ", predict: " + rev_med_view[int(torch.argmax(y_t))])
+          ", predict: " + rev_med_view[np.argmax(y_t)])
 
 #############################################################################
 # Watch learning curves.
@@ -247,7 +246,7 @@ class My_Net(torch.nn.Module):
         self.linear = torch.nn.Linear(16 * 16 * 16, 9)
 
     def forward(self, X): 
-        X = X.view(-1, 1, 64, 64) # reshape as a batch_size × 1 layer × (64×64) image
+        X = X.view(-1, 1, 64, 64)
         X = torch.nn.functional.relu(self.conv1(X))
         X = torch.nn.functional.relu(self.conv2(X))
         X = self.maxpool(X)
@@ -259,7 +258,7 @@ class My_Net(torch.nn.Module):
 
 model = My_Net()
 
-X = X_train[:10, :].view(-1, 1, 64, 64)
+X = torch.from_numpy(X_train[:10, :]).view(-1, 1, 64, 64)
 print(X.shape)
 X = torch.nn.functional.relu(model.conv1(X))
 print(X.shape)
@@ -275,27 +274,21 @@ print(X.shape)
 #############################################################################
 #  Then we configure the parameters of the training step and train the model.
 
-nb_epochs = 100
-learning_rate = 1e-5
-loss = torch.nn.NLLLoss()  # negative log likelihood loss
-my_optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-def evaluate(prediction, ground_truth):  # define the method to evaluate the model
-    y_pred = prediction.data.max(dim=1)[1] # [1] for the max position
-    accuracy = y_pred.eq(ground_truth).sum().cpu().numpy() / ground_truth.size()[0]
-    return accuracy
-metrics = {
-    "accuracy": evaluate
-}
-test_history, train_history, valid_history = training(
-    net=model,
+cl = Classifier(
+    batch_size=50,
+    optimizer_name="Adam",
+    learning_rate=1e-5,
+    loss_name="NLLLoss",
+    metrics=["accuracy"],
+    model=model,
+    observers=[PredictObserver(X_valid, y_valid, "valid")])
+test_history, train_history = training(
+    model=cl,
     dataset=dataset,
-    optimizer=my_optimizer,
-    criterion=loss,
-    nb_epochs=nb_epochs,
-    metrics=metrics,
-    use_cuda=False,
+    nb_epochs=100,
     outdir=None,
     verbose=1)
+torch.save(model, os.path.join(datadir, "pytorch_cnn.pth"))
 
 #############################################################################
 # Focus on one test prediction.
@@ -306,14 +299,14 @@ test_history, train_history, valid_history = training(
 
 i = 0
 test_input = X_test[i].reshape(1, -1)
-y_t = model(test_input)
+y_t = cl.predict_proba(test_input)
 print(" ** Label probabilities: ", y_t)
 print(" ** true label      : ", y_test[i] )
-print(" ** predicted label : ", torch.argmax(y_t))
+print(" ** predicted label : ", np.argmax(y_t))
 plt.figure()
 plot_image(X_test[i].reshape(width, height))
 plt.title("true: " + rev_med_view[int(y_test[i])] +
-          ", predict: " + rev_med_view[int(torch.argmax(y_t))])
+          ", predict: " + rev_med_view[np.argmax(y_t)])
 
 #############################################################################
 # Watch learning curves.
@@ -346,12 +339,7 @@ print("Number of parameters in the CNN: ",
 
 image_size = height * width
 nb_neurons = 16
-model = torch.nn.Sequential(
-    torch.nn.Linear(image_size, nb_neurons),
-    torch.nn.ReLU(),
-    torch.nn.Linear(nb_neurons, 9),
-    torch.nn.LogSoftmax(dim=1)
-)
+model = OneLayerMLP(image_size, nb_neurons, 9)
 print("Number of parameters in the fully connected: ",
       sum(p.numel() for p in model.parameters()))
 

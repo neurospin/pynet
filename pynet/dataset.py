@@ -21,12 +21,14 @@ import progressbar
 import numpy as np
 import pandas as pd
 from PIL import Image
+from PIL import ImageMath
+import cv2
 from joblib import Parallel, delayed
 from sklearn.model_selection import train_test_split
 
 
-def split_dataset(path, dataloader, batch_size, inputs, label, number_of_folds,
-                  outputs=None, transforms=None, test_size=0.1,
+def split_dataset(path, dataloader, inputs, label, number_of_folds,
+                  number_of_batch, outputs=None, transforms=None, test_size=0.1,
                   validation_size=0.25, nb_samples=None, verbose=0,
                   **dataloader_kwargs):
     """ Split an input tabular dataset in test, train and validation.
@@ -39,14 +41,14 @@ def split_dataset(path, dataloader, batch_size, inputs, label, number_of_folds,
     dataloader: class
         a pytorch Dataset derived class used to load the data in a mini-batch
         fashion.
-    batch_size: int
-        the size of each mini-batch.
     inputs: list of str
         the name of the column(s) containing the inputs
     label: str
         the name of the column containing the labels.
     number_of_folds: int
         the number of folds that will be used in the cross validation.
+    number_of_batch: int
+        split huge training dataset in n-batches.
     outputs: list of str, default None
         the name of the column(s) containing the ouputs.
     transforms: list of callable
@@ -93,8 +95,8 @@ def split_dataset(path, dataloader, batch_size, inputs, label, number_of_folds,
         inputs=inputs,
         outputs=outputs,
         label=label,
-        batch_size=batch_size,
         transforms=transforms,
+        nb_batch=1,
         verbose=verbose,
         **dataloader_kwargs)
     dataset["test"] = testloader
@@ -109,8 +111,8 @@ def split_dataset(path, dataloader, batch_size, inputs, label, number_of_folds,
             inputs=inputs,
             outputs=outputs,
             label=label,
-            batch_size=batch_size,
             transforms=transforms,
+            nb_batch=number_of_batch,
             verbose=verbose, 
             **dataloader_kwargs)
         validloader = dataloader(
@@ -118,8 +120,8 @@ def split_dataset(path, dataloader, batch_size, inputs, label, number_of_folds,
             inputs=inputs,
             outputs=outputs,
             label=label,
-            batch_size=batch_size,
             transforms=transforms,
+            nb_batch=1,
             verbose=verbose,
             **dataloader_kwargs)
         dataset.setdefault("train", []).append(trainloader)
@@ -164,9 +166,10 @@ class LoadDataset(Dataset):
     Note: the image are expected to be in the FSL order X, Y, Z, N.
     """
 
-    def __init__(self, dataset, inputs, label, outputs=None, batch_size=10,
+    def __init__(self, dataset, inputs, label, outputs=None, nb_batch=1,
                  transforms=None, flatten=False, slice_volume_index=None,
-                 squeeze_channel=False, load=True, verbose=0):
+                 squeeze_channel=False, load=True, gray_to_rgb=False,
+                 verbose=0):
         """ Initialize the class.
 
         Parameters
@@ -179,8 +182,8 @@ class LoadDataset(Dataset):
             the name of the column containing the labels.
         outputs: list of str, default None
             the name of the column(s) containing the ouputs.
-        batch_size: int, default 10
-            the size of each mini-batch.
+        nb_batch: int, default 10
+            split huge dataset in n-batches.
         transforms: list of callable
             transform the dataset using these functions: cropping, reshaping,
             ...
@@ -193,6 +196,9 @@ class LoadDataset(Dataset):
         load: bool, default True
             start loading the full dataset or load the dataset on the fly to
             save memory (slower).
+        gray_to_rgb: bool, default False
+            convert grayscale image (1 channel) to RGB (3 channels): only
+            available for 2D dataset.
         verbose: int, default 0
             the verbosity level.
         """
@@ -200,18 +206,18 @@ class LoadDataset(Dataset):
         self.inputs = inputs
         self.label = label
         self.outputs = outputs
-        self.batch_size = batch_size
+        self.nb_batch = nb_batch
         self.transforms = transforms or []
         self.flatten = flatten
         self.slice_volume_index = slice_volume_index
         self.squeeze_channel = squeeze_channel
         self.load = load
+        self.gray_to_rgb = gray_to_rgb
         self.verbose = verbose
         self.all_labels = sorted(np.unique(self.dataset[label].values))
+        self.batch_size = len(self.dataset) // self.nb_batch
         div, self.rest = divmod(len(self.dataset), self.batch_size)
-        self.nb_batch = div
-        if self.rest > 0:
-            self.nb_batch += 1
+        assert div == self.nb_batch
         self._loaded = {}
         self._batch = {}
         if self.load:
@@ -220,7 +226,7 @@ class LoadDataset(Dataset):
                 with progressbar.ProgressBar(max_value=nb_rows) as bar:
                     for cnt, path in enumerate(self.dataset[name]):
                         self._loaded[path] = LoadDataset._load(
-                            path, self.transforms)
+                            path, self.transforms, self.gray_to_rgb)
                         bar.update(cnt)
 
     def __len__(self):
@@ -234,20 +240,29 @@ class LoadDataset(Dataset):
         return self.nb_batch
 
     @classmethod
-    def _load(cls, path, transforms=None):
+    def _load(cls, path, transforms=None, gray_to_rgb=False):
         """ Load a dataset.
         """
         if path.endswith((".png", ".jpg", ".jpeg")):
-            arr = np.array(Image.open(path))
+            im = Image.open(path)
+            if gray_to_rgb:
+                im_data = np.array(im).astype(np.uint8)
+                #im_data.shape += (1, )
+                #im_data = np.concatenate([im_data] * 3, axis=-1)
+                im_data = cv2.cvtColor(im_data, cv2.COLOR_GRAY2RGB)
+                im = Image.fromarray(im_data)
+            arr = np.array(im)
+            dim = 2
         elif path.endswith((".nii", ".nii.gz")):
             arr = nibabel.load(path).get_data()
+            dim = arr.ndim
         else:
             raise ValueError(
                 "Unsuppported file format: {0}.".format(path))
         for trf in (transforms or []):
             arr = trf(arr)
         arr = arr.astype(np.float32)
-        return arr       
+        return arr, dim   
 
     def _concat_features(self, row, names):
         """ Concate the inputs or ouputs in a 1, NB_FEATURES, X, Y, Z array.
@@ -256,14 +271,24 @@ class LoadDataset(Dataset):
         names = names or []
         for name in names:
             path = row[name].values[0]
-            _arr = self._loaded.get(path)
+            _arr, dim = self._loaded.get(path, (None, None))
             if _arr is None:
-                _arr = LoadDataset._load(path, self.transforms)
-            if _arr.ndim in (2, 3):
+                _arr, dim = LoadDataset._load(
+                    path, self.transforms, self.gray_to_rgb)
+            if dim == 2:
+                if _arr.ndim == 2:
+                    if self.flatten:
+                        _arr = _arr.flatten()
+                    _arr = np.expand_dims(_arr, axis=0)
+                elif _arr.ndim == 3:
+                    _arr = _arr.transpose(2, 0 , 1)
+                    if self.flatten:
+                        _arr = _arr.reshape(_arr.shape[0], -1)
+            elif dim == 3:
                 if self.flatten:
                     _arr = _arr.flatten()
                 _arr = np.expand_dims(_arr, axis=0)
-            elif _arr.ndim == 4:
+            elif dim == 4:
                 _arr = np.ascontiguousarray(_arr.transpose(3, 0, 1, 2))
                 if self.flatten:
                     _arr = _arr.reshape(_arr.shape[0], -1)
@@ -331,10 +356,9 @@ class LoadDataset(Dataset):
                                   if output_arr is not None else None)
                 print("Labels: ", labels.shape)
             data = {
-                "inputs": torch.from_numpy(input_arr),
-                "outputs": torch.from_numpy(output_arr)
-                           if output_arr is not None else None,
-                "labels": torch.from_numpy(labels)
+                "inputs": input_arr,
+                "outputs": output_arr if output_arr is not None else None,
+                "labels": labels
             }
             if self.load:
                 self._batch[index] = data
@@ -402,10 +426,9 @@ class DummyDataset(Dataset):
             print("Ouputs: ", output_arr.shape)
             print("Labels: ", labels.shape)
         data = {
-            "inputs": torch.from_numpy(input_arr),
-            "outputs": torch.from_numpy(output_arr)
-                       if output_arr is not None else None,
-            "labels": torch.from_numpy(labels)
+            "inputs": input_arr,
+            "outputs": output_arr if output_arr is not None else None,
+            "labels": labels
         }
         return data 
 
