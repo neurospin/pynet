@@ -39,8 +39,8 @@ import torch.nn as nn
 import torch.nn.functional as func
 
 dataset = dummy_dataset(
-    nb_batch=3,
-    batch_size=2,
+    nb_batch=1,
+    batch_size=6,
     number_of_folds=1,
     shape=(16, 16),
     verbose=0)
@@ -80,25 +80,20 @@ net = Net()
 # Now start the optimisation
 
 import torch
-import torch.nn as nn
-import torch.optim as optim
+from pynet.classifier import Classifier
 from pynet.optim import training
 
 
-def my_loss(x, y):
-    # y = torch.sum(y, dim=1).type(torch.LongTensor)
-    criterion = nn.MSELoss()
-    return criterion(x, y)
-
-
-test_history, train_history, valid_history = training(
-    net=net,
+cl = Classifier(
+    batch_size=2,
+    optimizer_name="Adam",
+    learning_rate=0.01,
+    loss_name="MSELoss",
+    model=net)
+test_history, train_history = training(
+    model=cl,
     dataset=dataset,
-    optimizer=optim.Adam(net.parameters(), lr=0.01),
-    criterion=my_loss,
     nb_epochs=3,
-    metrics={"mse": my_loss},
-    use_cuda=False,
     outdir="/tmp/pynet",
     verbose=1)
 
@@ -108,17 +103,20 @@ test_history, train_history, valid_history = training(
 from pprint import pprint
 from pynet.history import History
 
-valid_history = History.load("/tmp/pynet/history/valid_1_epoch_3.pkl")
+valid_history = History.load("/tmp/pynet/fit_1_epoch_3.pkl")
 pprint(valid_history.history)
 pprint(valid_history["loss"])
 
 #############################################################################
 # You can finally display the optimization cost
 
-from pynet.plotting import plot_data
+import matplotlib.pyplot as plt
 
 x, y = valid_history["loss"]
-plot_data(y)
+plt.figure()
+plt.ylabel("Training loss")
+plt.xlabel("Iterations")
+plt.plot(y)
 
 
-
+plt.show()

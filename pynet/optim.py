@@ -45,8 +45,11 @@ def training(model, dataset, nb_epochs, outdir=None, verbose=0):
         the optimization history.
     """
     # Cross validation loop
-    for fold in range(1, len(dataset["train"]) + 1):
-        for batch_data in dataset["train"][fold - 1]:
+    nb_folds =  len(dataset["train"])
+    for fold in range(1, nb_folds + 1):
+        nb_batch = len(dataset["train"][fold - 1])
+        for batch in range(nb_batch):
+            batch_data = dataset["train"][fold - 1][batch]
             X_train = batch_data["inputs"]
             if batch_data["outputs"] is not None:
                 y_train = batch_data["outputs"]

@@ -28,7 +28,7 @@ from sklearn.model_selection import train_test_split
 
 
 def split_dataset(path, dataloader, inputs, label, number_of_folds,
-                  number_of_batch, outputs=None, transforms=None, test_size=0.1,
+                  batch_size, outputs=None, transforms=None, test_size=0.1,
                   validation_size=0.25, nb_samples=None, verbose=0,
                   **dataloader_kwargs):
     """ Split an input tabular dataset in test, train and validation.
@@ -47,8 +47,8 @@ def split_dataset(path, dataloader, inputs, label, number_of_folds,
         the name of the column containing the labels.
     number_of_folds: int
         the number of folds that will be used in the cross validation.
-    number_of_batch: int
-        split huge training dataset in n-batches.
+    batch_size: int
+        the size of each mini-batch (only applied on the train set).
     outputs: list of str, default None
         the name of the column(s) containing the ouputs.
     transforms: list of callable
@@ -96,7 +96,7 @@ def split_dataset(path, dataloader, inputs, label, number_of_folds,
         outputs=outputs,
         label=label,
         transforms=transforms,
-        nb_batch=1,
+        batch_size=len(arr_test),
         verbose=verbose,
         **dataloader_kwargs)
     dataset["test"] = testloader
@@ -106,13 +106,15 @@ def split_dataset(path, dataloader, inputs, label, number_of_folds,
             test_size=validation_size,
             shuffle=True,
             stratify=arr_optim[:, -1])
+        if batch_size == -1:
+            batch_size = len(arr_train)
         trainloader = dataloader(
             dataset=pd.DataFrame(arr_train, columns=columns),
             inputs=inputs,
             outputs=outputs,
             label=label,
             transforms=transforms,
-            nb_batch=number_of_batch,
+            batch_size=batch_size,
             verbose=verbose, 
             **dataloader_kwargs)
         validloader = dataloader(
@@ -121,7 +123,7 @@ def split_dataset(path, dataloader, inputs, label, number_of_folds,
             outputs=outputs,
             label=label,
             transforms=transforms,
-            nb_batch=1,
+            batch_size=len(arr_valid),
             verbose=verbose,
             **dataloader_kwargs)
         dataset.setdefault("train", []).append(trainloader)
@@ -166,7 +168,7 @@ class LoadDataset(Dataset):
     Note: the image are expected to be in the FSL order X, Y, Z, N.
     """
 
-    def __init__(self, dataset, inputs, label, outputs=None, nb_batch=1,
+    def __init__(self, dataset, inputs, label, outputs=None, batch_size=10,
                  transforms=None, flatten=False, slice_volume_index=None,
                  squeeze_channel=False, load=True, gray_to_rgb=False,
                  verbose=0):
@@ -182,8 +184,8 @@ class LoadDataset(Dataset):
             the name of the column containing the labels.
         outputs: list of str, default None
             the name of the column(s) containing the ouputs.
-        nb_batch: int, default 10
-            split huge dataset in n-batches.
+        batch_size: int, default 10
+            the size of each mini-batch.
         transforms: list of callable
             transform the dataset using these functions: cropping, reshaping,
             ...
@@ -206,7 +208,7 @@ class LoadDataset(Dataset):
         self.inputs = inputs
         self.label = label
         self.outputs = outputs
-        self.nb_batch = nb_batch
+        self.batch_size = batch_size
         self.transforms = transforms or []
         self.flatten = flatten
         self.slice_volume_index = slice_volume_index
@@ -215,9 +217,10 @@ class LoadDataset(Dataset):
         self.gray_to_rgb = gray_to_rgb
         self.verbose = verbose
         self.all_labels = sorted(np.unique(self.dataset[label].values))
-        self.batch_size = len(self.dataset) // self.nb_batch
         div, self.rest = divmod(len(self.dataset), self.batch_size)
-        assert div == self.nb_batch
+        self.nb_batch = div
+        if self.rest > 0:
+            self.nb_batch += 1
         self._loaded = {}
         self._batch = {}
         if self.load:

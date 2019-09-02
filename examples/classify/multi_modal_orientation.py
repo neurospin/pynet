@@ -114,7 +114,7 @@ dataset = split_dataset(
     outputs=None,
     label="label",
     number_of_folds=1,
-    number_of_batch=1,
+    batch_size=-1,
     transforms=None,
     test_size=0.25,
     validation_size=0.1,
@@ -183,8 +183,8 @@ cl = Classifier(
     learning_rate=1e-4,
     loss_name="NLLLoss",
     metrics=["accuracy"],
-    model=model,
-    observers=[PredictObserver(X_valid, y_valid, "valid")])
+    model=model)
+cl.add_observer("after_epoch", PredictObserver(X_valid, y_valid, "valid"))
 test_history, train_history = training(
     model=cl,
     dataset=dataset,
@@ -280,12 +280,12 @@ cl = Classifier(
     learning_rate=1e-5,
     loss_name="NLLLoss",
     metrics=["accuracy"],
-    model=model,
-    observers=[PredictObserver(X_valid, y_valid, "valid")])
+    model=model)
+cl.add_observer("after_epoch", PredictObserver(X_valid, y_valid, "valid"))
 test_history, train_history = training(
     model=cl,
     dataset=dataset,
-    nb_epochs=100,
+    nb_epochs=35,
     outdir=None,
     verbose=1)
 torch.save(model, os.path.join(datadir, "pytorch_cnn.pth"))

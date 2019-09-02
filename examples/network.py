@@ -58,6 +58,7 @@ from pprint import pprint
 import numpy as np
 from pynet.utils import get_named_layers
 from pynet.utils import layer_at
+import matplotlib.pyplot as plt
 from pynet.plotting import plot_data
 
 out = test_model(model, shape=(1, 1, 64, 64, 64))
@@ -69,5 +70,7 @@ hook_x, weight = layer_at(
     x=torch.FloatTensor(np.random.random((1, 1, 64, 64, 64))))
 print(hook_x.shape)
 print(weight.shape)
-plot_data(hook_x[0, 0], extradata=[im for im in hook_x[0, 1:]])
+plot_data(hook_x[:, :1])
+
+plt.show()
 

@@ -31,7 +31,7 @@ def plot_data(data, slice_axis=2):
         raise ValueError("Unsupported data dimension.")
 
     # Reorganize 3D data
-    if data.ndim == 3:
+    if data.ndim == 5:
         indices = [0, 1, 2]
         assert slice_axis in indices
         indices.remove(slice_axis)

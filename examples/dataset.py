@@ -39,16 +39,23 @@ from pynet.dataset import LoadDataset
 from pynet.transforms import ZeroPadding, Downsample
 
 dataset_desc = "/neurospin/radiomics_pub/workspace/metastasis_dl/data/dataset.tsv"
+kwargs = {
+    "load": False,
+}
 dataset = split_dataset(
     path=dataset_desc,
     dataloader=LoadDataset,
-    batch_size=1,
     inputs=["t1"],
     outputs=["mask"],
     label="label",
-    number_of_folds=1,
     transforms=[ZeroPadding(shape=(256, 256, 256)), Downsample(scale=2)],
-    verbose=0)
+    test_size=0.05,
+    validation_size=0.1,
+    number_of_folds=1,
+    batch_size=5,
+    nb_samples=100,
+    verbose=0,
+    **kwargs)
 
 #############################################################################
 # We have now a test, and multiple folds with train-validation datasets that
@@ -57,6 +64,7 @@ dataset = split_dataset(
 
 from pprint import pprint
 import numpy as np
+import matplotlib.pyplot as plt
 from pynet.plotting import plot_data
 
 pprint(dataset)
@@ -66,8 +74,8 @@ for batch_data in dataset["test"]:
     print("Outputs: ", batch_data["outputs"].shape)
     print("Labels: ", batch_data["labels"].shape)
     print(dataset["test"].dataset.iloc[0].values)
-    plot_data(
-        batch_data["inputs"][0, 0].numpy(),
-        extradata=[np.sum(batch_data["outputs"][0].numpy(), axis=0)])
+    plot_data(batch_data["inputs"][:1, :, :, :, 20:100])
     break
+
+plt.show()
 

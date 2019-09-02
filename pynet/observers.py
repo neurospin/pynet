@@ -37,18 +37,19 @@ class PredictObserver(object):
         self.X = X
         self.y = y
         self.name = name
-    def __call__(self, model, epoch, fold):
+    def __call__(self, signal):
         """
 
         Parameters
         ----------
-        model:
-            the trained model.
-        epoch: int
-            the epoch number.
-        fold: int
-            the fold index.
+        signal: SignalObject
+            an object with the trained model 'object', the emitted signal
+            'signal', the epoch number 'epoch' and the fold index 'fold'.
         """
+        model = signal.object
+        emitted_signal = signal.signal
+        epoch = signal.epoch
+        fold = signal.fold
         history = History(name=self.name)
         model.model.eval()
         with torch.no_grad():
