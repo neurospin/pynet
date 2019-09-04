@@ -12,6 +12,7 @@ Module that privides common display tools.
 """
 
 from .image import plot_data
+from .image import plot_segmentation_data
 from .network import plot_net
 
 

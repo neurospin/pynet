@@ -7,6 +7,11 @@
 # for details.
 ##########################################################################
 
+
+"""
+Define classifier models.
+"""
+
 # System import
 import re
 

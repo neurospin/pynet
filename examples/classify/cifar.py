@@ -94,7 +94,7 @@ cl = Classifier(
     metrics=["accuracy"],
     model=Net(),
     momentum=0.9)
-cl.fit(X_train, y_train, nb_epochs=10)
+cl.fit(X_train, y_train, nb_epochs=2)
 y_pred = cl.predict(X_test)
 for key1, key2 in zip(y_pred, y_test):
     print(key1, classes[key1], key2, classes[key2])

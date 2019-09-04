@@ -198,17 +198,21 @@ cl = classifier.ResNet18(
     metrics=["accuracy"])
 to_freeze_layers = ["conv1", "bn1", "relu", "maxpool", "layer1", "layer2"]
 freeze_layers(cl.model, to_freeze_layers)
+nb_features = cl.model.fc.in_features
+cl.model.fc = nn.Linear(nb_features, 9)
 train(cl, dataset)
 
 cl = classifier.ResNet18(
     num_classes=1000,
-    #pretrained="/neurospin/nsap/torch/models/resnet18-5c106cde.pth",
+    pretrained="/neurospin/nsap/torch/models/resnet18-5c106cde.pth",
     batch_size=50,
     optimizer_name="Adam",
     learning_rate = 1e-4,
     loss_name="NLLLoss",
     metrics=["accuracy"])
 reset_weights(cl.model)
+nb_features = cl.model.fc.in_features
+cl.model.fc = nn.Linear(nb_features, 9)
 train(cl, dataset)
 
 plt.show()

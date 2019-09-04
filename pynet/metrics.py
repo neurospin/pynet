@@ -7,6 +7,15 @@
 # for details.
 ##########################################################################
 
+"""
+Define common metrics.
+"""
+
+# Third party import
+import torch
+import numpy as np
+import torch.nn.functional as func
+
 
 def accuracy(y_pred, y):
     y_pred = y_pred.data.max(dim=1)[1]
@@ -14,6 +23,34 @@ def accuracy(y_pred, y):
     return accuracy
 
 
+def _dice(y_pred, y):
+    """ Binary dice indice adapted to pytorch tensors.
+    """
+    flat_y_pred = torch.flatten(y_pred)
+    flat_y = torch.flatten(y)
+    intersection = (flat_y_pred * flat_y).sum()
+    return (2. * intersection + 1.) / (flat_y_pred.sum() + flat_y.sum() + 1.)    
+
+
+def multiclass_dice(y_pred, y):
+    """ Extension of the dice to a n classes problem.
+    """
+    y_pred = func.softmax(y_pred, dim=1)
+    dice = 0.
+    n_classes = y.shape[1]
+    for cnt in range(n_classes):
+        dice += _dice(y_pred[:, cnt], y[:, cnt])
+    return dice / n_classes
+
+
+def dice_loss(y_pred, y):
+    """ Loss based on the dice: scales between [0, 1], optimized when
+    minimized.
+    """
+    return 1 - multiclass_dice(y_pred, y)
+
+
 METRICS = {
-    "accuracy": accuracy
+    "accuracy": accuracy,
+    "multiclass_dice": multiclass_dice,
 }

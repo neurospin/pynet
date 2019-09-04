@@ -23,7 +23,7 @@ def plot_data(data, slice_axis=2):
     ----------
     data: array (samples, channels, dim)
         the data to be displayed.
-    slice_axis: int (optional, default 2)
+    slice_axis: int, default 2
         the slice axis for 3D data.
     """
     # Check input parameters
@@ -40,9 +40,37 @@ def plot_data(data, slice_axis=2):
         data = np.concatenate(slices, axis=0)
 
     # Plot data on grid
+    plt.figure()
     _data = torchvision.utils.make_grid(torch.from_numpy(data))
     _data = _data.numpy()
     plt.imshow(np.transpose(_data, (1, 2, 0)))
+
+
+def plot_segmentation_data(data, mask, nb_samples=5):
+    """ Display 'nb_samples' images and segmentation masks stored in data and
+    mask.
+    Parameters
+    ----------
+    data: array (samples, channels, dim)
+        the data to be displayed.
+    mask: array (samples, channels, dim)
+        the mask data to be overlayed.
+    nb_samples: int, default 5
+        the number of samples to be displayed.
+    """
+    indices = np.random.randint(0, data.shape[0], nb_samples)
+    plt.figure(figsize=(15, 7), dpi=200)
+    for cnt, ind in enumerate(indices):
+        im = data[ind, 0]
+        plt.subplot(2, nb_samples, cnt + 1)
+        plt.axis("off")
+        plt.title("Image " + str(ind))
+        plt.imshow(im, cmap="gray")
+        mask_im = mask[ind]
+        plt.subplot(2, nb_samples, cnt + 1 + nb_samples)
+        plt.axis("off")
+        plt.imshow(im, cmap="gray")
+        plt.imshow(np.argmax(mask_im, axis=0), cmap="jet", alpha=0.3)
 
 
 def rescale_intensity(arr, in_range, out_range):

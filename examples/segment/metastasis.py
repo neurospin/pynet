@@ -24,7 +24,7 @@ from pynet.dataset import split_dataset
 from pynet.dataset import LoadDataset
 from pynet.transforms import ZeroPadding, Downsample
 from pynet.optim import training
-from pynet.models import UNet
+from pynet.encoder import UNetEncoder
 import torch
 import torch
 import torch.nn as nn
@@ -37,7 +37,7 @@ dataloader_kwargs = {
 dataset = split_dataset(
     path=dataset_desc,
     dataloader=LoadDataset,
-    batch_size=50,
+    batch_size=-1,
     inputs=["t1"],
     outputs=["mask"],
     label="label",
@@ -45,7 +45,7 @@ dataset = split_dataset(
     transforms=[ZeroPadding(shape=(256, 256, 256)), Downsample(scale=4)],
     test_size=0.25,
     validation_size=0.1,
-#    nb_samples=100,
+    nb_samples=40,
     verbose=0,
     **dataloader_kwargs)
 
@@ -63,47 +63,42 @@ y_test = dataset["test"][batch_index]["outputs"]
 print(X_train.shape , y_train.shape)
 print(X_valid.shape, y_valid.shape )
 print(X_test.shape, y_test.shape)
-print(X_train.dtype, y_train.dtype, X_train.device, y_train.device)
-
-############################################################################
-# Load a network
-# --------------
-#
-# From the available netwoks load the 3D UNet.
-
-net = UNet(
-    num_classes=4,
-    in_channels=1,
-    depth=5, 
-    start_filts=16,
-    up_mode="upsample", 
-    merge_mode="concat",
-    batchnorm=True)
+print(X_train.dtype, y_train.dtype)
 
 #############################################################################
 # Optimisation
 # ------------
 #
-# Now start the network training.
+# From the available models load the 3D UNet, and start the training.
 
-nb_epochs = 150
-learning_rate = 1e-4
 def my_loss(x, y):
-    y = torch.sum(y, dim=1).type(torch.LongTensor)
+    """ nn.CrossEntropyLoss expects a torch.LongTensor containing the class
+    indices without the channel dimension.
+    """
+    #y = torch.sum(y, dim=1).type(torch.LongTensor)
+    y = torch.argmax(y, dim=1).type(torch.LongTensor)
     criterion = nn.CrossEntropyLoss()
     return criterion(x, y)
-my_optimizer = optim.SGD(
-    net.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0005)
-test_history, train_history, valid_history = training(
-    net=net,
+model = UNetEncoder(
+    num_classes=3,
+    in_channels=1,
+    depth=5, 
+    start_filts=16,
+    up_mode="upsample", 
+    merge_mode="concat",
+    batchnorm=True,
+    batch_size=4,
+    optimizer_name="Adam",
+    learning_rate=5e-4,
+    metrics=["multiclass_dice"],
+    loss=my_loss)
+test_history, train_history = training(
+    model=model,
     dataset=dataset,
-    optimizer=my_optimizer,
-    criterion=my_loss,
-    nb_epochs=nb_epochs,
-    metrics=None,
-    use_cuda=False,
-    outdir="/data/tmp",
+    nb_epochs=50,
+    outdir="/data/tmp/pynet/metastasis",
     verbose=1)
+
 
 
 

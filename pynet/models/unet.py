@@ -8,10 +8,12 @@
 ##########################################################################
 
 # Imports
+import ast
 import collections
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
+
 
 
 class UNet(nn.Module):
@@ -38,7 +40,7 @@ class UNet(nn.Module):
 
     def __init__(self, num_classes, in_channels=1, depth=5, 
                  start_filts=64, up_mode="transpose", 
-                 merge_mode="concat", batchnorm=False):
+                 merge_mode="concat", batchnorm=False, dim="3d"):
         """ Init class.
 
         Parameters
@@ -53,16 +55,24 @@ class UNet(nn.Module):
             number of convolutional filters for the first conv.
         up_mode: string, default 'transpose'
             type of upconvolution. Choices: 'transpose' for transpose
-            convolution or 'upsample' for nearest neighbour upsampling.
+            convolution, 'upsample' for nearest neighbour upsampling.
         merge_mode: str, defatul 'concat'
             the skip connections merging strategy.
         batchnorm: bool, default False
             normalize the inputs of the activation function.
+        dim: str, default '3d'
+            '3d' or '2d' input data.
         """
         # Inheritance
         super(UNet, self).__init__()
 
         # Check inputs
+        if dim in ("2d", "3d"):
+            self.dim = dim
+        else:
+            raise ValueError(
+                "'{}' is not a valid mode for merging up and down paths. Only "
+                "'3d' and '2d' are allowed.".format(dim))
         if up_mode in ("transpose", "upsample"):
             self.up_mode = up_mode
         else:
@@ -95,7 +105,7 @@ class UNet(nn.Module):
             out_channels = self.start_filts * (2**cnt)
             pooling = False if cnt == 0 else True
             self.down.append(
-                Down(in_channels, out_channels, pooling=pooling,
+                Down(in_channels, out_channels, self.dim, pooling=pooling,
                      batchnorm=batchnorm))
 
         # Create the decoder pathway
@@ -104,7 +114,7 @@ class UNet(nn.Module):
             in_channels = out_channels
             out_channels = in_channels // 2
             self.up.append(
-                Up(in_channels, out_channels, up_mode=up_mode,
+                Up(in_channels, out_channels, up_mode=up_mode, dim=self.dim,
                    merge_mode=merge_mode, batchnorm=batchnorm))
 
         # Add the list of modules to current module
@@ -112,18 +122,18 @@ class UNet(nn.Module):
         self.up = nn.ModuleList(self.up)
 
         # Get ouptut segmentation
-        self.conv_final = Conv1x1x1(out_channels, self.num_classes)
+        self.conv_final = Conv1x1x1(out_channels, self.num_classes, self.dim)
 
         # Kernel initializer
         self.kernel_initializer()
 
     def kernel_initializer(self):
         for module in self.modules():
-            self.init_weight(module)
+            self.init_weight(module, self.dim)
 
     @staticmethod
-    def init_weight(module):
-        if isinstance(module, nn.Conv3d):
+    def init_weight(module, dim):
+        if isinstance(module, eval("nn.Conv{0}".format(dim))):
             nn.init.xavier_normal_(module.weight)
             nn.init.constant_(module.bias, 0)
 
@@ -145,26 +155,32 @@ class UNet(nn.Module):
 
 
 class DoubleConv(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1,
+    def __init__(self, in_channels, out_channels, dim, kernel_size=3, stride=1,
                  padding=1, bias=True, batchnorm=True):
         super(DoubleConv, self).__init__()
         if batchnorm:
             self.ops = nn.Sequential(collections.OrderedDict([
-                ("conv1", nn.Conv3d(in_channels, out_channels, kernel_size,
-                                    stride=stride, padding=padding, bias=bias)),
-                ("norm1", nn.BatchNorm3d(out_channels)),
+                ("conv1", eval(
+                    "nn.Conv{0}(in_channels, out_channels, kernel_size, "
+                    "stride=stride, padding=padding, bias=bias)".format(dim))),
+                ("norm1", eval(
+                    "nn.BatchNorm{0}(out_channels)".format(dim))),
                 ("leakyrelu1", nn.LeakyReLU()),
-                ("conv2", nn.Conv3d(out_channels, out_channels, kernel_size,
-                                    stride=stride, padding=padding, bias=bias)),
-                ("norm2", nn.BatchNorm3d(out_channels)),
+                ("conv2", eval(
+                    "nn.Conv{0}(out_channels, out_channels, kernel_size, "
+                    "stride=stride, padding=padding, bias=bias)".format(dim))),
+                ("norm2", eval(
+                    "nn.BatchNorm{0}(out_channels)".format(dim))),
                 ("leakyrelu2", nn.LeakyReLU())]))
         else:
             self.ops = nn.Sequential(collections.OrderedDict([
-                ("conv1", nn.Conv3d(in_channels, out_channels, kernel_size,
-                                    stride=stride, padding=padding, bias=bias)),
+                ("conv1", eval(
+                    "nn.Conv{0}(in_channels, out_channels, kernel_size, "
+                    "stride=stride, padding=padding, bias=bias)".format(dim))),
                 ("leakyrelu1", nn.LeakyReLU()),
-                ("conv2", nn.Conv3d(out_channels, out_channels, kernel_size,
-                                    stride=stride, padding=padding, bias=bias)),
+                ("conv2", eval(
+                    "nn.Conv{0}(out_channels, out_channels, kernel_size, "
+                    "stride=stride, padding=padding, bias=bias)".format(dim))),
                 ("leakyrelu2", nn.LeakyReLU())]))
 
     def forward(self, x):
@@ -172,27 +188,22 @@ class DoubleConv(nn.Module):
         return x
 
 
-def UpConv(in_channels, out_channels, mode="transpose"):
+def UpConv(in_channels, out_channels, dim, mode="transpose"):
     if mode == "transpose":
-        return nn.ConvTranspose3d(
-            in_channels,
-            out_channels,
-            kernel_size=2,
-            stride=2)
+        return eval(
+            "nn.ConvTranspose{0}(in_channels, out_channels, kernel_size=2, "
+            "stride=2)".format(dim)) 
     else:
         # out_channels is always going to be the same as in_channels
         return nn.Sequential(collections.OrderedDict([
             ("up", nn.Upsample(mode="nearest", scale_factor=2)),
-            ("conv1x", Conv1x1x1(in_channels, out_channels))]))
+            ("conv1x", Conv1x1x1(in_channels, out_channels, dim))]))
 
 
-def Conv1x1x1(in_channels, out_channels, groups=1):
-    return nn.Conv3d(
-        in_channels,
-        out_channels,
-        kernel_size=1,
-        groups=groups,
-        stride=1)
+def Conv1x1x1(in_channels, out_channels, dim, groups=1):
+    return eval(
+        "nn.Conv{0}(in_channels, out_channels, kernel_size=1, groups=groups, "
+        "stride=1)".format(dim)) 
 
 
 class Down(nn.Module):
@@ -200,15 +211,19 @@ class Down(nn.Module):
     A helper Module that performs 2 convolutions and 1 MaxPool.
     A LeakyReLU activation and optionally a BatchNorm follows each convolution.
     """
-    def __init__(self, in_channels, out_channels, pooling=True, batchnorm=True):
+    def __init__(self, in_channels, out_channels, dim, pooling=True,
+                 batchnorm=True):
         super(Down, self).__init__()
         if pooling:
+
             self.ops = nn.Sequential(collections.OrderedDict([
-                ("maxpool", nn.MaxPool3d(2)),
-                ("doubleconv", DoubleConv(in_channels, out_channels, batchnorm=batchnorm))]))
+                ("maxpool", eval("nn.MaxPool{0}(2)".format(dim))),
+                ("doubleconv", DoubleConv(
+                    in_channels, out_channels, dim, batchnorm=batchnorm))]))
         else:
             self.ops = nn.Sequential(collections.OrderedDict([
-                ("doubleconv", DoubleConv(in_channels, out_channels, batchnorm=batchnorm))]))
+                ("doubleconv", DoubleConv(
+                    in_channels, out_channels, dim, batchnorm=batchnorm))]))
 
     def forward(self, x):
         x = self.ops(x)
@@ -220,12 +235,13 @@ class Up(nn.Module):
     A helper Module that performs 2 convolutions and 1 UpConvolution.
     A LeakyReLU activation and optionally a BatchNorm follows each convolution.
     """
-    def __init__(self, in_channels, out_channels, merge_mode="concat",
+    def __init__(self, in_channels, out_channels, dim, merge_mode="concat",
                  up_mode="transpose", batchnorm=True):
         super(Up, self).__init__()
         self.merge_mode = merge_mode
-        self.upconv = UpConv(in_channels, out_channels, mode=up_mode)
-        self.doubleconv = DoubleConv(in_channels, out_channels, batchnorm=batchnorm)
+        self.upconv = UpConv(in_channels, out_channels, dim, mode=up_mode)
+        self.doubleconv = DoubleConv(
+            in_channels, out_channels, dim, batchnorm=batchnorm)
 
     def forward(self, x_down, x_up):
         x_down = self.upconv(x_down)
