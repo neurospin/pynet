@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import torchvision
 
 
-def plot_data(data, slice_axis=2):
+def plot_data(data, slice_axis=2, nb_samples=5, labels=None):
     """ Plot an image associated data.
 
     Currently support 2D or 3D dataset of the form (samples, channels, dim).
@@ -25,6 +25,10 @@ def plot_data(data, slice_axis=2):
         the data to be displayed.
     slice_axis: int, default 2
         the slice axis for 3D data.
+    nb_samples: int, default 5
+        the number of samples to be displayed.
+    labels: list of str, default None
+        the data labels to be displayed.
     """
     # Check input parameters
     if data.ndim not in range(4, 6):
@@ -40,10 +44,23 @@ def plot_data(data, slice_axis=2):
         data = np.concatenate(slices, axis=0)
 
     # Plot data on grid
-    plt.figure()
-    _data = torchvision.utils.make_grid(torch.from_numpy(data))
-    _data = _data.numpy()
-    plt.imshow(np.transpose(_data, (1, 2, 0)))
+    #plt.figure()
+    #_data = torchvision.utils.make_grid(torch.from_numpy(data))
+    #_data = _data.numpy()
+    #plt.imshow(np.transpose(_data, (1, 2, 0)))
+    indices = np.random.randint(0, data.shape[0], nb_samples)
+    nb_channels = data.shape[1]
+    plt.figure(figsize=(15, 7), dpi=200)
+    for cnt1, ind in enumerate(indices):
+        for cnt2 in range(nb_channels):
+            im = data[ind, cnt2]
+            plt.subplot(nb_channels, nb_samples, nb_samples * cnt2 + cnt1 + 1)
+            plt.axis("off")
+            if labels is None:
+                plt.title("Image " + str(ind))
+            else:
+                plt.title(labels[ind])
+            plt.imshow(im, cmap="gray")
 
 
 def plot_segmentation_data(data, mask, nb_samples=5):

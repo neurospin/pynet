@@ -30,14 +30,17 @@ class ZeroPadding(object):
             the desired shape.
         """
         self.shape = shape
+        
 
-    def __call__(self, arr):
+    def __call__(self, arr, fill_value=0):
         """ Zero fill an array to fit the desired shape.
 
         Parameters
         ----------
         arr: np.array
-            an input array
+            an input array.
+        fill_value: int
+            the value used to fill the array.
 
         Returns
         -------
@@ -55,8 +58,8 @@ class ZeroPadding(object):
                 padding.append((half_shape_i, half_shape_i + 1))
         for cnt in range(len(arr.shape) - len(padding)):
             padding.append((0, 0))
-        fill_arr = np.pad(arr, padding, mode="constant", constant_values=0)
-
+        fill_arr = np.pad(arr, padding, mode="constant",
+                          constant_values=fill_value)
         return fill_arr
 
 

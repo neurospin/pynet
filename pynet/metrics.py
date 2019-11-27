@@ -43,13 +43,6 @@ def multiclass_dice(y_pred, y):
     return dice / n_classes
 
 
-def dice_loss(y_pred, y):
-    """ Loss based on the dice: scales between [0, 1], optimized when
-    minimized.
-    """
-    return 1 - multiclass_dice(y_pred, y)
-
-
 METRICS = {
     "accuracy": accuracy,
     "multiclass_dice": multiclass_dice,

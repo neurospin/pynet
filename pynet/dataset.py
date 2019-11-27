@@ -27,8 +27,115 @@ from joblib import Parallel, delayed
 from sklearn.model_selection import train_test_split
 
 
+def split_tensor(input_path, labels, number_of_folds, output_path=None,
+                 test_size=0.1, validation_size=0.25, nb_samples=None,
+                 verbose=0):
+    """ Split an input numpy tensor in test, train and validation.
+    This function stratifies the data.
+
+    Parameters
+    ----------
+    input_path: list of str
+        the path to the input tensor.
+    labels: list of int
+        the inputs associated labels.
+    number_of_folds: int
+        the number of folds that will be used in the cross validation.
+    output_path: list of str, default None
+        the output tensor to predict.
+    test_size: float, default 0.1
+        should be between 0.0 and 1.0 and represent the proportion of the
+        dataset to include in the test split.
+    validation_size: float, default 0.25
+        should be between 0.0 and 1.0 and represent the proportion of the
+        dataset (without the test dataset) to include in the validation split.
+    nb_samples: int, default None
+        cut the input tabular dataset.
+    verbose: int, default 0
+        the verbosity level.
+
+    Retunrs
+    -------
+    dataset: dict
+        the test, train, and validation tensors.
+    """
+    tensor_data = []
+    tensor_labels = []
+    output_data = []
+    for idx, (path, label) in enumerate(zip(input_path, labels)):
+        _data = np.load(path)
+        tensor_data.append(_data)
+        tensor_labels += [label] * len(_data)
+        if output_path is not None:
+            output_data .append(np.load(output_path[idx]))
+    tensor_data = np.concatenate(tensor_data, axis=0)
+    tensor_labels = np.asarray(tensor_labels)
+    indices = np.random.permutation(len(tensor_data))
+    tensor_data = tensor_data[indices]
+    tensor_labels = tensor_labels[indices]
+    if nb_samples is None:
+        nb_samples = len(tensor_data)
+    tensor_data = tensor_data[:nb_samples]
+    tensor_labels = tensor_labels[:nb_samples]
+    if output_path is not None:
+        output_data = np.concatenate(output_data, axis=0)[indices][:nb_samples]
+        (tensor_optim, tensor_test, labels_optim, labels_test, output_optim,
+         output_test) = train_test_split(
+            tensor_data,
+            tensor_labels,
+            output_data,
+            test_size=test_size,
+            random_state=1,
+            stratify=tensor_labels)
+    else:
+        (tensor_optim, tensor_test, labels_optim,
+         labels_test) = train_test_split(
+            tensor_data,
+            tensor_labels,
+            test_size=test_size,
+            random_state=1,
+            stratify=tensor_labels)
+        output_optim, output_test = (None, None)
+    dataset = {}
+    dataset["test"] = {
+        "inputs": tensor_test,
+        "outputs": output_test,
+        "labels": labels_test
+    }
+    for fold_indx in range(number_of_folds):
+        if output_optim is not None:
+            (tensor_train, tensor_valid, labels_train, labels_valid,
+             output_train, output_valid) = train_test_split(
+                tensor_optim,
+                labels_optim,
+                output_optim,
+                test_size=validation_size,
+                shuffle=True,
+                stratify=labels_optim)
+        else:
+            (tensor_train, tensor_valid, labels_train,
+             labels_valid) = train_test_split(
+                tensor_optim,
+                labels_optim,
+                test_size=validation_size,
+                shuffle=True,
+                stratify=labels_optim)
+            output_train, output_valid = (None, None)
+        dataset.setdefault("train", []).append({
+            "inputs": tensor_train,
+            "outputs": output_train,
+            "labels": labels_train
+        })
+        dataset.setdefault("validation", []).append({
+            "inputs": tensor_valid,
+            "outputs": output_valid,
+            "labels": labels_valid
+        })
+    return dataset
+
+
 def split_dataset(path, dataloader, inputs, label, number_of_folds,
-                  batch_size, outputs=None, transforms=None, test_size=0.1,
+                  batch_size=1, outputs=None, transforms=None, test_size=0.1,
                   validation_size=0.25, nb_samples=None, verbose=0,
                   **dataloader_kwargs):
     """ Split an input tabular dataset in test, train and validation.
@@ -47,7 +154,7 @@ def split_dataset(path, dataloader, inputs, label, number_of_folds,
         the name of the column containing the labels.
     number_of_folds: int
         the number of folds that will be used in the cross validation.
-    batch_size: int
+    batch_size: int, default 1
         the size of each mini-batch (only applied on the train set).
     outputs: list of str, default None
         the name of the column(s) containing the ouputs.
@@ -163,7 +270,7 @@ def dummy_dataset(nb_batch, batch_size, number_of_folds, shape, verbose=0):
 
 
 class LoadDataset(Dataset):
-    """ Class to load a dataset in a mini-batch fashion.
+    """ Class to load a file dataset in a mini-batch fashion.
 
     Note: the image are expected to be in the FSL order X, Y, Z, N.
     """
