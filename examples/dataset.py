@@ -36,7 +36,7 @@ print(pynet.configure.info())
 
 from pynet.datasets import DataManager, fetch_cifar
 
-data = fetch_cifar(datasetdir="/neurospin/nsap/datasets/cifar")
+data = fetch_cifar(datasetdir="/tmp/cifar")
 manager = DataManager(
     input_path=data.input_path,
     labels=["label"],

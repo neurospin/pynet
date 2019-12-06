@@ -134,6 +134,8 @@ class Base(Observable):
         train_history, valid_history: History
             the train/validation history.
         """
+        if not os.path.isdir(checkpointdir):
+            os.mkdir(checkpointdir)
         train_history = History(name="train")
         if with_validation is not None:
             valid_history = History(name="validation")

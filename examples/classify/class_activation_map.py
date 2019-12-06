@@ -58,7 +58,7 @@ from pynet.datasets import DataManager, fetch_gradcam
 from pynet.plotting import plot_data
 
 data = fetch_gradcam(
-    datasetdir="/neurospin/nsap/datasets/gradcam")
+    datasetdir="/tmp/gradcam")
 manager = DataManager(
     input_path=data.input_path,
     metadata_path=data.metadata_path,
@@ -83,7 +83,7 @@ from pynet.cam import GradCam
 import matplotlib.pyplot as plt
 
 data = fetch_gradcam(
-    datasetdir="/neurospin/nsap/datasets/gradcam")
+    datasetdir="/tmp/gradcam")
 manager1 = DataManager(
     input_path=data.input_path,
     metadata_path=data.metadata_path,
@@ -92,7 +92,7 @@ manager1 = DataManager(
     test_size=1)
 loaders1 = manager1.get_dataloader(test=True)
 data = fetch_gradcam(
-    datasetdir="/neurospin/nsap/datasets/gradcam",
+    datasetdir="/tmp/gradcam",
     inception=True)
 manager2 = DataManager(
     input_path=data.input_path,

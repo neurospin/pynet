@@ -42,7 +42,7 @@ from pynet.datasets import fetch_orientation
 from pynet.datasets import DataManager
 
 data = fetch_orientation(
-    datasetdir="/neurospin/nsap/datasets/orientation",
+    datasetdir="/tmp/orientation",
     flatten=True)
 manager = DataManager(
     input_path=data.input_path,

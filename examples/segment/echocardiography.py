@@ -29,7 +29,7 @@ from pynet.datasets import DataManager, fetch_echocardiography
 from pynet.plotting import plot_data
 
 data = fetch_echocardiography(
-    datasetdir="/neurospin/nsap/datasets/echocardiography")
+    datasetdir="/tmp/echocardiography")
 manager = DataManager(
     input_path=data.input_path,
     metadata_path=data.metadata_path,
