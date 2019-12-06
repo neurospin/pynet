@@ -13,6 +13,7 @@ Core classes.
 
 # System import
 import re
+import os
 import warnings
 from collections import OrderedDict
 
