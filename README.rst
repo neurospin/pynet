@@ -31,6 +31,7 @@ Important links
 
 - Official source code repo: https://github.com/neurospin/pynet
 - HTML documentation (last stable release): http://neurospin.github.io/pynet
+- HTML documentation (master release): https://python-network.readthedocs.io/
 
 Install
 =======

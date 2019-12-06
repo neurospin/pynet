@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 class Mock(MagicMock):
     @classmethod
     def __getattr__(cls, name):
-        return MagicMock()
+        return MagicMock(__file__="mock.py")
 MOCK_MODULES = [
     'torch', 'torch.nn', 'torch.nn.functional', 'torch.utils',
     'torch.utils.data', 'torch.autograd', 'torch.nn.modules',

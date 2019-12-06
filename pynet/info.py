@@ -40,16 +40,11 @@ SUMMARY = """
     * train a model with metrics feedback.
     * investigate a trained deep network with common vizualization tools.
 """
-long_description = """
-=====
-pynet
-=====
-
-Helper Module for Deep Learning.
-"""
+long_description = (
+    "Helper Module for Deep Learning.\n")
 
 # Main setup parameters
-NAME = "pynet"
+NAME = "python-network"
 ORGANISATION = "CEA"
 MAINTAINER = "Antoine Grigis"
 MAINTAINER_EMAIL = "antoine.grigis@cea.fr"
