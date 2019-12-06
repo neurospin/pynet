@@ -15,13 +15,18 @@ from distutils.version import LooseVersion
 import sphinx
 import pysphinxdoc
 
+MOCK_MODULES = [
+    'torch', 'torch.nn', 'torch.nn.functional',
+    'torchvision']
+
 installdir = os.path.abspath("../..")
 env = os.environ
 if "PYTHONPATH" in env:
     env["PYTHONPATH"] = env["PYTHONPATH"] + ":" + installdir
 else:
     env["PYTHONPATH"] = installdir
-cmd = ["sphinxdoc", "-v 2", "-p",  installdir, "-n", "pynet", "-o", ".."]
+cmd = ["sphinxdoc", "-v 2", "-p",  installdir, "-n", "pynet", "-o", "..",
+       "-m"] + MOCK_MODULES
 subprocess.check_call(cmd, env=env)
 sys.path.insert(0, installdir)
 
