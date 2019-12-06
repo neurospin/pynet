@@ -68,6 +68,7 @@ ISRELEASE = True
 VERSION = __version__
 PROVIDES = ["pynet"]
 REQUIRES = [
+    "torchviz>=0.0.0",
     "numpy>=1.17.1",
     "torch>=1.2.0",
     "torchvision>=0.4.0",

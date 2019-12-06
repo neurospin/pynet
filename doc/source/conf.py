@@ -17,7 +17,8 @@ import pysphinxdoc
 
 MOCK_MODULES = [
     'torch', 'torch.nn', 'torch.nn.functional',
-    'torchvision']
+    'torchvision',
+    'torchviz']
 
 installdir = os.path.abspath("../..")
 env = os.environ

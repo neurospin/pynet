@@ -1,6 +1,5 @@
 git+https://github.com/AGrigis/pysphinxdoc.git
 ipython
-torchviz
 numpy>=1.17.1
 hiddenlayer>=0.2
 tabulate>=0.8.6
