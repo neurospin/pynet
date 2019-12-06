@@ -21,6 +21,7 @@ jobs:
           command: |
             sudo -E apt-get -yq update
             sudo apt install -y graphviz
+            sudo apt install -y xdg-utils
       - run:
           name: Install dependencies
           command: |
