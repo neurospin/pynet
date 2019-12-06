@@ -16,7 +16,7 @@ import sphinx
 import pysphinxdoc
 
 MOCK_MODULES = [
-    'torch', 'torch.nn', 'torch.nn.functional',
+    'torch', 'torch.nn', 'torch.nn.functional', 'torch.utils',
     'torchvision', 'torchvision.transforms',
     'torchviz']
 
