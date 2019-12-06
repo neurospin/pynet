@@ -12,4 +12,3 @@ Helper Module for Deep Learning
 """
 
 from .info import __version__
-

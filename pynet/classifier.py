@@ -27,20 +27,18 @@ from pynet.core import Base
 
 class Classifier(Base):
     """ Class to perform classification.
-    """    
-    def __init__(self, batch_size="auto", optimizer_name="Adam",
-                 learning_rate=1e-3, loss_name="NLLLoss", metrics=None,
-                 use_cuda=False, **kwargs):
+    """
+    def __init__(self, optimizer_name="Adam", learning_rate=1e-3,
+                 loss_name="NLLLoss", metrics=None, use_cuda=False,
+                 pretrained=None, **kwargs):
         """ Class instantiation.
 
         Observers will be notified, allowed signals are:
         - 'before_epoch'
-        - 'after_epoch' 
+        - 'after_epoch'
 
         Parameters
         ----------
-        batch_size: int, default 'auto'
-            the mini-batches size.
         optimizer_name: str, default 'Adam'
             the name of the optimizer: see 'torch.optim' for a description
             of available optimizer.
@@ -53,17 +51,19 @@ class Classifier(Base):
             a list of extra metrics that will be computed.
         use_cuda: bool, default False
             wether to use GPU or CPU.
+        pretrained: path, default None
+            path to the pretrained model or weights.
         kwargs: dict
             specify directly a custom 'model', 'optimizer' or 'loss'. Can also
             be used to set specific optimizer parameters.
         """
         super().__init__(
-            batch_size=batch_size,
             optimizer_name=optimizer_name,
             learning_rate=learning_rate,
             loss_name=loss_name,
             metrics=metrics,
             use_cuda=use_cuda,
+            pretrained=pretrained,
             **kwargs)
 
 
@@ -72,7 +72,7 @@ class VGGClassifier(Classifier):
     """
     def __init__(self, cfg, num_classes, batch_norm=False, init_weights=True,
                  pretrained=None, make_layers=models.vgg.make_layers,
-                 batch_size="auto", optimizer_name="Adam", learning_rate=1e-3,
+                 optimizer_name="Adam", learning_rate=1e-3,
                  loss_name="NLLLoss", metrics=None, use_cuda=False, **kwargs):
         """ Class initilization.
 
@@ -93,8 +93,6 @@ class VGGClassifier(Classifier):
             a function to create the feature layers: default 2d max pooling
             with kernel size 2 and stride 2, and convolution with kernel size
             3 and padding 1.
-        batch_size: int, default 'auto'
-            the mini-batches size.
         optimizer_name: str, default 'Adam'
             the name of the optimizer: see 'torch.optim' for a description
             of available optimizer.
@@ -115,15 +113,13 @@ class VGGClassifier(Classifier):
             features=make_layers(cfg, batch_norm=batch_norm),
             num_classes=num_classes,
             init_weights=init_weights)
-        if pretrained is not None:
-            self.model.load_state_dict(torch.load(pretrained))
         super().__init__(
-            batch_size=batch_size,
             optimizer_name=optimizer_name,
             learning_rate=learning_rate,
             loss_name=loss_name,
             metrics=metrics,
             use_cuda=use_cuda,
+            pretrained=pretrained,
             **kwargs)
 
 
@@ -132,7 +128,7 @@ class DenseNetClassifier(Classifier):
     """
     def __init__(self, growth_rate, block_config, num_init_features,
                  num_classes, bn_size=4, drop_rate=0, memory_efficient=False,
-                 pretrained=None, batch_size="auto", optimizer_name="Adam",
+                 pretrained=None, optimizer_name="Adam",
                  learning_rate=1e-3, loss_name="NLLLoss", metrics=None,
                  use_cuda=False, **kwargs):
         """ Class initilization.
@@ -157,8 +153,6 @@ class DenseNetClassifier(Classifier):
             but slower.
         pretrained: str, default None
             update the weights of the model using this state information.
-        batch_size: int, default 'auto'
-            the mini-batches size.
         optimizer_name: str, default 'Adam'
             the name of the optimizer: see 'torch.optim' for a description
             of available optimizer.
@@ -183,15 +177,13 @@ class DenseNetClassifier(Classifier):
             drop_rate=drop_rate,
             num_classes=num_classes,
             memory_efficient=memory_efficient)
-        if pretrained is not None:
-            self.model.load_state_dict(torch.load(pretrained))
         super().__init__(
-            batch_size=batch_size,
             optimizer_name=optimizer_name,
             learning_rate=learning_rate,
             loss_name=loss_name,
             metrics=metrics,
             use_cuda=use_cuda,
+            pretrained=pretrained,
             **kwargs)
 
 
@@ -199,9 +191,9 @@ class ResNetClassifier(Classifier):
     """ Residual Neural Network (ResNet) by Kaiming He et al.
     """
     def __init__(self, block, layers, num_classes, zero_init_residual=False,
-                 groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                 norm_layer=None, pretrained=None, batch_size="auto",
-                 optimizer_name="Adam", learning_rate=1e-3,
+                 groups=1, width_per_group=64,
+                 replace_stride_with_dilation=None, norm_layer=None,
+                 pretrained=None, optimizer_name="Adam", learning_rate=1e-3,
                  loss_name="NLLLoss", metrics=None, use_cuda=False, **kwargs):
         """ Class initilization.
 
@@ -230,8 +222,6 @@ class ResNetClassifier(Classifier):
             normalization.
         pretrained: str, default None
             update the weights of the model using this state information.
-        batch_size: int, default 'auto'
-            the mini-batches size.
         optimizer_name: str, default 'Adam'
             the name of the optimizer: see 'torch.optim' for a description
             of available optimizer.
@@ -257,15 +247,13 @@ class ResNetClassifier(Classifier):
             width_per_group=width_per_group,
             replace_stride_with_dilation=replace_stride_with_dilation,
             norm_layer=norm_layer)
-        if pretrained is not None:
-            self.model.load_state_dict(torch.load(pretrained))
         super().__init__(
-            batch_size=batch_size,
             optimizer_name=optimizer_name,
             learning_rate=learning_rate,
             loss_name=loss_name,
             metrics=metrics,
             use_cuda=use_cuda,
+            pretrained=pretrained,
             **kwargs)
 
 
@@ -273,7 +261,7 @@ class Inception3(Classifier):
     """ Inception v3 by Google.
     """
     def __init__(self, num_classes, aux_logits=True, transform_input=False,
-                 pretrained=None, batch_size="auto", optimizer_name="Adam",
+                 pretrained=None, optimizer_name="Adam",
                  learning_rate=1e-3, loss_name="NLLLoss", metrics=None,
                  use_cuda=False, **kwargs):
         """ Class initilization.
@@ -288,8 +276,6 @@ class Inception3(Classifier):
             normalize the data.
         pretrained: str, default None
             update the weights of the model using this state information.
-        batch_size: int, default 'auto'
-            the mini-batches size.
         optimizer_name: str, default 'Adam'
             the name of the optimizer: see 'torch.optim' for a description
             of available optimizer.
@@ -310,15 +296,13 @@ class Inception3(Classifier):
             num_classes=num_classes,
             aux_logits=aux_logits,
             transform_input=transform_input)
-        if pretrained is not None:
-            self.model.load_state_dict(torch.load(pretrained))
         super().__init__(
-            batch_size=batch_size,
             optimizer_name=optimizer_name,
             learning_rate=learning_rate,
             loss_name=loss_name,
             metrics=metrics,
             use_cuda=use_cuda,
+            pretrained=pretrained,
             **kwargs)
 
 
@@ -339,8 +323,9 @@ def class_factory(klass_name, klass_params, destination_module_globals):
         """ VGGNet X-layer.
         """
         cfg = None
+
         def __init__(self, num_classes, batch_norm=False, init_weights=True,
-                     pretrained=None, batch_size="auto", optimizer_name="Adam",
+                     pretrained=None, optimizer_name="Adam",
                      learning_rate=1e-3, loss_name="NLLLoss", metrics=None,
                      **kwargs):
             if self.cfg is None:
@@ -352,26 +337,28 @@ def class_factory(klass_name, klass_params, destination_module_globals):
                 init_weights=init_weights,
                 pretrained=pretrained,
                 make_layers=models.vgg.make_layers,
-                batch_size=batch_size,
                 optimizer_name=optimizer_name,
                 learning_rate=learning_rate,
                 loss_name=loss_name,
                 metrics=metrics,
                 **kwargs)
+
     class DenseNetBaseClassifier(DenseNetClassifier):
         """ DenseNet-X model.
         """
         growth_rate = None
         block_config = None
         num_init_features = None
+
         def __init__(self, num_classes, bn_size=4, drop_rate=0,
-                     memory_efficient=False, pretrained=None, batch_size="auto",
+                     memory_efficient=False, pretrained=None,
                      optimizer_name="Adam", learning_rate=1e-3,
                      loss_name="NLLLoss", metrics=None, use_cuda=False,
                      **kwargs):
             for name in ("growth_rate", "block_config", "num_init_features"):
                 if getattr(self, name) is None:
-                    raise ValueError("Please specify '{0}' first.".format(name))
+                    raise ValueError(
+                        "Please specify '{0}' first.".format(name))
             super().__init__(
                 growth_rate=self.growth_rate,
                 block_config=self.block_config,
@@ -381,12 +368,12 @@ def class_factory(klass_name, klass_params, destination_module_globals):
                 drop_rate=drop_rate,
                 memory_efficient=memory_efficient,
                 pretrained=pretrained,
-                batch_size=batch_size,
                 optimizer_name=optimizer_name,
                 learning_rate=learning_rate,
                 loss_name=loss_name,
                 metrics=metrics,
                 **kwargs)
+
     class ResNetBaseClassifier(ResNetClassifier):
         """ ResNet-X model.
         """
@@ -394,15 +381,17 @@ def class_factory(klass_name, klass_params, destination_module_globals):
         layers = None
         groups = 1
         width_per_group = 64
+
         def __init__(self, num_classes, zero_init_residual=False, groups=1,
                      width_per_group=64, replace_stride_with_dilation=None,
-                     norm_layer=None, pretrained=None, batch_size="auto",
+                     norm_layer=None, pretrained=None,
                      optimizer_name="Adam", learning_rate=1e-3,
                      loss_name="NLLLoss", metrics=None, use_cuda=False,
                      **kwargs):
             for name in ("block", "layers"):
                 if getattr(self, name) is None:
-                    raise ValueError("Please specify '{0}' first.".format(name))
+                    raise ValueError(
+                        "Please specify '{0}' first.".format(name))
             super().__init__(
                 block=self.block,
                 layers=self.layers,
@@ -413,7 +402,6 @@ def class_factory(klass_name, klass_params, destination_module_globals):
                 replace_stride_with_dilation=replace_stride_with_dilation,
                 norm_layer=norm_layer,
                 pretrained=pretrained,
-                batch_size=batch_size,
                 optimizer_name=optimizer_name,
                 learning_rate=learning_rate,
                 loss_name=loss_name,
@@ -519,4 +507,3 @@ CFG = {
 destination_module_globals = globals()
 for klass_name, klass_params in CFG.items():
     class_factory(klass_name, klass_params, destination_module_globals)
-        

@@ -29,15 +29,7 @@ class GraphNode(object):
         degree of the node regarding the successors
     links_from_degree : int
         degree of the node regarding the predecessors
-
-    Methods
-    --------
-    add_link_to
-    remove_link_to
-    add_link_from
-    remove_link_from
     """
-
     def __init__(self, name, meta):
         """ Create a Graph Node.
 
@@ -120,15 +112,7 @@ class Graph(object):
         the graph nodes {node.name: node}
     _links : list
         graph edges (from_node, to_node)
-
-    Methods
-    --------
-    add_node
-    find_node
-    add_link
-    topological_sort
     """
-
     def __init__(self):
         """ Create a Graph
         """

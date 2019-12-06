@@ -7,14 +7,12 @@
 # for details.
 ##########################################################################
 
-
 """
 A module with common functions.
 """
 
-
 # System import
-import os 
+import os
 
 # Third party imports
 import torch
@@ -41,16 +39,16 @@ def logo():
         the logo.
     """
     logo = r"""
-                                           /$$    
-                                          | $$    
-  /$$$$$$  /$$   /$$ /$$$$$$$   /$$$$$$  /$$$$$$  
- /$$__  $$| $$  | $$| $$__  $$ /$$__  $$|_  $$_/  
-| $$  \ $$| $$  | $$| $$  \ $$| $$$$$$$$  | $$    
+                                           /$$
+                                          | $$
+  /$$$$$$  /$$   /$$ /$$$$$$$   /$$$$$$  /$$$$$$
+ /$$__  $$| $$  | $$| $$__  $$ /$$__  $$|_  $$_/
+| $$  \ $$| $$  | $$| $$  \ $$| $$$$$$$$  | $$
 | $$  | $$| $$  | $$| $$  | $$| $$_____/  | $$ /$$
 | $$$$$$$/|  $$$$$$$| $$  | $$|  $$$$$$$  |  $$$$/
-| $$____/  \____  $$|__/  |__/ \_______/   \___/  
-| $$       /$$  | $$                              
-| $$      |  $$$$$$/                              
+| $$____/  \____  $$|__/  |__/ \_______/   \___/
+| $$       /$$  | $$
+| $$      |  $$$$$$/
 |__/       \______/ """
     return logo
 
@@ -72,7 +70,7 @@ def test_model(model, shape):
     return out
 
 
-def checkpoint(model, epoch, fold, outdir):
+def checkpoint(model, epoch, fold, outdir, optimizer=None, **kwargs):
     """ Save the weights of a given model.
 
     Parameters
@@ -86,10 +84,20 @@ def checkpoint(model, epoch, fold, outdir):
     outdir: str
         the destination directory where a 'model_<fold>_epoch_<epoch>.pth'
         file will be generated.
+    optimizer: Optimizer
+        the network optimizer (save the hyperparameters, etc.).
+    kwargs: dict
+        others parameters to save.
     """
     outfile = os.path.join(
         outdir, "model_{0}_epoch_{1}.pth".format(fold, epoch))
-    torch.save(model, outfile)
+    if optimizer is not None:
+        kwargs.update(optimizer=optimizer.state_dict())
+    torch.save({
+        "fold": fold,
+        "epoch": epoch,
+        "model": model.state_dict(),
+        **kwargs}, outfile)
     return outfile
 
 
@@ -113,10 +121,11 @@ def get_named_layers(model, allowed_layers=ALLOWED_LAYERS, resume=False):
     layers = {}
     for name, mod in model.named_modules():
         name = name.replace("ops.", "")
-        for klass in allowed_layers:        
+        for klass in allowed_layers:
             if isinstance(mod, klass):
                 if not resume:
-                    if hasattr(mod, "in_channels") and hasattr(mod, "out_channels"):
+                    if (hasattr(mod, "in_channels") and
+                            hasattr(mod, "out_channels")):
                         name = "{0}-{1}.{2}".format(
                             name, mod.in_channels, mod.out_channels)
                     elif hasattr(mod, "num_features"):
@@ -154,19 +163,20 @@ def layer_at(model, layer_name, x, allowed_layers=ALLOWED_LAYERS):
     layers = get_named_layers(model)
     layer = layers[layer_name]
     global hook_x
+
     def hook(module, inp, out):
         """ Define hook.
         """
         print(
             "layer:", type(module),
             "\ninput:", type(inp),
-                "\n   len:", len(inp),
-                "\n   type:", type(inp[0]),
-                "\n   data size:", inp[0].data.size(),
-                "\n   data type:", inp[0].data.type(),
+            "\n   len:", len(inp),
+            "\n   type:", type(inp[0]),
+            "\n   data size:", inp[0].data.size(),
+            "\n   data type:", inp[0].data.type(),
             "\noutput:", type(out),
-                "\n   data size:", out.data.size(),
-                "\n   data type:", out.data.type())
+            "\n   data size:", out.data.size(),
+            "\n   data type:", out.data.type())
         global hook_x
         hook_x = out.data
     _hook = layer.register_forward_hook(hook)
@@ -205,4 +215,3 @@ def reset_weights(model):
         if hasattr(m, "reset_parameters"):
             m.reset_parameters()
     model.apply(weight_reset)
-

@@ -59,16 +59,31 @@ URL = "https://github.com/neurospin/pyney"
 DOWNLOAD_URL = "https://github.com/neurospin/pynet"
 LICENSE = "CeCILL-B"
 CLASSIFIERS = CLASSIFIERS
-AUTHOR = "pynet developers"
+AUTHOR = """
+pynet developers
+"""
 AUTHOR_EMAIL = "antoine.grigis@cea.fr"
 PLATFORMS = "OS Independent"
 ISRELEASE = True
 VERSION = __version__
 PROVIDES = ["pynet"]
 REQUIRES = [
-    "numpy>=1.14.0",
-    "scipy>=0.9.0",
-    "nibabel>=1.1.0"
+    "numpy>=1.17.1",
+    "torch>=1.2.0",
+    "torchvision>=0.4.0",
+    "hiddenlayer>=0.2",
+    "tabulate>=0.8.6",
+    "matplotlib>=3.0.3",
+    "nibabel>=2.4.0",
+    "tqdm>=4.31.1",
+    "progressbar2>=3.39.3",
+    "requests>=2.9.1",
+    "pandas>=0.24.2",
+    "nilearn>=0.5.2",
+    "Pillow>=6.2.1",
+    "PySide2>=5.13.2",
+    "scikit-learn>=0.21.3",
+    "scikit-image>=0.15.0"
 ]
 EXTRA_REQUIRES = {
 }

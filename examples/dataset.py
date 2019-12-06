@@ -21,61 +21,52 @@ print(pynet.__version__)
 
 #############################################################################
 # Now you can run the the configuration info function to see if all the
-# dependencies are installed properly:
+# dependencies are installed properly.
 
 import pynet.configure
 print(pynet.configure.info())
 
 #############################################################################
-# Import metastasis dataset
-# -------------------------
+# Import a pynet dataset
+# ----------------------
 #
-# From a simple TSV file, this package provides a common interface to import,
-# split and display the decribed dataset:
+# Use a fetcher to retrieve some data and use generic interface to import and
+# split this dataset: train, test and validation.
+# You may need to change the 'datasetdir' parameter.
 
-import pynet
-from pynet.dataset import split_dataset
-from pynet.dataset import LoadDataset
-from pynet.transforms import ZeroPadding, Downsample
+from pynet.datasets import DataManager, fetch_cifar
 
-dataset_desc = "/neurospin/radiomics_pub/workspace/metastasis_dl/data/dataset.tsv"
-kwargs = {
-    "load": False,
-}
-dataset = split_dataset(
-    path=dataset_desc,
-    dataloader=LoadDataset,
-    inputs=["t1"],
-    outputs=["mask"],
-    label="label",
-    transforms=[ZeroPadding(shape=(256, 256, 256)), Downsample(scale=2)],
-    test_size=0.05,
-    validation_size=0.1,
-    number_of_folds=1,
-    batch_size=5,
-    nb_samples=100,
-    verbose=0,
-    **kwargs)
+data = fetch_cifar(datasetdir="/neurospin/nsap/datasets/cifar")
+manager = DataManager(
+    input_path=data.input_path,
+    labels=["label"],
+    metadata_path=data.metadata_path,
+    number_of_folds=10,
+    batch_size=50,
+    stratify_label="category",
+    test_size=0.1)
 
 #############################################################################
 # We have now a test, and multiple folds with train-validation datasets that
-# can be used to train our network using cross-validation:
+# can be used to train our network using cross-validation.
 
-
-from pprint import pprint
 import numpy as np
-import matplotlib.pyplot as plt
 from pynet.plotting import plot_data
 
-pprint(dataset)
-
-for batch_data in dataset["test"]:
-    print("Inputs: ", batch_data["inputs"].shape)
-    print("Outputs: ", batch_data["outputs"].shape)
-    print("Labels: ", batch_data["labels"].shape)
-    print(dataset["test"].dataset.iloc[0].values)
-    plot_data(batch_data["inputs"][:1, :, :, :, 20:100])
+print("Nb folds: ", manager.number_of_folds)
+dataloader = manager.get_dataloader(
+    train=True,
+    validation=False,
+    test=False,
+    fold_index=0)
+print(dataloader)
+for trainloader in dataloader.train:
+    print("Inputs: ", trainloader.inputs.shape)
+    print("Outputs: ", trainloader.outputs)
+    print("Labels: ", trainloader.labels.shape)
+    plot_data(trainloader.inputs, nb_samples=5)
     break
 
-plt.show()
+# import matplotlib.pyplot as plt
+# plt.show()
 

@@ -21,7 +21,7 @@ print(pynet.__version__)
 
 #############################################################################
 # Now you can run the the configuration info function to see if all the
-# dependencies are installed properly:
+# dependencies are installed properly.
 
 import pynet.configure
 print(pynet.configure.info())
@@ -30,11 +30,11 @@ print(pynet.configure.info())
 # Load a network
 # --------------
 #
-# From the available netwoks load the UNet:
+# From the available netwoks load the UNet.
 
 import torch
 from pynet.models import UNet
-from pynet.plotting import plot_net
+from pynet.plotting import plot_net, plot_net_rescue
 
 model = UNet(
     num_classes=2,
@@ -44,21 +44,19 @@ model = UNet(
     up_mode="upsample", 
     merge_mode="concat",
     batchnorm=True)
-plot_net(model, shape=(1, 1, 64, 64, 64), static=True, outfileroot=None)
-
+plot_net_rescue(model, shape=(1, 1, 64, 64, 64), outfileroot=None)
 
 ############################################################################
 # Inspect a network
 # -----------------
 #
-# Inspect some layers of the UNet:
+# The module propose utilities to inspect easyly some layers of the network.
 
 from pynet.utils import test_model
 from pprint import pprint
 import numpy as np
 from pynet.utils import get_named_layers
 from pynet.utils import layer_at
-import matplotlib.pyplot as plt
 from pynet.plotting import plot_data
 
 out = test_model(model, shape=(1, 1, 64, 64, 64))
@@ -72,5 +70,6 @@ print(hook_x.shape)
 print(weight.shape)
 plot_data(hook_x[:, :1])
 
-plt.show()
+# import matplotlib.pyplot as plt
+# plt.show()
 

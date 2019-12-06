@@ -22,6 +22,13 @@ from .info import LICENSE
 from .info import AUTHOR
 from .utils import logo
 
+MAP = {
+    "progressbar2": "progressbar",
+    "scikit-learn": "sklearn",
+    "Pillow": "PIL",
+    "scikit-image": "skimage"
+}
+
 
 def _check_python_versions():
     """ Check that all the Python dependencies are satisfied.
@@ -46,6 +53,8 @@ def _check_python_versions():
             raise ValueError("'{0}' dependency no formatted correctly.".format(
                 dependency))
         mod_name, mod_min_version = dependency.split(operator)
+        if mod_name in MAP:
+            mod_name = MAP[mod_name]
         try:
             mod_install_version = importlib.import_module(mod_name).__version__
         except:

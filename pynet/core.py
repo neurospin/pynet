@@ -7,7 +7,6 @@
 # for details.
 ##########################################################################
 
-
 """
 Core classes.
 """
@@ -15,38 +14,37 @@ Core classes.
 # System import
 import re
 import warnings
+from collections import OrderedDict
 
 # Third party import
 from torchvision import models
 import torch
 import torch.nn.functional as func
-import tqdm
+from tqdm import tqdm
 import numpy as np
-from sklearn.utils import gen_batches
 
 # Package import
 from pynet.utils import checkpoint
 from pynet.history import History
 from pynet.observable import Observable
 import pynet.metrics as mmetrics
+from pynet.utils import reset_weights
 
 
 class Base(Observable):
     """ Class to perform classification.
-    """    
-    def __init__(self, batch_size="auto", optimizer_name="Adam",
-                 learning_rate=1e-3, loss_name="NLLLoss", metrics=None,
-                 use_cuda=False, **kwargs):
+    """
+    def __init__(self, optimizer_name="Adam", learning_rate=1e-3,
+                 loss_name="NLLLoss", metrics=None, use_cuda=False,
+                 pretrained=None, **kwargs):
         """ Class instantiation.
 
         Observers will be notified, allowed signals are:
         - 'before_epoch'
-        - 'after_epoch'        
+        - 'after_epoch'
 
         Parameters
         ----------
-        batch_size: int, default 'auto'
-            the mini-batches size.
         optimizer_name: str, default 'Adam'
             the name of the optimizer: see 'torch.optim' for a description
             of available optimizer.
@@ -59,13 +57,14 @@ class Base(Observable):
             a list of extra metrics that will be computed.
         use_cuda: bool, default False
             wether to use GPU or CPU.
+        pretrained: path, default None
+            path to the pretrained model or weights.
         kwargs: dict
             specify directly a custom 'model', 'optimizer' or 'loss'. Can also
             be used to set specific optimizer parameters.
         """
         super().__init__(
             signals=["before_epoch", "after_epoch"])
-        self.batch_size = batch_size
         self.optimizer = kwargs.get("optimizer")
         self.loss = kwargs.get("loss")
         for name in ("optimizer", "loss"):
@@ -95,121 +94,238 @@ class Base(Observable):
             self.metrics[name] = mmetrics.METRICS[name]
         if use_cuda and not torch.cuda.is_available():
             raise ValueError("No GPU found: unset 'use_cuda' parameter.")
+        if pretrained is not None:
+            checkpoint = torch.load(pretrained)
+            if hasattr(checkpoint, "state_dict"):
+                self.model.load_state_dict(checkpoint.state_dict())
+            elif isinstance(checkpoint, dict):
+                if "model" in checkpoint:
+                    self.model.load_state_dict(checkpoint["model"])
+                if "optimizer" in checkpoint:
+                    self.optimizer.load_state_dict(checkpoint["optimizer"])
+            else:
+                self.model.load_state_dict(checkpoint)
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.model = self.model.to(self.device)
 
-    def _gen_batches(self, n_samples):
-        if self.batch_size == "auto":
-            batch_size = min(200, n_samples)
-        else:
-            if self.batch_size < 1 or self.batch_size > n_samples:
-                warnings.warn("Got 'batch_size' less than 1 or larger than "
-                              "sample size. It is going to be clipped.")
-            batch_size = np.clip(self.batch_size, 1, n_samples)
-        batch_slices = list(gen_batches(n_samples, batch_size))
-        return batch_slices
-
-    def fit(self, X, y, nb_epochs=100, checkpointdir=None, fold=1):
-        """ Fit the model to data matrix X and target(s) y.
+    def training(self, manager, nb_epochs, checkpointdir=None, fold_index=None,
+                 scheduler=None, with_validation=True):
+        """ Train the model.
 
         Parameters
         ----------
-        X: array-like, shape (n_samples, n_features)
-            the input data.
-        y: array-like, shape (n_samples,) or (n_samples, n_outputs)
-            the target values: class labels.
+        manager: a pynet DataManager
+            a manager containing the train and validation data.
         nb_epochs: int, default 100
             the number of epochs.
         checkpointdir: str, default None
-            a destination folder where intermediate outputs will be saved.
-        fold: int, default 1
-            the index of the current fold if applicable.
+            a destination folder where intermediate models/historues will be
+            saved.
+        fold_index: int, default None
+            the index of the fold to use for the training, default use all the
+            available folds.
+        scheduler: torch.optim.lr_scheduler, default None
+            a scheduler used to reduce the learning rate.
+        with_validation: bool, default True
+            if set use the validation dataset.
 
         Returns
         -------
-        history: History
-            the fit history.
+        train_history, valid_history: History
+            the train/validation history.
         """
-        batch_slices = self._gen_batches(X.shape[0])
-        nb_batch = len(batch_slices)
-        history = History(name="fit")
-        self.model.train()
+        train_history = History(name="train")
+        if with_validation is not None:
+            valid_history = History(name="validation")
+        else:
+            valid_history = None
         print(self.loss)
         print(self.optimizer)
-        for epoch in range(1, nb_epochs + 1):
-            self.notify_observers("before_epoch", epoch=epoch, fold=fold)
-            values = {}
-            loss = 0
-            trange = tqdm.trange(1, nb_batch + 1, desc="Batch")
-            for iteration in trange:
-                trange.set_description("Batch {0}".format(iteration))
-                trange.refresh()
-                batch_slice = batch_slices[iteration - 1]
-                batch_X = torch.from_numpy(X[batch_slice]).to(self.device)
-                batch_y = torch.from_numpy(y[batch_slice]).to(self.device)
-                self.optimizer.zero_grad()
-                y_pred = self.model(batch_X)
-                batch_loss = self.loss(y_pred, batch_y)
-                batch_loss.backward()
-                self.optimizer.step()
-                loss += batch_loss.item()
-                for name, metric in self.metrics.items():
-                    if name not in values:
-                        values[name] = 0
-                    values[name] += metric(y_pred, batch_y) / nb_batch
-            history.log((fold, epoch), loss=loss, **values)
-            history.summary()
-            if checkpointdir is not None:
-                checkpoint(
-                    model=self.model,
-                    epoch=epoch,
-                    fold=fold,
-                    outdir=checkpointdir)
-                history.save(outdir=checkpointdir, epoch=epoch, fold=fold)
-            self.notify_observers("after_epoch", epoch=epoch, fold=fold)
-        return history
+        folds = range(manager.number_of_folds)
+        if fold_index is not None:
+            folds = [fold_index]
+        for fold in folds:
+            reset_weights(self.model)
+            loaders = manager.get_dataloader(
+                train=True,
+                validation=True,
+                fold_index=fold)
+            for epoch in range(nb_epochs):
+                self.notify_observers("before_epoch", epoch=epoch, fold=fold)
+                loss, values = self.train(loaders.train)
+                if scheduler is not None:
+                    scheduler.step(loss)
+                train_history.log((fold, epoch), loss=loss, **values)
+                train_history.summary()
+                if checkpointdir is not None:
+                    checkpoint(
+                        model=self.model,
+                        epoch=epoch,
+                        fold=fold,
+                        outdir=checkpointdir,
+                        optimizer=self.optimizer)
+                    train_history.save(
+                        outdir=checkpointdir,
+                        epoch=epoch,
+                        fold=fold)
+                if with_validation:
+                    _, loss, values = self.test(loaders.validation)
+                    valid_history.log((fold, epoch), loss=loss, **values)
+                    valid_history.summary()
+                    if checkpointdir is not None:
+                        valid_history.save(
+                            outdir=checkpointdir,
+                            epoch=epoch,
+                            fold=fold)
+                self.notify_observers("after_epoch", epoch=epoch, fold=fold)
+        return train_history, valid_history
 
-    def predict_proba(self, X):
-        """ Predict classes probabilities using the defined classifier network.
+    def train(self, loader):
+        """ Train the model on the trained data.
 
         Parameters
         ----------
-        X: array-like, shape (n_samples, n_features)
-            the input data.
+        loader: a pytorch Dataset
+            the data laoder.
 
         Returns
         -------
-        y_probs: array-like, shape (n_samples,) or (n_samples, n_classes)
-            the predicted classes associated probabilities.
+        loss: float
+            the value of the loss function.
+        values: dict
+            the values of the metrics.
         """
-        batch_slices = self._gen_batches(X.shape[0])
-        nb_batch = len(batch_slices)
+        self.model.train()
+        nb_batch = len(loader)
+        values = {}
+        loss = 0
+        pbar = tqdm(total=nb_batch, desc="Mini-Batch")
+        for iteration, dataitem in enumerate(loader):
+            pbar.update()
+            inputs = dataitem.inputs.to(self.device)
+            targets = []
+            for item in (dataitem.outputs, dataitem.labels):
+                if item is not None:
+                    targets.append(item.to(self.device))
+            if len(targets) == 1:
+                targets = targets[0]
+            self.optimizer.zero_grad()
+            outputs = self.model(inputs)
+            batch_loss = self.loss(outputs, targets)
+            batch_loss.backward()
+            self.optimizer.step()
+            loss += batch_loss.item() / nb_batch
+            for name, metric in self.metrics.items():
+                if name not in values:
+                    values[name] = 0
+                values[name] += metric(outputs, targets) / nb_batch
+        pbar.close()
+        return loss, values
+
+    def testing(self, manager, with_logit=False, predict=False):
+        """ Evaluate the model.
+
+        Parameters
+        ----------
+        manager: a pynet DataManager
+            a manager containing the test data.
+        with_logit: bool, default False
+            apply a softmax to the result.
+        predict: bool, default False
+            take the argmax over the channels.
+
+        Returns
+        -------
+        y: array-like
+            the predicted data.
+        X: array-like
+            the input data.
+        y_true: array-like
+            the true data if available.
+        loss: float
+            the value of the loss function if true data availble.
+        values: dict
+            the values of the metrics if true data availble.
+        """
+        loaders = manager.get_dataloader(test=True)
+        y, loss, values = self.test(
+            loaders.test, with_logit=with_logit, predict=predict)
+        if loss == 0:
+            loss, values, y_true = (None, None, None)
+        else:
+            y_true = []
+            X = []
+            targets = OrderedDict()
+            for dataitem in loaders.test:
+                for cnt, item in enumerate((dataitem.outputs,
+                                            dataitem.labels)):
+                    if item is not None:
+                        targets.setdefault(cnt, []).append(
+                            item.cpu().detach().numpy())
+                X.append(dataitem.inputs.cpu().detach().numpy())
+            X = np.concatenate(X, axis=0)
+            for key, values in targets.items():
+                y_true.append(np.concatenate(values, axis=0))
+            if len(y_true) == 1:
+                y_true = y_true[0]
+        return y, X, y_true, loss, values
+
+    def test(self, loader, with_logit=False, predict=False):
+        """ Evaluate the model on the test or validation data.
+
+        Parameter
+        ---------
+        loader: a pytorch Dataset
+            the data laoder.
+        with_logit: bool, default False
+            apply a softmax to the result.
+        predict: bool, default False
+            take the argmax over the channels.
+
+        Returns
+        -------
+        y: array-like
+            the predicted data.
+        loss: float
+            the value of the loss function.
+        values: dict
+            the values of the metrics.
+        """
         self.model.eval()
+        nb_batch = len(loader)
+        loss = 0
+        values = {}
         with torch.no_grad():
-            trange = tqdm.trange(1, nb_batch + 1, desc="Batch")
             y = []
-            for iteration in trange:
-                trange.set_description("Batch {0}".format(iteration))
-                trange.refresh()
-                batch_slice = batch_slices[iteration - 1]
-                batch_X = torch.from_numpy(X[batch_slice]).to(self.device)
-                y.append(self.model(batch_X))
+            pbar = tqdm(total=nb_batch, desc="Mini-Batch")
+            for iteration, dataitem in enumerate(loader):
+                pbar.update()
+                inputs = dataitem.inputs.to(self.device)
+                targets = []
+                for item in (dataitem.outputs, dataitem.labels):
+                    if item is not None:
+                        targets.append(item.to(self.device))
+                if len(targets) == 1:
+                    targets = targets[0]
+                elif len(targers) == 0:
+                    targets = None
+                outputs = self.model(inputs)
+                if isinstance(outputs, tuple):
+                    y.append(outputs[0])
+                else:
+                    y.append(outputs)
+                if targets is not None:
+                    batch_loss = self.loss(outputs, targets)
+                    loss += float(batch_loss) / nb_batch
+                    for name, metric in self.metrics.items():
+                        if name not in values:
+                            values[name] = 0
+                        values[name] += metric(outputs, targets) / nb_batch
+            pbar.close()
             y = torch.cat(y, 0)
-        y_probs = func.softmax(y, dim=1)
-        return y_probs.cpu().detach().numpy()
-
-    def predict(self, X):
-        """ Predict classes using the defined classifier network.
-
-        Parameters
-        ----------
-        X: array-like, shape (n_samples, n_features)
-            the input data.
-
-        Returns
-        -------
-        y: array-like, shape (n_samples,) or (n_samples, n_classes)
-            the predicted classes.
-        """
-        y_probs = self.predict_proba(X)
-        return np.argmax(y_probs, axis=1)
+            if with_logit:
+                y = func.softmax(y, dim=1)
+            y = y.cpu().detach().numpy()
+            if predict:
+                y = np.argmax(y, axis=1)
+        return y, loss, values

@@ -7,11 +7,9 @@
 # for details.
 ##########################################################################
 
-
 """
 Module that provides tools to display a graph.
 """
-
 
 # System import
 import sys
@@ -21,19 +19,54 @@ from pprint import pprint
 import tempfile
 import weakref
 import operator
+import tempfile
 
 # Third party import
 import torch
 import hiddenlayer as hl
 from PySide2 import QtCore, QtGui, QtWidgets
+from torchviz import make_dot
 
 # Module import
 from .graph import Graph, GraphNode
 from pynet.plotting.colors import *
 
 
+def plot_net_rescue(model, shape, outfileroot=None):
+    """ Save a PNG file containing the network graph representation.
+
+    Parameters
+    ----------
+    model: Net
+        the network model.
+    shape: list of int
+        the shape of a classical input batch dataset.
+    outfileroot: str, default None
+        the file path without extension.
+
+    Returns
+    -------
+    outfile: str
+        the path to the generated PNG.
+    """
+    x = torch.randn(shape)
+    graph = make_dot(model(x), params=dict(model.named_parameters()))
+    graph.format = "png"
+    if outfileroot is None:
+        dirpath = tempfile.mkdtemp()
+        basename = "pynet_graph"
+    else:
+        dirpath = os.path.dirname(outfileroot)
+        basename = os.path.basename(outfileroot)
+    graph.render(directory=dirpath, filename=basename, view=True)
+    return os.path.join(dirpath, basename + ".png")
+
+
 def plot_net(model, shape, static=True, outfileroot=None):
     """ Save a PDF file containing the network graph representation.
+
+    Sometimes the 'get_trace_graph' pytorch function fails: use the
+    'plot_net_rescue' function insteed.
 
     Parameters
     ----------
@@ -98,8 +131,8 @@ def plot_net(model, shape, static=True, outfileroot=None):
 
     # Display
     view.show()
-    app.exec_()    
-        
+    app.exec_()
+
     return outfile
 
 
@@ -674,7 +707,8 @@ class GraphScene(QtWidgets.QGraphicsScene):
 
         return tuple(src_control), tuple(dest_control)
 
-    def add_box(self, name, inputs, outputs, active=True, style=None, graph=None):
+    def add_box(self, name, inputs, outputs, active=True, style=None,
+                graph=None):
         """ Add a box in the graph representation.
 
         Parameters
@@ -772,13 +806,6 @@ class GraphView(QtWidgets.QGraphicsView):
     ----------
     scene: GraphScene
         the main scene.
-
-    Methods
-    -------
-    __init__
-    set_box
-    zoom_in
-    zoom_out
     """
     # Signal emitted when a sub graph has to be open
     subgraph_clicked = QtCore.Signal(str, Graph, QtCore.Qt.KeyboardModifiers)
@@ -887,32 +914,3 @@ class GraphView(QtWidgets.QGraphicsView):
             event.accept()
         else:
             super(GraphView, self).wheelEvent(event)
-
-
-if __name__ == "__main__":
-
-    objects = ["chaussures", "chaussettes", "slip", "pantalon",
-               "ceinture", "chemise", "veste", "cravate"]
-    dependancies = [
-        ("slip", "pantalon"),
-        ("chemise", "cravate"),
-        ("chemise", "pantalon"),
-        ("pantalon", "ceinture"),
-        ("chaussettes", "chaussures"),
-        ("pantalon", "chaussures"),
-        ("ceinture", "chaussures"),
-        ("chemise", "veste"),
-    ]
-    graph = Graph()
-    for o in objects:
-        graph.add_node(GraphNode(o, None))
-    for d in dependancies:
-        graph.add_link(d[0], d[1])
-    graph.add_node(GraphNode("subgraph", graph))
-
-    app = QtGui.QApplication.instance()
-    if app is None:
-        app = QtGui.QApplication(sys.argv)
-    view = GraphView(graph)
-    view.show()
-    sys.exit(app.exec_())

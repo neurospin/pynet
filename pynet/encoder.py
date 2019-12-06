@@ -26,9 +26,9 @@ class UNetEncoder(Base):
     """
     def __init__(self, num_classes, in_channels=1, depth=5, start_filts=64,
                  up_mode="transpose", merge_mode="concat", batchnorm=False,
-                 dim="3d", pretrained=None, batch_size="auto",
-                 optimizer_name="Adam", learning_rate=1e-3,
-                 loss_name="NLLLoss", metrics=None, use_cuda=False, **kwargs):
+                 dim="3d", pretrained=None, optimizer_name="Adam",
+                 learning_rate=1e-3, loss_name="NLLLoss", metrics=None,
+                 use_cuda=False, **kwargs):
         """ Class initilization.
 
         Parameters
@@ -50,8 +50,8 @@ class UNetEncoder(Base):
             normalize the inputs of the activation function.
         dim: str, default '3d'
             '3d' or '2d' input data.
-        batch_size: int, default 'auto'
-            the mini-batches size.
+        pretrained: path, default None
+            path to the pretrained model or weights.
         optimizer_name: str, default 'Adam'
             the name of the optimizer: see 'torch.optim' for a description
             of available optimizer.
@@ -77,18 +77,11 @@ class UNetEncoder(Base):
             merge_mode=merge_mode,
             batchnorm=batchnorm,
             dim=dim)
-        if pretrained is not None:
-            loader = torch.load(pretrained)
-            if hasattr(loader, "state_dict"):
-                self.model.load_state_dict(loader.state_dict())
-            else:
-                self.model.load_state_dict(loader)
         super().__init__(
-            batch_size=batch_size,
             optimizer_name=optimizer_name,
             learning_rate=learning_rate,
             loss_name=loss_name,
             metrics=metrics,
             use_cuda=use_cuda,
+            pretrained=pretrained,
             **kwargs)
-

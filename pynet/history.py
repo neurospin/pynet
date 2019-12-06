@@ -22,12 +22,12 @@ import pickle
 
 # Third party import
 import numpy as np
+from tabulate import tabulate
 
 
 class History(object):
     """ Track training progress by following the some metrics.
     """
-    
     def __init__(self, name, verbose=0):
         """ Initilize the class.
 
@@ -43,6 +43,17 @@ class History(object):
         self.step = None
         self.metrics = set()
         self.history = collections.OrderedDict()
+
+    def __repr__(self):
+        """ Display the history.
+        """
+        table = []
+        for step in self.steps:
+            values = []
+            for metric in self.metrics:
+                values.append(self.history[step][metric])
+            table.append([step] + values)
+        return tabulate(table, headers=self.metrics)
 
     def log(self, step, **kwargs):
         """ Record some metrics at a specific step.
@@ -109,4 +120,3 @@ class History(object):
     def load(cls, file_name):
         with open(file_name, "rb") as open_file:
             return pickle.load(open_file)
-

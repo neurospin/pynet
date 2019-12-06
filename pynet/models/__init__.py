@@ -12,5 +12,4 @@ Module that privides common networks.
 """
 
 from .unet import UNet
-
-
+from .nvnet import NvNet

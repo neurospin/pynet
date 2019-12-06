@@ -29,12 +29,14 @@ def _dice(y_pred, y):
     flat_y_pred = torch.flatten(y_pred)
     flat_y = torch.flatten(y)
     intersection = (flat_y_pred * flat_y).sum()
-    return (2. * intersection + 1.) / (flat_y_pred.sum() + flat_y.sum() + 1.)    
+    return (2. * intersection + 1.) / (flat_y_pred.sum() + flat_y.sum() + 1.)
 
 
 def multiclass_dice(y_pred, y):
     """ Extension of the dice to a n classes problem.
     """
+    if isinstance(y_pred, tuple):
+        y_pred = y_pred[0]
     y_pred = func.softmax(y_pred, dim=1)
     dice = 0.
     n_classes = y.shape[1]

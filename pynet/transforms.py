@@ -7,45 +7,65 @@
 # for details.
 ##########################################################################
 
-
 """
 Module that defines common transformations that can be applied when the dataset
 is loaded.
 """
 
-
-# Third party import
+# Imports
+import collections
 import numpy as np
 
 
-class ZeroPadding(object):
-    """ A class to zero pad an image.
+class Padding(object):
+    """ A class to pad an image.
     """
-    def __init__(self, shape):
+    def __init__(self, shape, nb_channels=1, fill_value=0):
         """ Initialize the instance.
 
         Parameters
         ----------
         shape: list of int
             the desired shape.
+        nb_channels: int, default 1
+            the number of channels.
+        fill_value: int or list of int, default 0
+            the value used to fill the array, if a list is given, use the
+            specified value on each channel.
         """
         self.shape = shape
-        
+        self.nb_channels = nb_channels
+        self.fill_value = fill_value
+        if self.nb_channels > 1 and not isinstance(self.fill_value, list):
+            self.fill_value = [self.fill_value] * self.nb_channels
+        elif isinstance(self.fill_value, list):
+            assert len(self.fill_value) == self.nb_channels
 
-    def __call__(self, arr, fill_value=0):
-        """ Zero fill an array to fit the desired shape.
+    def __call__(self, arr):
+        """ Fill an array to fit the desired shape.
 
         Parameters
         ----------
         arr: np.array
             an input array.
-        fill_value: int
-            the value used to fill the array.
 
         Returns
         -------
         fill_arr: np.array
             the zero padded array.
+        """
+        if len(arr.shape) - len(self.shape) == 1:
+            data = []
+            for _arr, _fill_value in zip(arr, self.fill_value):
+                data.append(self._apply_padding(_arr, _fill_value))
+            return np.asarray(data)
+        elif len(arr.shape) - len(self.shape) == 0:
+            return self._apply_padding(arr, self.fill_value)
+        else:
+            raise ValueError("Wrong input shape specified!")
+
+    def _apply_padding(self, arr, fill_value):
+        """ See Padding.__call__().
         """
         orig_shape = arr.shape
         padding = []
@@ -66,15 +86,18 @@ class ZeroPadding(object):
 class Downsample(object):
     """ A class to downsample an array.
     """
-    def __init__(self, scale):
+    def __init__(self, scale, with_channels=True):
         """ Initialize the instance.
 
         Parameters
         ----------
         scale: int
             the downsampling scale factor in all directions.
+        with_channels: bool, default True
+            if set expect the array to contain the channels in first dimension.
         """
         self.scale = scale
+        self.with_channels = with_channels
 
     def __call__(self, arr):
         """ Downsample an array to fit the desired shape.
@@ -83,13 +106,22 @@ class Downsample(object):
         ----------
         arr: np.array
             an input array
-        scale: int
-            the downsampling scale factor in all directions.
 
         Returns
         -------
         down_arr: np.array
             the downsampled array.
+        """
+        if self.with_channels:
+            data = []
+            for _arr in arr:
+                data.append(self._apply_downsample(_arr))
+            return np.asarray(data)
+        else:
+            return self._apply_downsample(arr)
+
+    def _apply_downsample(self, arr):
+        """ See Downsample.__call__().
         """
         slices = []
         for cnt, orig_i in enumerate(arr.shape):

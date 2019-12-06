@@ -7,13 +7,16 @@
 # for details.
 ##########################################################################
 
+"""
+The U-Net is a convolutional encoder-decoder neural network.
+"""
+
 # Imports
 import ast
 import collections
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
-
 
 
 class UNet(nn.Module):
@@ -25,21 +28,22 @@ class UNet(nn.Module):
     information representing the localization of details
     (from the encoding, compressive pathway).
     Modifications to the original paper:
-    (1) padding is used in 3x3x3 convolutions to prevent loss
-        of border pixels
-    (2) merging outputs does not require cropping due to (1)
-    (3) residual connections can be used by specifying
-        UNet(merge_mode='add')
-    (4) if non-parametric upsampling is used in the decoder
-        pathway (specified by upmode='upsample'), then an
-        additional 1x1x1 3d convolution occurs after upsampling
-        to reduce channel dimensionality by a factor of 2.
-        This channel halving happens with the convolution in
-        the tranpose convolution (specified by upmode='transpose')
+
+    - padding is used in 3x3x3 convolutions to prevent loss
+      of border pixels
+    - merging outputs does not require cropping due to (1)
+    - residual connections can be used by specifying
+      UNet(merge_mode='add')
+    - if non-parametric upsampling is used in the decoder
+      pathway (specified by upmode='upsample'), then an
+      additional 1x1x1 3d convolution occurs after upsampling
+      to reduce channel dimensionality by a factor of 2.
+      This channel halving happens with the convolution in
+      the tranpose convolution (specified by upmode='transpose')
     """
 
-    def __init__(self, num_classes, in_channels=1, depth=5, 
-                 start_filts=64, up_mode="transpose", 
+    def __init__(self, num_classes, in_channels=1, depth=5,
+                 start_filts=64, up_mode="transpose",
                  merge_mode="concat", batchnorm=False, dim="3d"):
         """ Init class.
 
@@ -146,7 +150,7 @@ class UNet(nn.Module):
         for cnt, module in enumerate(self.up):
             x_up = encoder_outs[cnt]
             x = module(x, x_up)
-        
+
         # No softmax is used. This means you need to use
         # nn.CrossEntropyLoss in your training script,
         # as this module includes a softmax already.
@@ -192,7 +196,7 @@ def UpConv(in_channels, out_channels, dim, mode="transpose"):
     if mode == "transpose":
         return eval(
             "nn.ConvTranspose{0}(in_channels, out_channels, kernel_size=2, "
-            "stride=2)".format(dim)) 
+            "stride=2)".format(dim))
     else:
         # out_channels is always going to be the same as in_channels
         return nn.Sequential(collections.OrderedDict([
@@ -203,7 +207,7 @@ def UpConv(in_channels, out_channels, dim, mode="transpose"):
 def Conv1x1x1(in_channels, out_channels, dim, groups=1):
     return eval(
         "nn.Conv{0}(in_channels, out_channels, kernel_size=1, groups=groups, "
-        "stride=1)".format(dim)) 
+        "stride=1)".format(dim))
 
 
 class Down(nn.Module):
@@ -251,5 +255,3 @@ class Up(nn.Module):
             x = x_up + x_down
         x = self.doubleconv(x)
         return x
-
-
