@@ -19,14 +19,14 @@ from unittest.mock import MagicMock
 class Mock(MagicMock):
     @classmethod
     def __getattr__(cls, name):
-        return MagicMock(__file__="mock.py")
+        return MagicMock()
 MOCK_MODULES = [
     'torch', 'torch.nn', 'torch.nn.functional', 'torch.utils',
     'torch.utils.data', 'torch.autograd', 'torch.nn.modules',
     'torch.nn.modules.loss',
     'torchvision', 'torchvision.transforms', 'torchvision.models',
     'torchviz',
-    'PySide2.support.signature']
+    'PySide2']
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 
 installdir = os.path.abspath("../..")
