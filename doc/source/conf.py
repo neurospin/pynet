@@ -26,7 +26,8 @@ MOCK_MODULES = [
     'torch.nn.modules.loss',
     'torchvision', 'torchvision.transforms', 'torchvision.models',
     'torchviz',
-    'PySide2']
+    'PySide2',
+    'hiddenlayer']
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 
 installdir = os.path.abspath("../..")
