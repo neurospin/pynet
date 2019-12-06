@@ -17,6 +17,8 @@ import pysphinxdoc
 
 MOCK_MODULES = [
     'torch', 'torch.nn', 'torch.nn.functional', 'torch.utils',
+    'torch.utils.data', 'torch.autograd', 'torch.nn.modules',
+    'torch.nn.modules.loss',
     'torchvision', 'torchvision.transforms',
     'torchviz']
 
