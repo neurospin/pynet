@@ -1,4 +1,5 @@
 git+https://github.com/AGrigis/pysphinxdoc.git
+ipython
 numpy>=1.17.1
 torch>=1.2.0
 torchvision>=0.4.0
