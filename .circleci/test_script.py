@@ -15,12 +15,12 @@ examplesdir = os.path.join(currentdir, os.pardir, "examples")
 
 example_files = []
 for root, dirs, files in os.walk(examplesdir):
-    for basneame in files:
+    for basename in files:
         if basename == "multi_modal_orientation.py":
             continue
-        if basneame.endswith(".py"):
+        if basename.endswith(".py"):
              example_files.append(os.path.abspath(
-                os.path.join(root, basneame)))
+                os.path.join(root, basename)))
 print("'{0}' examples found!".format(len(example_files)))
 
 for path in example_files:
