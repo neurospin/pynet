@@ -276,8 +276,8 @@ class Base(Observable):
     def test(self, loader, with_logit=False, predict=False):
         """ Evaluate the model on the test or validation data.
 
-        Parameter
-        ---------
+        Parameters
+        ----------
         loader: a pytorch Dataset
             the data laoder.
         with_logit: bool, default False
