@@ -10,10 +10,12 @@
 """
 NvNet: combination of Vnet and VAE (variation auto-encoder).
 """
+
 # Imports
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
+import numpy as np
 
 
 class NvNet(nn.Module):
@@ -25,15 +27,17 @@ class NvNet(nn.Module):
     Reference: https://arxiv.org/pdf/1810.11654.pdf.
     Code: https://github.com/athon2/BraTS2018_NvNet.
     """
-    def __init__(self, input_shape, num_classes, activation="relu",
-                 normalization="group_normalization", mode="trilinear",
-                 with_vae=True):
+    def __init__(self, input_shape, in_channels, num_classes,
+                 activation="relu", normalization="group_normalization",
+                 mode="trilinear", with_vae=True, debug=False):
         """ Init class.
 
         Parameters
         ----------
         input_shape: uplet
-            the tensor shape (nb_samples, nb_channels, X, Y, Z).
+            the tensor data shape (X, Y, Z).
+        in_channels: int
+            number of channels in the input tensor.
         num_classes: int
             the number of features in the output segmentation map.
         activation: str, default 'relu'
@@ -44,6 +48,8 @@ class NvNet(nn.Module):
             the interpolation mode.
         with_vae: bool, default True
             enable/disable vae penalty.
+        debug: bool, default False
+            print the shape of the tensors during the forward pass.
         """
         # Inheritance
         super(NvNet, self).__init__()
@@ -67,11 +73,12 @@ class NvNet(nn.Module):
         # Declare class parameters
         self.input_shape = input_shape
         self.num_classes = num_classes
-        self.in_channels = input_shape[1]
+        self.in_channels = in_channels
         self.activation = activation
         self.normalization = normalization
         self.mode = mode
         self.with_vae = with_vae
+        self.debug = debug
 
         # Encoder Blocks: encoder parts uses ResNet blocks (two 3x3x3 conv,
         # group normlization (better than batch norm for small batch size),
@@ -145,32 +152,64 @@ class NvNet(nn.Module):
         # into the inputt image shape following the decoder architecture
         # without interlevel skip connections.
         if self.with_vae:
-            self.dense_features = (
-                self.input_shape[2]//16,
-                self.input_shape[3]//16,
-                self.input_shape[4]//16)
+            self.shapes = self._downsample_shape(
+                self.input_shape,
+                nb_iterations=4,
+                scale_factor=2)
+            if self.debug:
+                print("Shapes: ", self.shapes)
             self.vae = VAE(
+                shapes=self.shapes,
                 in_channels=256,
                 out_channels=self.in_channels,
                 kernel_size=3,
-                dense_features=self.dense_features,
                 activation=activation,
                 normalization=normalization,
-                mode=mode)
+                mode=mode,
+                debug=debug)
 
-    def forward(self, x):
+    def _downsample_shape(self, shape, nb_iterations=1, scale_factor=2):
+        shape = np.asarray(shape)
+        all_shapes = [shape.astype(int).tolist()]
+        for idx in range(nb_iterations):
+            shape = np.ceil(shape / scale_factor)
+            all_shapes.append(shape.astype(int).tolist())
+        return all_shapes
+
+    def forward(self, x, debug=True):
+        if self.debug:
+            print("-" * 50)
+            print("Tensor: ", x.shape)
         out_init = self.in_conv0(x)
+        if self.debug:
+            print("Initial conv: ", out_init.shape)
         out_en0 = self.en_block0(out_init)
         out_en1 = self.en_block1_1(self.en_block1_0(self.en_down1(out_en0)))
+        if self.debug:
+            print("Encoding block 1: ", out_en1.shape)
         out_en2 = self.en_block2_1(self.en_block2_0(self.en_down2(out_en1)))
+        if self.debug:
+            print("Encoding block 2: ", out_en2.shape)
         out_en3 = self.en_block3_3(self.en_block3_2(self.en_block3_1(
             self.en_block3_0(self.en_down3(out_en2)))))
+        if self.debug:
+            print("Encoding block 3: ", out_en3.shape)
         out_de2 = self.de_block2(self.de_up2(out_en3, out_en2))
+        if self.debug:
+            print("Decoding block 1: ", out_de2.shape)
         out_de1 = self.de_block1(self.de_up1(out_de2, out_en1))
+        if self.debug:
+            print("Decoding block 2: ", out_de1.shape)
         out_de0 = self.de_block0(self.de_up0(out_de1, out_en0))
+        if self.debug:
+            print("Decoding block 3: ", out_de0.shape)
         out_end = self.de_end(out_de0)
+        if self.debug:
+            print("Final conv: ", out_end.shape)
         if self.with_vae:
             out_vae, out_distr = self.vae(out_en3)
+            if self.debug:
+                print("VAE: ", out_vae.shape, out_distr.shape)
             out_final = torch.cat((out_end, out_vae), 1)
             return out_final, out_distr
         else:
@@ -265,16 +304,25 @@ class LinearUpSampling(nn.Module):
             out_channels=out_channels,
             kernel_size=1)
 
-    def forward(self, x, skipx=None):
+    def forward(self, x, skipx=None, cat=True):
         out = self.conv1(x)
-        # out = self.up1(out)
-        out = nn.functional.interpolate(
-            out,
-            # size=skipx.shape[2:],
-            scale_factor=self.scale_factor,
-            mode=self.mode,
-            align_corners=self.align_corners)
         if skipx is not None:
+            if isinstance(skipx, torch.Tensor):
+                shape = skipx.shape[2:]
+            else:
+                shape = skipx
+            out = nn.functional.interpolate(
+                out,
+                size=shape,
+                mode=self.mode,
+                align_corners=self.align_corners)
+        else:
+            out = nn.functional.interpolate(
+                out,
+                scale_factor=self.scale_factor,
+                mode=self.mode,
+                align_corners=self.align_corners)
+        if cat and skipx is not None:
             out = torch.cat((out, skipx), 1)
             out = self.conv2(out)
         return out
@@ -316,10 +364,11 @@ class VDResampling(nn.Module):
     def __init__(self, in_channels=256, out_channels=256,
                  dense_features=(10, 12, 8), stride=2, kernel_size=3,
                  padding=1, activation="relu",
-                 normalization="group_normalization"):
+                 normalization="group_normalization", debug=False):
         super(VDResampling, self).__init__()
         self.mid_chans = int(in_channels / 2)
         self.dense_features = dense_features
+        self.debug = debug
         if normalization == "group_normalization":
             self.gn1 = nn.GroupNorm(
                 num_groups=8,
@@ -347,19 +396,35 @@ class VDResampling(nn.Module):
         self.up0 = LinearUpSampling(self.mid_chans, out_channels)
 
     def forward(self, x):
+        if self.debug:
+            print("Resampling tensor: ", x.shape)
         out = self.gn1(x)
         out = self.actv1(out)
         out = self.conv1(out)
+        if self.debug:
+            print("Resampling VD 1.1: ", out.shape)
         out = out.view(-1, self.num_flat_features(out))
+        if self.debug:
+            print("Resampling VD 1.2: ", out.shape)
         out_vd = self.dense1(out)
+        if self.debug:
+            print("Resampling VD 2: ", out.shape)
         distr = out_vd
         out = VDraw(out_vd)
+        if self.debug:
+            print("Resampling VDraw: ", out.shape)
         out = self.dense2(out)
         out = self.actv2(out)
+        if self.debug:
+            print("Resampling VU 1.1: ", out.shape)
         # TODO: more than batch size 1
         out = out.view((1, self.mid_chans, self.dense_features[0],
                         self.dense_features[1], self.dense_features[2]))
-        out = self.up0(out)
+        if self.debug:
+            print("Resampling VU 1.2: ", out.shape)
+        out = self.up0(out, x, cat=False)
+        if self.debug:
+            print("Resampling VU 2: ", out.shape)
         return out, distr
 
     def num_flat_features(self, x):
@@ -395,8 +460,11 @@ class VDecoderBlock(nn.Module):
             activation=activation,
             normalization=normalization)
 
-    def forward(self, x):
-        out = self.up(x)
+    def forward(self, x, shape=None):
+        if shape is None:
+            out = self.up(x)
+        else:
+            out = self.up(x, skipx=shape, cat=False)
         out = self.de_block(out)
         return out
 
@@ -404,16 +472,19 @@ class VDecoderBlock(nn.Module):
 class VAE(nn.Module):
     """ Variational Auto-Encoder: to group the features extracted by Encoder.
     """
-    def __init__(self, in_channels=256, out_channels=4, kernel_size=3,
-                 dense_features=(10, 12, 8), activation="relu",
-                 normalization="group_normalization", mode="trilinear"):
+    def __init__(self, shapes, in_channels=256, out_channels=4, kernel_size=3,
+                 activation="relu", normalization="group_normalization",
+                 mode="trilinear", debug=False):
         super(VAE, self).__init__()
+        self.debug = debug
+        self.shapes = shapes
         self.vd_resample = VDResampling(
             in_channels=in_channels,
             out_channels=in_channels,
-            dense_features=dense_features,
+            dense_features=shapes[-1],
             stride=2,
-            kernel_size=kernel_size)
+            kernel_size=kernel_size,
+            debug=debug)
         self.vd_block2 = VDecoderBlock(
             in_channels=in_channels,
             out_channels=in_channels//2,
@@ -441,9 +512,21 @@ class VAE(nn.Module):
             kernel_size=1)
 
     def forward(self, x):
+        if self.debug:
+            print("Variational decoder tensor: ", x.shape)
         out, distr = self.vd_resample(x)
-        out = self.vd_block2(out)
-        out = self.vd_block1(out)
-        out = self.vd_block0(out)
+        if self.debug:
+            print("Variational decoder resampling: ", out.shape, distr.shape)
+        out = self.vd_block2(out, self.shapes[2])
+        if self.debug:
+            print("Variational decoder 1: ", out.shape)
+        out = self.vd_block1(out, self.shapes[1])
+        if self.debug:
+            print("Variational decoder 2: ", out.shape)
+        out = self.vd_block0(out, self.shapes[0])
+        if self.debug:
+            print("Variational decoder 3: ", out.shape)
         out = self.vd_end(out)
+        if self.debug:
+            print("Variational decoder final conv: ", out.shape)
         return out, distr

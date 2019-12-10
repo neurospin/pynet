@@ -24,17 +24,19 @@ from pynet.core import Base
 class NvNetSegmenter(Base):
     """ NvNet (2018) by Andriy Myronenko.
     """
-    def __init__(self, input_shape, num_classes, activation="relu",
-                 normalization="group_normalization", mode="trilinear",
-                 with_vae=True, pretrained=None, optimizer_name="Adam",
-                 learning_rate=1e-3, loss_name="NLLLoss", metrics=None,
-                 use_cuda=False, **kwargs):
+    def __init__(self, input_shape, in_channels, num_classes,
+                 activation="relu", normalization="group_normalization",
+                 mode="trilinear", with_vae=True, debug=False,
+                 pretrained=None, optimizer_name="Adam", learning_rate=1e-3,
+                 loss_name="NLLLoss", metrics=None, use_cuda=False, **kwargs):
         """ Class initilization.
 
         Parameters
         ----------
         input_shape: uplet
-            the tensor shape (nb_samples, nb_channels, X, Y, Z).
+            the tensor data shape (X, Y, Z).
+        in_channels: int
+            number of channels in the input tensor.
         num_classes: int
             the number of features in the output segmentation map.
         activation: str, default 'relu'
@@ -45,6 +47,8 @@ class NvNetSegmenter(Base):
             the interpolation mode.
         with_vae: bool, default True
             enable/disable vae penalty.
+        debug: bool, default False
+            print the shape of the tensors during the forward pass.
         pretrained: path, default None
             path to the pretrained model or weights.
         optimizer_name: str, default 'Adam'
@@ -65,11 +69,13 @@ class NvNetSegmenter(Base):
         """
         self.model = models.NvNet(
             input_shape=input_shape,
+            in_channels=in_channels,
             num_classes=num_classes,
             activation=activation,
             normalization=normalization,
             mode=mode,
-            with_vae=with_vae)
+            with_vae=with_vae,
+            debug=debug)
         super().__init__(
             optimizer_name=optimizer_name,
             learning_rate=learning_rate,
