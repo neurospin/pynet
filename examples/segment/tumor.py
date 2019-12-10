@@ -27,7 +27,8 @@ from pynet.utils import get_named_layers
 from pynet.plotting import plot_net_rescue
 
 model = models.NvNet(
-    input_shape=(1, 1, 128, 128, 128),
+    input_shape=(128, 128, 128),
+    in_channels=1,
     num_classes=4,
     activation="relu",
     normalization="group_normalization",
@@ -45,10 +46,10 @@ pprint(layers)
 
 from pynet.datasets import DataManager, fetch_brats
 from pynet.plotting import plot_data
-from pynet.transforms import Padding, Downsample
+from pynet.transforms import RandomFlipDimensions, Offset
 
 data = fetch_brats(
-    datasetdir="/neurospin/nsap/datasets/MICCAI_BraTS_2019_Data_Training")
+    datasetdir="/neurospin/nsap/datasets/brats")
 manager = DataManager(
     input_path=data.input_path,
     metadata_path=data.metadata_path,
@@ -57,13 +58,9 @@ manager = DataManager(
     number_of_folds=10,
     batch_size=1,
     stratify_label="grade",
-    input_transforms=[
-    #    Padding(shape=(256, 256, 256), nb_channels=4, fill_value=0),
-        Downsample(scale=2)],
-    output_transforms=[
-    #    Padding(shape=(256, 256, 256), nb_channels=8,
-    #            fill_value=[1, 0, 0, 0, 0, 0, 0, 0]),
-        Downsample(scale=2)],
+    #input_transforms=[
+    #    RandomFlipDimensions(ndims=3, proba=0.5, with_channels=True),
+    #    Offset(nb_channels=4, factor=0.1)],
     add_input=True,
     test_size=0.1,
     pin_memory=True)
@@ -93,7 +90,8 @@ outdir = "/tmp/pynet"
 trained_model = os.path.join(outdir, "model_0_epoch_9.pth")
 if os.path.isfile(trained_model):
     nvnet = NvNetSegmenter(
-        input_shape=(1, 4, 128, 128, 128),
+        input_shape=(150, 190, 135),
+        in_channels=4,
         num_classes=4,
         activation="relu",
         normalization="group_normalization",
@@ -108,12 +106,14 @@ if os.path.isfile(trained_model):
     valid_history = History.load(os.path.join(outdir, "validation_0_epoch_9.pkl"))
 else:
     nvnet = NvNetSegmenter(
-        input_shape=(1, 4, 128, 128, 128),
+        input_shape=(150, 190, 135),
+        in_channels=4,
         num_classes=4,
         activation="relu",
         normalization="group_normalization",
         mode="trilinear",
         with_vae=True,
+        debug=False,
         optimizer_name="Adam",
         learning_rate=1e-4,
         weight_decay=1e-5,
@@ -149,6 +149,6 @@ print(y_pred.shape, X.shape, y_true.shape)
 #data = np.concatenate((y_pred, y_true, X), axis=1)
 #plot_data(data, nb_samples=5)
 
-# import matplotlib.pyplot as plt
-# plt.show()
+import matplotlib.pyplot as plt
+plt.show()
 
