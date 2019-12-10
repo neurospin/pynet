@@ -44,11 +44,13 @@ def fetch_brats(datasetdir):
     """
     def _crop(arr):
         return arr[45: 195, 30: 220, 10: 145]
+
     def _norm(arr):
         logical_mask = (arr != 0)
         mean = arr[logical_mask].mean()
         std = arr[logical_mask].std()
         return ((arr - mean) / std).astype(np.single)
+
     traindir = os.path.join(datasetdir, "MICCAI_BraTS_2019_Data_Training")
     mapping_path = os.path.join(traindir, "name_mapping.csv")
     if not os.path.isfile(mapping_path):
