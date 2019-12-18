@@ -31,7 +31,7 @@ class DataManager(object):
     pytorch datasets.
     """
 
-    def __init__(self, input_path, metadata_path, output_path=None,
+    def __init__(self, input_path, metadata_path=None, output_path=None,
                  labels=None, stratify_label=None, projection_labels=None,
                  number_of_folds=10, batch_size=1, input_transforms=None,
                  output_transforms=None, add_input=False, test_size=0.1,
@@ -44,10 +44,10 @@ class DataManager(object):
 
         Parameters
         ----------
-        input_path: str
+        input_path: str or dict
             the path to the numpy array containing the input tensor data
-            that will be splited/loaded.
-        metadata_path: str
+            that will be splited/loaded or the dataset itself.
+        metadata_path: str, default None
             the path to the metadata table in tsv format.
         output_path: str, default None
             the path to the numpy array containing the output tensor data
@@ -73,6 +73,14 @@ class DataManager(object):
             should be between 0.0 and 1.0 and represent the proportion of the
             dataset to include in the test split.
         """
+        self.batch_size = batch_size
+        self.input_transforms = input_transforms
+        self.output_transforms = output_transforms
+        self.number_of_folds = number_of_folds
+        self.data_loader_kwargs = dataloader_kwargs
+        if isinstance(input_path, dict):
+            self.dataset = input_path
+            return
         df = pd.read_csv(metadata_path, sep="\t")
         projected_index = DataManager.get_projected_index(
             df=df,
@@ -86,12 +94,7 @@ class DataManager(object):
             self.labels = self.labels.squeeze()
         if stratify_label is not None:
             self.stratify_label = df[stratify_label].values
-        self.number_of_folds = number_of_folds
-        self.batch_size = batch_size
-        self.input_transforms = input_transforms
-        self.output_transforms = output_transforms
         self.add_input = add_input
-        self.data_loader_kwargs = dataloader_kwargs
         self.dataset = dict((key, [])
                             for key in ("train", "test", "validation"))
 
@@ -140,6 +143,67 @@ class DataManager(object):
                 add_input=self.add_input)
             self.dataset["train"].append(train_dataset)
             self.dataset["validation"].append(val_dataset)
+
+    @classmethod
+    def from_numpy(cls, test_inputs=None, test_outputs=None, test_labels=None,
+                   train_inputs=None, train_outputs=None, train_labels=None,
+                   validation_inputs=None, validation_outputs=None,
+                   validation_labels=None, batch_size=1, input_transforms=None,
+                   output_transforms=None, add_input=False):
+        """ Create a data manger from numpy arrays.
+
+        Parameters
+        ----------
+        *_inputs, *_outputs, *_labbels: ndarrays
+            the training data.
+        batch_size: int, default 1
+            the size of each mini-batch.
+        input_transforms, output_transforms: list of callable, default None
+            transforms a list of samples with pre-defined transformations.
+        add_input: bool, default False
+            if true concatenate the input tensor to the output tensor.
+
+        Returns
+        -------
+        ins: DataManager
+            a data manager.
+        """
+        dataset = dict((key, None) for key in ("train", "test", "validation"))
+        if test_inputs is not None:
+            test_dataset = ArrayDataset(
+                inputs=test_inputs, indices=range(len(test_inputs)),
+                labels=test_labels, outputs=test_outputs,
+                add_input=add_input)
+            dataset["test"] = [test_dataset]
+        if train_inputs is not None:
+            train_dataset = ArrayDataset(
+                inputs=train_inputs,
+                indices=range(len(train_inputs)),
+                labels=train_labels,
+                outputs=train_outputs,
+                add_input=add_input)
+            dataset["train"] = [train_dataset]
+        if test_inputs is not None:
+            test_dataset = ArrayDataset(
+                inputs=test_inputs,
+                indices=range(len(test_inputs)),
+                labels=test_labels,
+                outputs=test_outputs,
+                add_input=add_input)
+            dataset["test"] = [test_dataset]
+        if validation_inputs is not None:
+            validation_dataset = ArrayDataset(
+                inputs=validation_inputs,
+                indices=range(len(validation_inputs)),
+                labels=validation_labels,
+                outputs=validation_outputs,
+                add_input=add_input)
+            dataset["validation"] = [validation_dataset]
+        return cls(input_path=dataset,
+                   batch_size=batch_size,
+                   input_transforms=input_transforms,
+                   output_transforms=output_transforms,
+                   number_of_folds=1)
 
     def __getitem__(self, item):
         """ Return the requested item.
