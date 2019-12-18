@@ -217,5 +217,5 @@ print("a four dimensional bar grid")
 analyze_object.plot_bars('batch_size', 'val_accuracy', 'first_neuron', 'learning_rate')
 
 
-import matplotlib.pyplot as plt
-plt.show()
+#import matplotlib.pyplot as plt
+#plt.show()
