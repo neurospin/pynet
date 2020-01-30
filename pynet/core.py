@@ -75,8 +75,9 @@ class Base(Observable):
             self.model = kwargs.pop("model")
         if self.optimizer is None:
             if optimizer_name not in dir(torch.optim):
-                raise ValueError("Optimizer '{0}' uknown: check available "
-                                 "optimizer in 'pytorch.optim'.")
+                raise ValueError(
+                    "Optimizer '{0}' uknown: check available optimizer in "
+                    "'pytorch.optim'.".format(optimizer_name))
             self.optimizer = getattr(torch.optim, optimizer_name)(
                 self.model.parameters(),
                 lr=learning_rate,
@@ -135,7 +136,7 @@ class Base(Observable):
         train_history, valid_history: History
             the train/validation history.
         """
-        if not os.path.isdir(checkpointdir):
+        if checkpointdir is not None and not os.path.isdir(checkpointdir):
             os.mkdir(checkpointdir)
         train_history = History(name="train")
         if with_validation is not None:
@@ -155,7 +156,10 @@ class Base(Observable):
                 fold_index=fold)
             for epoch in range(nb_epochs):
                 self.notify_observers("before_epoch", epoch=epoch, fold=fold)
+                observers_kwargs = {}
                 loss, values = self.train(loaders.train)
+                observers_kwargs["loss"] = loss
+                observers_kwargs.update(values)
                 if scheduler is not None:
                     scheduler.step(loss)
                 train_history.log((fold, epoch), loss=loss, **values)
@@ -173,6 +177,10 @@ class Base(Observable):
                         fold=fold)
                 if with_validation:
                     _, loss, values = self.test(loaders.validation)
+                    observers_kwargs["val_loss"] = loss
+                    observers_kwargs.update(dict(
+                        ("val_{0}".format(key), val)
+                        for key, val in values.items()))
                     valid_history.log((fold, epoch), loss=loss, **values)
                     valid_history.summary()
                     if checkpointdir is not None:
@@ -180,7 +188,8 @@ class Base(Observable):
                             outdir=checkpointdir,
                             epoch=epoch,
                             fold=fold)
-                self.notify_observers("after_epoch", epoch=epoch, fold=fold)
+                self.notify_observers("after_epoch", epoch=epoch, fold=fold,
+                                      **observers_kwargs)
         return train_history, valid_history
 
     def train(self, loader):

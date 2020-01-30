@@ -100,6 +100,7 @@ class Observable(object):
         signal_to_be_notified = SignalObject()
         setattr(signal_to_be_notified, "object", self)
         setattr(signal_to_be_notified, "signal", signal)
+        setattr(signal_to_be_notified, "keys", list(kwargs.keys()))
         for name, value in kwargs.items():
             setattr(signal_to_be_notified, name, value)
 
