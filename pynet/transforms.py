@@ -15,6 +15,110 @@ is loaded.
 # Imports
 import collections
 import numpy as np
+from torchvision import transforms
+
+
+class RandomFlipDimensions(object):
+    """ Apply a random mirror flip for all axes with a defined probability.
+    """
+    def __init__(self, ndims, proba, with_channels=True):
+        """ Initilaize the class.
+
+        Parameters
+        ----------
+        ndims: int
+            the number of dimensions.
+        proba: float
+            apply flip on each axis with this probability [0 - 1].
+        with_channels: bool, default True
+            if set expect the array to contain the channels in first dimension.
+        """
+        if proba < 0 or proba > 1:
+            raise ValueError("The probabilty must be in [0 - 1].")
+        self.ndims = ndims
+        self.proba = proba
+        self.with_channels = with_channels
+
+    def _random_flip(self):
+        """ Generate a random axes flip.
+        """
+        axis = []
+        for dim in range(self.ndims):
+            if np.random.choice([True, False], p=[self.proba, 1 - self.proba]):
+                axis.append(dim)
+        return tuple(axis)
+
+    def __call__(self, arr):
+        """ Flip an array axes randomly.
+
+        Parameters
+        ----------
+        arr: np.array
+            an input array.
+
+        Returns
+        -------
+        flip_arr: np.array
+            the fliped array.
+        """
+        if self.with_channels:
+            data = []
+            flip = self._random_flip()
+            for _arr in arr:
+                data.append(np.flip(_arr, axis=flip))
+            return np.asarray(data)
+        else:
+            return np.flip(arr, axis=self._random_flip())
+
+
+class Offset(object):
+    """ Apply an intensity offset (shift and scale) on input channels.
+    """
+    def __init__(self, nb_channels, factor):
+        """ Initilaize the class.
+
+        Parameters
+        ----------
+        nb_channels: int
+            the number of channels.
+        factor: float
+            the offset scale factor [0 - 1].
+        """
+        if factor < 0 or factor > 1:
+            raise ValueError("The offset factor must be in [0 - 1].")
+        self.nb_channels = nb_channels
+        self.factor = factor
+
+    def _random_offset(self):
+        """ Generate a random offset factor.
+        """
+        return (2 * self.factor * np.random.random(self.nb_channels) +
+                (1 - self.factor))
+
+    def __call__(self, arr):
+        """ Normalize an array.
+
+        Parameters
+        ----------
+        arr: np.array
+            an input array.
+
+        Returns
+        -------
+        offset_arr: np.array
+            the rescaled array.
+        """
+        assert len(arr) == self.nb_channels
+        mean_scale_factors = self._random_offset()
+        std_scale_factors = self._random_offset()
+        data = []
+        for _arr, _mfactor, _sfactor in zip(
+                arr, mean_scale_factors, std_scale_factors):
+            logical_mask = (_arr != 0)
+            mean = _arr[logical_mask].mean()
+            std = _arr[logical_mask].std()
+            data.append((_arr - (mean * _mfactor)) / (std * _sfactor))
+        return np.asarray(data)
 
 
 class Padding(object):

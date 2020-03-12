@@ -166,7 +166,7 @@ class CustomKLLoss(_Loss):
                 torch.mean(torch.log(torch.mul(std, std))) - 1)
 
 
-class CombinedLoss(_Loss):
+class NvNetCombinedLoss(_Loss):
     """ Combined Loss.
 
     Diceloss + k1 * L2loss + k2 * KLloss
@@ -176,7 +176,7 @@ class CombinedLoss(_Loss):
     paper.
     """
     def __init__(self, num_classes, k1=0.1, k2=0.1):
-        super(CombinedLoss, self).__init__()
+        super(NvNetCombinedLoss, self).__init__()
         self.num_classes = num_classes
         self.k1 = k1
         self.k2 = k2
