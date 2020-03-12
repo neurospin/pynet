@@ -113,7 +113,7 @@ plot_history(train_history)
 # Testing
 # -------
 #
-# Finaly use the testing set and chack the results.
+# Finaly use the testing set and check the results.
 
 y_pred, X, y_true, loss, values = unet.testing(
     manager=manager,
