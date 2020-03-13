@@ -29,4 +29,4 @@ def runner(path):
     env["CI_MODE"] = "ON"
     subprocess.check_call(cmd, env=env)
 
-Parallel(n_jobs=4, verbose=50)(delayed(runner)(path) for path in example_files)
+Parallel(n_jobs=1, verbose=50)(delayed(runner)(path) for path in example_files)
