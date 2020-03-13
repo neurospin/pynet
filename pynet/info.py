@@ -76,7 +76,7 @@ REQUIRES = [
     "requests>=2.9.1",
     "pandas>=0.24.2",
     "nilearn>=0.5.2",
-    "Pillow>=6.2.1",
+    "Pillow==6.2.1",
     "PySide2>=5.13.2",
     "scikit-learn>=0.21.3",
     "scikit-image==0.15.0"
