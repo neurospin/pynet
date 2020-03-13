@@ -12,3 +12,8 @@ Helper Module for Deep Learning
 """
 
 from .info import __version__
+from .utils import setup_logging
+from .utils import logo
+
+print(logo())
+setup_logging(level="info")

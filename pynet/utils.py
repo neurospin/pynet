@@ -12,6 +12,8 @@ A module with common functions.
 """
 
 # System import
+import logging
+import warnings
 import os
 
 # Third party imports
@@ -28,6 +30,46 @@ ALLOWED_LAYERS = [
     torch.nn.BatchNorm3d,
     torch.nn.Linear
 ]
+LEVELS = {
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "critical": logging.CRITICAL
+}
+logger = logging.getLogger("pynet")
+
+
+def setup_logging(level="info", logfile=None):
+    """ Setup the logging.
+
+    Parameters
+    ----------
+    logfile: str, default None
+        the log file.
+    """
+    logging_format = logging.Formatter(
+        "[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - "
+        "%(message)s", "%Y-%m-%d %H:%M:%S")
+    while len(logging.root.handlers) > 0:
+        logging.root.removeHandler(logging.root.handlers[-1])
+    while len(logger.handlers) > 0:
+        logger.removeHandler(logger.handlers[-1])
+    level = LEVELS.get(level, None)
+    if level is None:
+        raise ValueError("Unknown logging level.")
+    logger.setLevel(level)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(level)
+    stream_handler.setFormatter(logging_format)
+    logger.addHandler(stream_handler)
+    if logfile is not None:
+        file_handler = logging.FileHandler(logfile, mode="a")
+        file_handler.setLevel(level)
+        file_handler.setFormatter(logging_format)
+        logger.addHandler(file_handler)
+    if level != logging.DEBUG:
+        warnings.simplefilter("ignore", DeprecationWarning)
 
 
 def logo():
