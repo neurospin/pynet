@@ -12,7 +12,7 @@ talos and the kerasplotlib modules.
 
 import talos
 import numpy as np
-
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -144,11 +144,14 @@ params = {
 # as in the below example. To get started quickly, we're going to invoke only
 # 10 rounds.
 
+outdir = "/tmp/breast_cancer"
+if not os.path.isdir(outdir):
+    os.mkdir(outdir)
 scan_object = talos.Scan(x=x_train,
                          y=y_train,
                          params=params,
                          model=breast_cancer,
-                         experiment_name="/tmp/breast_cancer",
+                         experiment_name=outdir,
                          round_limit=10)
 
 
@@ -216,7 +219,6 @@ analyze_object.plot_corr('val_loss', ['accuracy', 'loss', 'val_loss'])
 print("a four dimensional bar grid")
 analyze_object.plot_bars('batch_size', 'val_accuracy', 'first_neuron', 'learning_rate')
 
-import os
 if "CI_MODE" not in os.environ:
     import matplotlib.pyplot as plt
     plt.show()
