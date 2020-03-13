@@ -37,6 +37,8 @@ jobs:
           command: |
             . venv/bin/activate
             pip install torchviz
+            pip install talos
+            pip install joblib
             pip install -e .
             python .circleci/test_script.py
       - store_artifacts:

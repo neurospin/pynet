@@ -32,13 +32,15 @@ URL = ("https://deepimaging2019.sciencesconf.org/data/pages/"
        "ge_insa_lyon_datasets_camus_dataset_2.tar")
 
 
-def fetch_echocardiography(datasetdir):
+def fetch_echocardiography(datasetdir, small=False):
     """ Fetch/prepare the echocardiography dataset for pynet.
 
     Parameters
     ----------
     datasetdir: str
         the dataset destination folder.
+    small: bool, default False
+        small dataset for testing.
 
     Returns
     -------
@@ -71,6 +73,8 @@ def fetch_echocardiography(datasetdir):
         else:
             print("Archive already opened!")
         files = glob.glob(os.path.join(downloaddir, "images", "*.png"))
+        if small:
+            files = files[:50]
         nb_files = len(files)
         data = []
         masks = []

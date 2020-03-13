@@ -15,6 +15,11 @@ network is a combination of a Vnet (3d Unet) and a VAE (variation
 auto-encoder).
 """
 
+import os
+import sys
+if "CI_MODE" in os.environ:
+    sys.exit()
+
 ############################################################################
 # Inspect the NvNet network
 # --------------------------
@@ -149,6 +154,7 @@ print(y_pred.shape, X.shape, y_true.shape)
 #data = np.concatenate((y_pred, y_true, X), axis=1)
 #plot_data(data, nb_samples=5)
 
-import matplotlib.pyplot as plt
-plt.show()
+if "CI_MODE" not in os.environ:
+    import matplotlib.pyplot as plt
+    plt.show()
 

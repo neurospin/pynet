@@ -126,8 +126,8 @@ cl = Classifier(
     model=model)
 test_history, train_history = cl.training(
     manager=manager,
-    nb_epochs=10,
-    checkpointdir="/tmp/pynet",
+    nb_epochs=(10 if "CI_MODE" not in os.environ else 1),
+    checkpointdir="/tmp/orientation",
     fold_index=0,
     with_validation=True)
 
@@ -214,8 +214,8 @@ cl = Classifier(
     model=model)
 test_history, train_history = cl.training(
     manager=manager,
-    nb_epochs=10,
-    checkpointdir="/tmp/pynet",
+    nb_epochs=(10 if "CI_MODE" not in os.environ else 1),
+    checkpointdir="/tmp/orientation",
     fold_index=0,
     with_validation=True)
 
@@ -266,6 +266,7 @@ model = OneLayerMLP(image_size, nb_neurons, 9)
 print("Number of parameters in the fully connected: ",
       sum(p.numel() for p in model.parameters()))
 
-
-# import matplotlib.pyplot as plt
-# plt.show()
+import os
+if "CI_MODE" not in os.environ:
+    import matplotlib.pyplot as plt
+    plt.show()

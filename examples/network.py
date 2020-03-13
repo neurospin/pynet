@@ -32,6 +32,7 @@ print(pynet.configure.info())
 #
 # From the available netwoks load the UNet.
 
+import os
 import torch
 from pynet.models import UNet
 from pynet.plotting import plot_net, plot_net_rescue
@@ -44,7 +45,8 @@ model = UNet(
     up_mode="upsample", 
     merge_mode="concat",
     batchnorm=True)
-plot_net_rescue(model, shape=(1, 1, 64, 64, 64), outfileroot=None)
+if "CI_MODE" not in os.environ:
+    plot_net_rescue(model, shape=(1, 1, 64, 64, 64), outfileroot=None)
 
 ############################################################################
 # Inspect a network
@@ -70,6 +72,7 @@ print(hook_x.shape)
 print(weight.shape)
 plot_data(hook_x[:, :1])
 
-# import matplotlib.pyplot as plt
-# plt.show()
+if "CI_MODE" not in os.environ:
+    import matplotlib.pyplot as plt
+    plt.show()
 

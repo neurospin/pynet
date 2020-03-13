@@ -78,6 +78,7 @@ plot_data(dataset.inputs, nb_samples=5, random=False, rgb=True)
 # We need to reload the data for the inception network.
 # You may need to change the 'datasetdir' parameter.
 
+import os
 from pynet.models.cam import get_cam_network
 from pynet.cam import GradCam
 import matplotlib.pyplot as plt
@@ -124,4 +125,5 @@ for loaders, model_name in ((loaders1, "vgg19"), (loaders1, "densenet201"),
         axs[1, cnt].imshow(arr_highres, alpha=0.6, cmap="jet")
         axs[1, cnt].set_axis_off()
 
-# plt.show()
+if "CI_MODE" not in os.environ:
+    plt.show()

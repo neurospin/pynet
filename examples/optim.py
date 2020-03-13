@@ -33,6 +33,7 @@ print(pynet.configure.info())
 # First load a dataset (the CIFAR10) and a network.
 # You may need to change the 'datasetdir' parameter.
 
+import os
 import torch.nn as nn
 import torch.nn.functional as func
 from pynet.datasets import DataManager, fetch_cifar
@@ -43,7 +44,7 @@ manager = DataManager(
     labels=["label"],
     metadata_path=data.metadata_path,
     number_of_folds=10,
-    batch_size=10,
+    batch_size=(10 if "CI_MODE" not in os.environ else 1000),
     stratify_label="category",
     test_size=0.1)
 
@@ -114,5 +115,6 @@ titles = ["{0}-{1}".format(data.labels[it1], data.labels[it2])
           for it1, it2 in zip(y_pred, y_true)]
 plot_data(X, labels=titles, nb_samples=5)
 
-# import matplotlib.pyplot as plt
-# plt.show()
+if "CI_MODE" not in os.environ:
+    import matplotlib.pyplot as plt
+    plt.show()

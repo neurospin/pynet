@@ -24,20 +24,25 @@ of the structures to segment, and the subjective delineation of the contours
 #
 # You may need to change the 'datasetdir' parameter.
 
+import os
 import numpy as np
 from pynet.datasets import DataManager, fetch_echocardiography
 from pynet.plotting import plot_data
 
 data = fetch_echocardiography(
-    datasetdir="/tmp/echocardiography")
+    datasetdir="/tmp/echocardiography",
+    small=(False if "CI_MODE" not in os.environ else True))
 manager = DataManager(
     input_path=data.input_path,
     metadata_path=data.metadata_path,
     output_path=data.output_path,
     number_of_folds=10,
+    stratify_label="label",
+    sampler="weighted_random",
     batch_size=10,
     test_size=0.1)
 dataset = manager["test"]
+print(dataset.inputs.shape, dataset.outputs.shape)
 data = np.concatenate((dataset.inputs, dataset.outputs), axis=1)
 plot_data(data, nb_samples=5)
 
@@ -49,7 +54,6 @@ plot_data(data, nb_samples=5)
 # From the available models load the UNet, and start the training.
 # You may need to change the 'outdir' parameter.
 
-import os
 import torch
 import torch.nn as nn
 from pynet.encoder import UNetEncoder
@@ -64,7 +68,7 @@ def my_loss(x, y):
     y = torch.argmax(y, dim=1).type(torch.LongTensor)
     criterion = nn.CrossEntropyLoss()
     return criterion(x, y)
-outdir = "/tmp/pynet"
+outdir = "/tmp/echocardiography"
 trained_model = os.path.join(outdir, "model_0_epoch_9.pth")
 if os.path.isfile(trained_model):
     unet = UNetEncoder(
@@ -100,7 +104,7 @@ else:
     print(unet.model)
     train_history, valid_history = unet.training(
         manager=manager,
-        nb_epochs=10,
+        nb_epochs=(10 if "CI_MODE" not in os.environ else 1),
         checkpointdir=outdir,
         fold_index=0,
         with_validation=True)
@@ -122,10 +126,11 @@ y_pred, X, y_true, loss, values = unet.testing(
 print(y_pred.shape, X.shape, y_true.shape)
 y_pred = np.expand_dims(y_pred, axis=1)
 data = np.concatenate((y_pred, y_true, X), axis=1)
-plot_data(data, nb_samples=5)
+plot_data(data, nb_samples=5, random=False)
 
-# import matplotlib.pyplot as plt
-# plt.show()
+if "CI_MODE" not in os.environ:
+    import matplotlib.pyplot as plt
+    plt.show()
     
 
 

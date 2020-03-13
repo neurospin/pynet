@@ -49,13 +49,12 @@ class DataManager(object):
 
         TODO: In the case of custom stratification, enable the weighted random
         sampler.
-        TODO: fix case number_of_folds=1
 
         Parameters
         ----------
         input_path: str
             the path to the numpy array containing the input tensor data
-            that will be splited/loaded.
+            that will be splited/loaded or the dataset itself.
         metadata_path: str
             the path to the metadata table in tsv format.
         output_path: str, default None
@@ -116,6 +115,13 @@ class DataManager(object):
         # We should only work with masked data but we want to preserve the
         # memory mapping so we are getting the right index at the end
         # (in __getitem__ of ArrayDataset)
+        self.batch_size = batch_size
+        self.number_of_folds = number_of_folds
+        self.data_loader_kwargs = dataloader_kwargs
+        self.sampler = sampler
+        if isinstance(input_path, dict):
+            self.dataset = input_path
+            return
         df = pd.read_csv(metadata_path, sep="\t")
         logger.debug("Metadata:\n{0}".format(df))
         mask = DataManager.get_mask(
@@ -137,14 +143,10 @@ class DataManager(object):
         self.metadata = df
         self.mask = mask
         self.test_size = test_size
-        self.number_of_folds = number_of_folds
-        self.batch_size = batch_size
         self.input_transforms = input_transforms or []
         self.output_transforms = output_transforms or []
         self.data_augmentation_transforms = data_augmentation_transforms or []
         self.add_input = add_input
-        self.data_loader_kwargs = dataloader_kwargs
-        self.sampler = sampler
         self.dataset = dict(
             (key, []) for key in ("train", "test", "validation"))
 
@@ -243,6 +245,86 @@ class DataManager(object):
                 patch_size=patch_size)
             self.dataset["train"].append(train_dataset)
             self.dataset["validation"].append(val_dataset)
+
+    @classmethod
+    def from_numpy(cls, test_inputs=None, test_outputs=None, test_labels=None,
+                   train_inputs=None, train_outputs=None, train_labels=None,
+                   validation_inputs=None, validation_outputs=None,
+                   validation_labels=None, batch_size=1, input_transforms=None,
+                   output_transforms=None, data_augmentation_transforms=None,
+                   add_input=False, label_mapping=None, patch_size=None):
+        """ Create a data manger from numpy arrays.
+
+        Parameters
+        ----------
+        *_inputs, *_outputs, *_labels: ndarrays
+            the training data.
+        batch_size: int, default 1
+            the size of each mini-batch.
+        input_transforms, output_transforms: list of callable, default None
+            transforms a list of samples with pre-defined transformations.
+        data_augmentation_transforms: list of callable, default None
+            transforms the training dataset input with pre-defined
+            transformations on the fly during the training.
+        add_input: bool, default False
+            if true concatenate the input tensor to the output tensor.
+        label_mapping: dict, default None
+            a mapping that can be used to convert labels to be predicted
+            (string to int conversion).
+        patch_size: tuple, default None
+            the size of the patches that will be extracted from the
+            input/output images.
+
+        Returns
+        -------
+        ins: DataManager
+            a data manager.
+        """
+        dataset = dict((key, None) for key in ("train", "test", "validation"))
+        input_transforms = input_transforms or []
+        output_transforms = output_transforms or []
+        data_augmentation_transforms = data_augmentation_transforms or []
+        if test_inputs is not None:
+            test_dataset = ArrayDataset(
+                inputs=test_inputs, indices=range(len(test_inputs)),
+                labels=test_labels, outputs=test_outputs,
+                input_transforms=input_transforms,
+                output_transforms=output_transforms,
+                add_input=add_input,
+                label_mapping=label_mapping,
+                patch_size=patch_size)
+            dataset["test"] = [test_dataset]
+        if train_inputs is not None:
+            train_dataset = ArrayDataset(
+                inputs=train_inputs,
+                indices=range(len(train_inputs)),
+                labels=train_labels,
+                outputs=train_outputs,
+                input_transforms=(input_transforms +
+                                  data_augmentation_transforms),
+                output_transforms=(output_transforms +
+                                   data_augmentation_transforms),
+                add_input=add_input,
+                label_mapping=label_mapping,
+                patch_size=patch_size)
+            dataset["train"] = [train_dataset]
+        if validation_inputs is not None:
+            validation_dataset = ArrayDataset(
+                inputs=validation_inputs,
+                indices=range(len(validation_inputs)),
+                labels=validation_labels,
+                outputs=validation_outputs,
+                input_transforms=input_transforms,
+                output_transforms=output_transforms,
+                add_input=add_input,
+                label_mapping=label_mapping,
+                patch_size=patch_size)
+            dataset["validation"] = [validation_dataset]
+        return cls(input_path=dataset,
+                   metadata_path=None,
+                   sampler=None,
+                   batch_size=batch_size,
+                   number_of_folds=1)
 
     def __getitem__(self, item):
         """ Return the requested item.

@@ -20,7 +20,11 @@ Read the data
 import copy
 import numpy as np
 import os
+import sys
 import glob
+
+if "CI_MODE" in os.environ:
+    sys.exit()
 
 from pynet.dataset import split_dataset
 from pynet.dataset import LoadDataset
@@ -215,5 +219,6 @@ nb_features = cl.model.fc.in_features
 cl.model.fc = nn.Linear(nb_features, 9)
 train(cl, dataset)
 
-plt.show()
+if "CI_MODE" not in os.environ:
+    plt.show()
 

@@ -67,6 +67,8 @@ for trainloader in dataloader.train:
     plot_data(trainloader.inputs, nb_samples=5)
     break
 
-# import matplotlib.pyplot as plt
-# plt.show()
+import os
+if "CI_MODE" not in os.environ:
+    import matplotlib.pyplot as plt
+    plt.show()
 

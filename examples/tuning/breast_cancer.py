@@ -216,6 +216,7 @@ analyze_object.plot_corr('val_loss', ['accuracy', 'loss', 'val_loss'])
 print("a four dimensional bar grid")
 analyze_object.plot_bars('batch_size', 'val_accuracy', 'first_neuron', 'learning_rate')
 
-
-#import matplotlib.pyplot as plt
-#plt.show()
+import os
+if "CI_MODE" not in os.environ:
+    import matplotlib.pyplot as plt
+    plt.show()
