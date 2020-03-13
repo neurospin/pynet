@@ -15,6 +15,7 @@ before_install:
     - sudo updatedb
 
 install:
+    - pip install ipython
     - pip install nose
     - pip install nose-exclude
     - pip install coverage
