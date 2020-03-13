@@ -24,10 +24,7 @@ import tempfile
 # Third party import
 import torch
 import hiddenlayer as hl
-try:
-    from PySide2 import QtCore, QtGui, QtWidgets
-except:
-    pass
+from PySide2 import QtCore, QtGui, QtWidgets
 from torchviz import make_dot
 
 # Module import
