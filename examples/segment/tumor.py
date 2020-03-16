@@ -29,7 +29,10 @@ if "CI_MODE" in os.environ:
 from pprint import pprint
 import pynet.models as models
 from pynet.utils import get_named_layers
-from pynet.plotting import plot_net_rescue
+from pynet.utils import setup_logging
+#from pynet.plotting.network import plot_net_rescue
+
+setup_logging(level="debug")
 
 model = models.NvNet(
     input_shape=(128, 128, 128),
@@ -66,6 +69,7 @@ manager = DataManager(
     #input_transforms=[
     #    RandomFlipDimensions(ndims=3, proba=0.5, with_channels=True),
     #    Offset(nb_channels=4, factor=0.1)],
+    sampler="random",
     add_input=True,
     test_size=0.1,
     pin_memory=True)
@@ -91,7 +95,9 @@ my_loss = NvNetCombinedLoss(
     num_classes=4,
     k1=0.1,
     k2=0.1)
-outdir = "/tmp/pynet"
+outdir = "/neurospin/nsap/tmp/nvnet"
+if not os.path.isdir(outdir):
+    os.mkdir(outdir)
 trained_model = os.path.join(outdir, "model_0_epoch_9.pth")
 if os.path.isfile(trained_model):
     nvnet = NvNetSegmenter(
@@ -130,9 +136,9 @@ else:
         patience=5)
     train_history, valid_history = nvnet.training(
         manager=manager,
-        nb_epochs=10,
+        nb_epochs=100,
         checkpointdir=outdir,
-        fold_index=0,
+        # fold_index=0,
         scheduler=scheduler,
         with_validation=True)
 print(train_history)
