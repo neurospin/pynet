@@ -144,14 +144,12 @@ params = {
 # as in the below example. To get started quickly, we're going to invoke only
 # 10 rounds.
 
-outdir = "/tmp/breast_cancer"
-if not os.path.isdir(outdir):
-    os.mkdir(outdir)
+os.chdir("/tmp")
 scan_object = talos.Scan(x=x_train,
                          y=y_train,
                          params=params,
                          model=breast_cancer,
-                         experiment_name=outdir,
+                         experiment_name="breast_cancer",
                          round_limit=10)
 
 
