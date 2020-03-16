@@ -78,6 +78,7 @@ class TestDataManager(unittest.TestCase):
         kwargs["projection_labels"] = {
             "sex": "M"
         }
+        kwargs["test_size"] = 0.2
         kwargs["number_of_folds"] = 2
         batch_size = kwargs["batch_size"]
 
