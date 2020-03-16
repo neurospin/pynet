@@ -111,7 +111,6 @@ class OneLayerMLP(nn.Module):
  
 model = OneLayerMLP(image_size, nb_neurons, 9)
 print(model)
-# plot_net(model, shape=(1, image_size), static=True, outfileroot=None)
 
 #############################################################################
 # Then we configure the parameters of the training step and train the model.

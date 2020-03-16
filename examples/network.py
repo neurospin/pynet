@@ -35,7 +35,7 @@ print(pynet.configure.info())
 import os
 import torch
 from pynet.models import UNet
-from pynet.plotting import plot_net, plot_net_rescue
+from pynet.plotting.network import plot_net, plot_net_rescue
 
 model = UNet(
     num_classes=2,
