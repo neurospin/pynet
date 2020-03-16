@@ -1,8 +1,11 @@
 
-|Python35|_ |Coveralls|_ |Travis|_ |PyPi|_ |Doc|_ |CircleCI|_
+|Python35|_ |Python36|_ |Coveralls|_ |Travis|_ |PyPi|_ |Doc|_ |CircleCI|_
 
 .. |Python35| image:: https://img.shields.io/badge/python-3.5-blue.svg
 .. _Python35: https://badge.fury.io/py/python-network
+
+.. |Python36| image:: https://img.shields.io/badge/python-3.6-blue.svg
+.. _Python36: https://badge.fury.io/py/python-network
 
 .. |Coveralls| image:: https://coveralls.io/repos/neurospin/pynet/badge.svg?branch=master&service=github
 .. _Coveralls: https://coveralls.io/github/neurospin/pynet
