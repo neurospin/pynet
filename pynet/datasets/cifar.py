@@ -44,6 +44,7 @@ def fetch_cifar(datasetdir):
         a named tuple containing 'input_path', 'output_path', and
         'metadata_path'.
     """
+    logger.info("Loading cifar dataset.")
     classes = ("plane", "car", "bird", "cat", "deer", "dog", "frog", "horse",
                "ship", "truck")
     labels = OrderedDict((key, val) for key, val in enumerate(classes))

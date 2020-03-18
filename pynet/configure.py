@@ -12,6 +12,7 @@ This module checks that all the dependencies are installed properly.
 """
 
 # System import
+import logging
 import importlib
 import distutils
 
@@ -22,12 +23,15 @@ from .info import LICENSE
 from .info import AUTHOR
 from .utils import logo
 
+
+# Global parameters
 MAP = {
     "progressbar2": "progressbar",
     "scikit-learn": "sklearn",
     "Pillow": "PIL",
     "scikit-image": "skimage"
 }
+logger = logging.getLogger("pynet")
 
 
 def _check_python_versions():
@@ -44,6 +48,8 @@ def _check_python_versions():
         '?' means no package found.
     """
     versions = {}
+    logger.debug("Checking install dependencies:")
+    logger.debug("Declared dependencies:\n{0}".format(REQUIRES))
     for dependency in REQUIRES:
         if ">=" in dependency:
             operator = ">="
@@ -55,11 +61,15 @@ def _check_python_versions():
         mod_name, mod_min_version = dependency.split(operator)
         if mod_name in MAP:
             mod_name = MAP[mod_name]
+        logger.debug("  {0} {1} {2}.".format(
+            mod_name, operator, mod_min_version))
         try:
             mod_install_version = importlib.import_module(mod_name).__version__
         except:
             mod_install_version = "?"
+        logger.debug("  found {0}...".format(mod_install_version))
         versions[mod_name] = (operator + mod_min_version, mod_install_version)
+    logger.debug("Check done.")
     return versions
 
 
@@ -71,12 +81,15 @@ def info():
     info: str
         package information.
     """
+    logger.debug("Check module metadata & dependencies:")
+    logger.debug("  dependencies.")
     dependencies = "Dependencies: \n\n"
     dependencies_info = _check_python_versions()
     for name, (min_version, install_version) in dependencies_info.items():
         dependencies += "{0:15s}: {1:9s} - required | {2:9s} installed".format(
             name, min_version, install_version)
         dependencies += "\n"
+    logger.debug("  metadata.")
     version = "Package version: {0}\n\n".format(__version__)
     license = "License: {0}\n\n".format(LICENSE)
     authors = "Authors: \n{0}\n".format(AUTHOR)

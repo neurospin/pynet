@@ -44,6 +44,8 @@ def fetch_brats(datasetdir):
         a named tuple containing 'input_path', 'output_path', and
         'metadata_path'.
     """
+    logger.info("Loading brats dataset.")
+
     def _crop(arr):
         return arr[45: 195, 30: 220, 10: 145]
 

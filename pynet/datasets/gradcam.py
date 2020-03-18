@@ -54,6 +54,7 @@ def fetch_gradcam(datasetdir, inception=False):
         a named tuple containing 'input_path', 'output_path', and
         'metadata_path'.
     """
+    logger.info("Loading gradcam dataset.")
     if not os.path.isdir(datasetdir):
         os.mkdir(datasetdir)
     labels_url = (

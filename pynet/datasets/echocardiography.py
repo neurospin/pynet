@@ -50,6 +50,8 @@ def fetch_echocardiography(datasetdir, small=False):
         a named tuple containing 'input_path', 'output_path', and
         'metadata_path'.
     """
+    logger.info("Loading echocardiography dataset.")
+
     def to_categorical(y, num_classes):
         """ 1-hot encodes a tensor.
         """

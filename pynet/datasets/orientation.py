@@ -54,6 +54,7 @@ def fetch_orientation(datasetdir, flatten=False):
         a named tuple containing 'input_path', 'output_path', and
         'metadata_path'.
     """
+    logger.info("Loading orientation dataset.")
     labels = OrderedDict({
             0: "T1-A",
             1: "T1-S",
