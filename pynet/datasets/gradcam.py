@@ -17,6 +17,7 @@ import json
 import urllib
 import shutil
 import requests
+import logging
 import numpy as np
 from torchvision import transforms
 from torchvision import datasets
@@ -34,6 +35,7 @@ URLS = [
     "https://miro.medium.com/max/384/1*oRpjlGC3sUy5yQJtpwclwg.jpeg",
     "https://miro.medium.com/max/500/1*EQ3JBr2vGPuovYFyh6mQeQ.jpeg"
 ]
+logger = logging.getLogger("pynet")
 
 
 def fetch_gradcam(datasetdir, inception=False):
@@ -71,6 +73,7 @@ def fetch_gradcam(datasetdir, inception=False):
             os.mkdir(imagedir)
         metadata = dict((key, []) for key in ("name", ))
         for cnt, url in enumerate(URLS):
+            logger.debug("Processing {0}...".format(url))
             ext = url.split(".")[-1]
             name = "image{0}".format(cnt)
             imagefile = os.path.join(imagedir, name + "." + ext)
@@ -81,7 +84,8 @@ def fetch_gradcam(datasetdir, inception=False):
                     shutil.copyfileobj(response.raw, out_file)
                 del response
             else:
-                print("Image '{0}' already downloaded.".format(imagefile))
+                logger.debug(
+                    "Image '{0}' already downloaded.".format(imagefile))
         transform = transforms.Compose([
             transforms.Resize((244, 244)),
             transforms.ToTensor(),

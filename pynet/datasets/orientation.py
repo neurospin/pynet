@@ -19,6 +19,7 @@ from nilearn.image import new_img_like, resample_to_img
 import os
 import json
 import glob
+import logging
 from collections import namedtuple
 from collections import OrderedDict
 import numpy as np
@@ -34,6 +35,7 @@ Item = namedtuple("Item", ["input_path", "output_path", "metadata_path",
                            "height", "width", "labels"])
 URL = ("https://deepimaging2019.sciencesconf.org/data/pages/"
        "ge_insa_lyon_datasets_dlss_ho4_data_1.tar")
+logger = logging.getLogger("pynet")
 
 
 def fetch_orientation(datasetdir, flatten=False):
@@ -75,14 +77,14 @@ def fetch_orientation(datasetdir, flatten=False):
         if not os.path.isfile(tarball):
             urllib.request.urlretrieve(URL, tarball)
         else:
-            print("Tarball already downloaded!")
+            logger.info("Tarball already downloaded!")
         downloaddir = tarball.replace(".tar", "")
         if not os.path.isdir(downloaddir):
             tar = tarfile.open(tarball)
             tar.extractall(path=downloaddir)
             tar.close()
         else:
-            print("Archive already opened!")
+            logger.info("Archive already opened!")
         files = glob.glob(os.path.join(downloaddir, "*.png"))
         nb_files = len(files)
         data = []
@@ -90,6 +92,7 @@ def fetch_orientation(datasetdir, flatten=False):
         metadata = dict((key, []) for key in ("name", "label"))
         rev_labels = dict((val, key) for key, val in labels.items())
         for path in files:
+            logger.debug("Processing {0}...".format(path))
             basename = os.path.basename(path).replace(".png", "")
             im = Image.open(path)
             arr = np.array(im.getdata())

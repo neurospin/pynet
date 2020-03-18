@@ -14,11 +14,16 @@ Module that provides tools to compute class activation map.
 
 
 # Imports
+import logging
 import skimage
 import numpy as np
 import torch
 from torch.autograd import Variable
 import torch.nn.functional as func
+
+
+# Global parameters
+logger = logging.getLogger("pynet")
 
 
 class FeatureExtractor(object):
@@ -97,7 +102,7 @@ class GradCam(object):
                 break
             label = self.labels[str(index)][1]
             line = "{0:.3f} -> {1}".format(prob, label)
-            print(line)
+            logger.info(line)
             one_hot = np.zeros((1, output.size()[-1]), dtype=np.float32)
             one_hot[0][index] = 1
             one_hot = Variable(torch.from_numpy(one_hot), requires_grad=True)

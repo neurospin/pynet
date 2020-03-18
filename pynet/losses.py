@@ -9,11 +9,16 @@
 
 
 # Third party import
+import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
 from torch.autograd import Variable
 from torch.nn.modules.loss import _Loss
+
+
+# Global parameters
+logger = logging.getLogger("pynet")
 
 
 def dice_loss_1(logits, true, eps=1e-7):
@@ -134,7 +139,7 @@ class MultiDiceLoss(object):
             denominator[mask] = 0
         denominator = denominator.sum(0).sum(1).sum(1) + eps
         loss_per_channel = self.weight * (1 - (numerator / denominator))
-        print(loss_per_channel)
+        logger.info(loss_per_channel)
 
         return loss_per_channel.sum() / n_classes
 
@@ -202,6 +207,6 @@ class NvNetCombinedLoss(_Loss):
         l2_loss = self.l2_loss(vae_pred, vae_truth)
         kl_div = self.kl_loss(est_mean, est_std)
         combined_loss = dice_loss + self.k1 * l2_loss + self.k2 * kl_div
-        print("dice_loss:%.4f, L2_loss:%.4f, KL_div:%.4f, combined_loss:"
-              "%.4f" % (dice_loss, l2_loss, kl_div, combined_loss))
+        logger.info("dice_loss:%.4f, L2_loss:%.4f, KL_div:%.4f, combined_loss:"
+                    "%.4f" % (dice_loss, l2_loss, kl_div, combined_loss))
         return combined_loss

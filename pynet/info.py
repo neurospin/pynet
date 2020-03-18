@@ -71,7 +71,6 @@ REQUIRES = [
     "tabulate>=0.8.6",
     "matplotlib>=3.0.3",
     "nibabel>=2.4.0",
-    "tqdm>=4.31.1",
     "progressbar2>=3.39.3",
     "requests>=2.9.1",
     "pandas>=0.24.2",

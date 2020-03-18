@@ -17,6 +17,7 @@ Module that provides functions to prepare the Brats dataset.
 # Imports
 from collections import namedtuple
 import os
+import logging
 import numpy as np
 import pandas as pd
 import nibabel as nib
@@ -26,6 +27,7 @@ import progressbar
 # Global parameters
 MODALITIES = ("t1", "t1ce", "t2", "flair")
 Item = namedtuple("Item", ["input_path", "output_path", "metadata_path"])
+logger = logging.getLogger("pynet")
 
 
 def fetch_brats(datasetdir):
@@ -70,6 +72,7 @@ def fetch_brats(datasetdir):
         with progressbar.ProgressBar(max_value=nb_subjects,
                                      redirect_stdout=True) as bar:
             for cnt, (sid, grade) in enumerate(arr):
+                logger.debug("Processing {0}...".format(sid))
                 datadir = os.path.join(traindir, grade, sid)
                 data = []
                 for mod in MODALITIES:

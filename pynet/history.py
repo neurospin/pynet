@@ -15,6 +15,7 @@ Module that provides logging utilities.
 
 # System import
 import os
+import logging
 import collections
 import time
 import datetime
@@ -23,6 +24,10 @@ import pickle
 # Third party import
 import numpy as np
 from tabulate import tabulate
+
+
+# Global parameters
+logger = logging.getLogger("pynet")
 
 
 class History(object):
@@ -100,7 +105,7 @@ class History(object):
         for key in self.metrics:
             msg += "{:6s}:{:10f}  ".format(key, self.history[last_step][key])
         msg += "{}".format(str(self.get_total_time()))
-        print(msg)
+        logger.info(msg)
 
     def get_total_time(self):
         """ Returns the total period between the first and last steps.

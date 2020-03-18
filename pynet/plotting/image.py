@@ -12,10 +12,15 @@ Common functions to display images.
 """
 
 # Import
+import logging
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import torchvision
+
+
+# Global parameters
+logger = logging.getLogger("pynet")
 
 
 def plot_data(data, slice_axis=2, nb_samples=5, channel=0, labels=None,
@@ -126,7 +131,7 @@ def plot_segmentation_data(data, mask, slice_axis=2, nb_samples=5):
         mask = np.concatenate(slices, axis=0)
     mask = np.argmax(mask, axis=1)
     valid_indices = [idx for idx in range(len(mask)) if mask[idx].max() > 0]
-    print(mask.shape, len(valid_indices))
+    logger.debug(mask.shape, len(valid_indices))
 
     # Plot data on grid
     indices = np.random.randint(0, len(valid_indices), nb_samples)

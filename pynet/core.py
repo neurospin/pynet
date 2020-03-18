@@ -15,13 +15,14 @@ Core classes.
 import re
 import os
 import warnings
+import logging
 from collections import OrderedDict
 
 # Third party import
 from torchvision import models
 import torch
 import torch.nn.functional as func
-from tqdm import tqdm
+import progressbar
 import numpy as np
 
 # Package import
@@ -30,6 +31,10 @@ from pynet.history import History
 from pynet.observable import Observable
 import pynet.metrics as mmetrics
 from pynet.utils import reset_weights
+
+
+# Global parameters
+logger = logging.getLogger("pynet")
 
 
 class Base(Observable):
@@ -143,28 +148,35 @@ class Base(Observable):
             valid_history = History(name="validation")
         else:
             valid_history = None
-        print(self.loss)
-        print(self.optimizer)
+        logger.info("Loss function {0}.".format(self.loss))
+        logger.info("Optimizer function {0}.".format(self.optimizer))
         folds = range(manager.number_of_folds)
         if fold_index is not None:
             folds = [fold_index]
         for fold in folds:
+            logger.debug("Running fold {0}...".format(fold))
             reset_weights(self.model)
             loaders = manager.get_dataloader(
                 train=True,
                 validation=True,
                 fold_index=fold)
             for epoch in range(nb_epochs):
+                logger.debug("Running epoch {0}:".format(fold))
+                logger.debug("  notify observers with signal 'before_epoch'.")
                 self.notify_observers("before_epoch", epoch=epoch, fold=fold)
                 observers_kwargs = {}
+                logger.debug("  train.")
                 loss, values = self.train(loaders.train)
                 observers_kwargs["loss"] = loss
                 observers_kwargs.update(values)
                 if scheduler is not None:
+                    logger.debug("  update scheduler.")
                     scheduler.step(loss)
+                logger.debug("  update train history.")
                 train_history.log((fold, epoch), loss=loss, **values)
                 train_history.summary()
                 if checkpointdir is not None:
+                    logger.debug("  create checkpoint.")
                     checkpoint(
                         model=self.model,
                         epoch=epoch,
@@ -176,20 +188,26 @@ class Base(Observable):
                         epoch=epoch,
                         fold=fold)
                 if with_validation:
+                    logger.debug("  validation.")
                     _, loss, values = self.test(loaders.validation)
                     observers_kwargs["val_loss"] = loss
                     observers_kwargs.update(dict(
                         ("val_{0}".format(key), val)
                         for key, val in values.items()))
+                    logger.debug("  update validation history.")
                     valid_history.log((fold, epoch), loss=loss, **values)
                     valid_history.summary()
                     if checkpointdir is not None:
+                        logger.debug("  create checkpoint.")
                         valid_history.save(
                             outdir=checkpointdir,
                             epoch=epoch,
                             fold=fold)
+                logger.debug("  notify observers with signal 'after_epoch'.")
                 self.notify_observers("after_epoch", epoch=epoch, fold=fold,
                                       **observers_kwargs)
+                logger.debug("End epoch.".format(fold))
+            logger.debug("End fold.")
         return train_history, valid_history
 
     def train(self, loader):
@@ -207,31 +225,43 @@ class Base(Observable):
         values: dict
             the values of the metrics.
         """
+        logger.debug("Update model for training.")
         self.model.train()
         nb_batch = len(loader)
         values = {}
         loss = 0
-        pbar = tqdm(total=nb_batch, desc="Mini-Batch")
+        pbar = progressbar.ProgressBar(
+            max_value=nb_batch, redirect_stdout=True, prefix="Mini-batch ")
+        pbar.start()
         for iteration, dataitem in enumerate(loader):
-            pbar.update()
+            logger.debug("Mini-batch {0}:".format(iteration))
+            pbar.update(iteration + 1)
+            logger.debug("  transfer inputs to {0}.".format(self.device))
             inputs = dataitem.inputs.to(self.device)
+            logger.debug("  transfer targets to {0}.".format(self.device))
             targets = []
             for item in (dataitem.outputs, dataitem.labels):
                 if item is not None:
                     targets.append(item.to(self.device))
             if len(targets) == 1:
                 targets = targets[0]
+            logger.debug("  evaluate model.")
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
+            logger.debug("  update loss.")
             batch_loss = self.loss(outputs, targets)
+            logger.debug("  update model weights.")
             batch_loss.backward()
             self.optimizer.step()
             loss += batch_loss.item() / nb_batch
             for name, metric in self.metrics.items():
+                logger.debug("  compute metric '{0}'.".format(name))
                 if name not in values:
                     values[name] = 0
-                values[name] += metric(outputs, targets) / nb_batch
-        pbar.close()
+                values[name] += float(metric(outputs, targets)) / nb_batch
+            logger.debug("Mini-batch done.")
+        pbar.finish()
+        logger.debug("Loss {0} ({1})".format(loss, type(loss)))
         return loss, values
 
     def testing(self, manager, with_logit=False, predict=False):
@@ -303,16 +333,22 @@ class Base(Observable):
         values: dict
             the values of the metrics.
         """
+        logger.debug("Update model for testing.")
         self.model.eval()
         nb_batch = len(loader)
         loss = 0
         values = {}
         with torch.no_grad():
             y = []
-            pbar = tqdm(total=nb_batch, desc="Mini-Batch")
+            pbar = progressbar.ProgressBar(
+                max_value=nb_batch, redirect_stdout=True, prefix="Mini-batch ")
+            pbar.start()
             for iteration, dataitem in enumerate(loader):
-                pbar.update()
+                logger.debug("Mini-batch {0}:".format(iteration))
+                pbar.update(iteration + 1)
+                logger.debug("  transfer inputs to {0}.".format(self.device))
                 inputs = dataitem.inputs.to(self.device)
+                logger.debug("  transfer targets to {0}.".format(self.device))
                 targets = []
                 for item in (dataitem.outputs, dataitem.labels):
                     if item is not None:
@@ -321,23 +357,29 @@ class Base(Observable):
                     targets = targets[0]
                 elif len(targers) == 0:
                     targets = None
+                logger.debug("  evaluate model.")
                 outputs = self.model(inputs)
                 if isinstance(outputs, tuple):
                     y.append(outputs[0])
                 else:
                     y.append(outputs)
                 if targets is not None:
+                    logger.debug("  update loss.")
                     batch_loss = self.loss(outputs, targets)
                     loss += float(batch_loss) / nb_batch
                     for name, metric in self.metrics.items():
+                        logger.debug("  compute metric '{0}'.".format(name))
                         if name not in values:
                             values[name] = 0
                         values[name] += metric(outputs, targets) / nb_batch
-            pbar.close()
+                logger.debug("Mini-batch done.")
+            pbar.finish()
             y = torch.cat(y, 0)
             if with_logit:
+                logger.debug("Apply logit.")
                 y = func.softmax(y, dim=1)
             y = y.cpu().detach().numpy()
             if predict:
+                logger.debug("Apply predict.")
                 y = np.argmax(y, axis=1)
         return y, loss, values

@@ -14,6 +14,7 @@ Module that provides functions to prepare the Brats dataset.
 # Imports
 import os
 import json
+import logging
 import torchvision
 import torchvision.transforms as transforms
 from collections import namedtuple
@@ -26,6 +27,7 @@ import urllib
 # Global parameters
 Item = namedtuple("Item", ["input_path", "output_path", "metadata_path",
                            "labels"])
+logger = logging.getLogger("pynet")
 
 
 def fetch_cifar(datasetdir):
@@ -54,11 +56,13 @@ def fetch_cifar(datasetdir):
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
+        logger.info("Getting train dataset.")
         trainset = torchvision.datasets.CIFAR10(
             root=datasetdir,
             train=True,
             download=True,
             transform=transform)
+        logger.info("Getting test dataset.")
         testset = torchvision.datasets.CIFAR10(
             root=datasetdir,
             train=False,
@@ -68,6 +72,7 @@ def fetch_cifar(datasetdir):
         data = []
         for loader in (trainset, testset):
             for arr, label in loader:
+                logger.debug("Processing {0} {1}...".format(label, arr.shape))
                 data.append(arr.numpy())
                 metadata["label"].append(label)
                 metadata["category"].append(labels[label][1])
