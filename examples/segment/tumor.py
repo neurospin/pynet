@@ -112,7 +112,8 @@ if os.path.isfile(trained_model):
         learning_rate=1e-4,
         weight_decay=1e-5,
         loss=my_loss,
-        pretrained=trained_model)
+        pretrained=trained_model,
+        use_cuda=True)
     train_history = History.load(os.path.join(outdir, "train_0_epoch_9.pkl"))
     valid_history = History.load(os.path.join(outdir, "validation_0_epoch_9.pkl"))
 else:
@@ -128,7 +129,8 @@ else:
         optimizer_name="Adam",
         learning_rate=1e-4,
         weight_decay=1e-5,
-        loss=my_loss)
+        loss=my_loss,
+        use_cuda=True)
     scheduler = lr_scheduler.ReduceLROnPlateau(
         optimizer=nvnet.optimizer,
         mode="min",
