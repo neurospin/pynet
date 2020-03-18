@@ -28,6 +28,9 @@ import os
 import numpy as np
 from pynet.datasets import DataManager, fetch_echocardiography
 from pynet.plotting import plot_data
+from pynet.utils import setup_logging
+
+setup_logging(level="info")
 
 data = fetch_echocardiography(
     datasetdir="/tmp/echocardiography",
@@ -65,7 +68,10 @@ def my_loss(x, y):
     indices without the channel dimension.
     """
     #y = torch.sum(y, dim=1).type(torch.LongTensor)
+    device = y.get_device()
     y = torch.argmax(y, dim=1).type(torch.LongTensor)
+    if device != -1:
+        y = y.to(device)
     criterion = nn.CrossEntropyLoss()
     return criterion(x, y)
 outdir = "/tmp/echocardiography"
@@ -84,7 +90,8 @@ if os.path.isfile(trained_model):
         learning_rate=5e-4,
         metrics=["multiclass_dice"],
         loss=my_loss,
-        pretrained=trained_model)
+        pretrained=trained_model,
+        use_cuda=False)
     train_history = History.load(os.path.join(outdir, "train_0_epoch_9.pkl"))
     valid_history = History.load(os.path.join(outdir, "validation_0_epoch_9.pkl"))
 else:
@@ -100,7 +107,8 @@ else:
         optimizer_name="Adam",
         learning_rate=5e-4,
         metrics=["multiclass_dice"],
-        loss=my_loss)
+        loss=my_loss,
+        use_cuda=False)
     print(unet.model)
     train_history, valid_history = unet.training(
         manager=manager,
