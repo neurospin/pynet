@@ -249,6 +249,10 @@ class Base(Observable):
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
             logger.debug("  update loss.")
+            logger.debug("  outputs: {0} - {1}".format(
+                outputs.shape, outputs.dtype))
+            logger.debug("  targets: {0} - {1}".format(
+                targets.shape, targets.dtype))
             batch_loss = self.loss(outputs, targets)
             logger.debug("  update model weights.")
             batch_loss.backward()
