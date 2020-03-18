@@ -17,6 +17,8 @@ check the package version.
 """
 
 import pynet
+from pynet.utils import setup_logging
+setup_logging(level="info")
 print(pynet.__version__)
 
 #############################################################################
@@ -72,6 +74,8 @@ net = Net()
 
 import torch
 from pynet.classifier import Classifier
+from pynet.plotting import Board
+
 
 cl = Classifier(
     optimizer_name="SGD",
@@ -80,6 +84,27 @@ cl = Classifier(
     loss_name="CrossEntropyLoss",
     model=net,
     metrics=["accuracy"])
+def update_board(signal):
+    """ Callback to update visdom board visualizer.
+
+    Parameters
+    ----------
+    signal: SignalObject
+        an object with the trained model 'object', the emitted signal
+        'signal', the epoch number 'epoch' and the fold index 'fold'.
+    """
+    net = signal.object.model
+    emitted_signal = signal.signal
+    epoch = signal.epoch
+    fold = signal.fold
+    data = {}
+    for key in signal.keys:
+        if key in ("epoch", "fold"):
+            continue
+        data[key] = getattr(signal, key)
+    board.update_plots(data)
+board = Board(port=8097, host="http://localhost", env="main")  
+cl.add_observer("after_epoch", update_board)
 test_history, train_history = cl.training(
     manager=manager,
     nb_epochs=3,
