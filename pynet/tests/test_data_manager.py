@@ -37,8 +37,7 @@ class TestDataManager(unittest.TestCase):
         data = {
             "label": ["group1"] * 5 + ["group2"] * 5,
             "age": np.random.randint(20, 60, 10),
-            "sex": ["M" if val == 0 else "F"
-                    for val in np.random.randint(0, 2, 10)]
+            "sex": ["M"] * 6 + ["F"] * 4
         }
         self.metadata = pd.DataFrame.from_dict(data)
         self.kwargs = {
