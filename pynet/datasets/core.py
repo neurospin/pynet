@@ -40,7 +40,8 @@ class DataManager(object):
                  sampler="random", input_transforms=None,
                  output_transforms=None, data_augmentation_transforms=None,
                  add_input=False, test_size=0.1, label_mapping=None,
-                 patch_size=None, **dataloader_kwargs):
+                 patch_size=None, continuous_labels=False,
+                 **dataloader_kwargs):
         """ Splits an input numpy array using memory-mapping into three sets:
         test, train and validation. This function can stratify the data.
 
@@ -100,6 +101,9 @@ class DataManager(object):
         patch_size: tuple, default None
             the size of the patches that will be extracted from the
             input/output images.
+        continuous_labels: bool, default False
+            if set consider labels as continuous values; ie. floats otherwise
+            a discrete values, ie. integer.
         """
         # Checks
         if stratify_label is not None and custom_stratification is not None:
@@ -119,6 +123,7 @@ class DataManager(object):
         self.number_of_folds = number_of_folds
         self.data_loader_kwargs = dataloader_kwargs
         self.sampler = sampler
+        self.continuous_labels = continuous_labels
         if isinstance(input_path, dict):
             self.dataset = input_path
             return
@@ -252,7 +257,8 @@ class DataManager(object):
                    validation_inputs=None, validation_outputs=None,
                    validation_labels=None, batch_size=1, input_transforms=None,
                    output_transforms=None, data_augmentation_transforms=None,
-                   add_input=False, label_mapping=None, patch_size=None):
+                   add_input=False, label_mapping=None, patch_size=None,
+                   continuous_labels=False):
         """ Create a data manger from numpy arrays.
 
         Parameters
@@ -274,6 +280,9 @@ class DataManager(object):
         patch_size: tuple, default None
             the size of the patches that will be extracted from the
             input/output images.
+        continuous_labels: bool, default False
+            if set consider labels as continuous values; ie. floats otherwise
+            a discrete values, ie. integer.
 
         Returns
         -------
@@ -324,7 +333,8 @@ class DataManager(object):
                    metadata_path=None,
                    sampler=None,
                    batch_size=batch_size,
-                   number_of_folds=1)
+                   number_of_folds=1,
+                   continuous_labels=continuous_labels)
 
     def __getitem__(self, item):
         """ Return the requested item.
@@ -359,7 +369,10 @@ class DataManager(object):
                     torch.as_tensor(getattr(sample, key))
                     for sample in list_samples], dim=0).float()
         if data["labels"] is not None:
-            data["labels"] = data["labels"].type(torch.LongTensor)
+            if self.continuous_labels:
+                data["labels"] = data["labels"].type(torch.FloatTensor)
+            else:
+                data["labels"] = data["labels"].type(torch.LongTensor)
         return DataItem(**data)
 
     def get_dataloader(self, train=False, validation=False, test=False,
