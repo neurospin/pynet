@@ -35,7 +35,7 @@ URLS = [
 logger = logging.getLogger("pynet")
 
 
-def fetch_genomic_pred(datasetdir):
+def fetch_genomic_pred(datasetdir, to_categorical=False):
     """ Fetch/prepare the genomic prediction dataset for pynet.
 
     Matrix Y contains the average grain yield, column 1: Grain yield for
@@ -46,6 +46,8 @@ def fetch_genomic_pred(datasetdir):
     ----------
     datasetdir: str
         the dataset destination folder.
+    to_categorical: bool, default False
+        if set convert the observation to categories.
 
     Returns
     -------
@@ -57,6 +59,8 @@ def fetch_genomic_pred(datasetdir):
     if not os.path.isdir(datasetdir):
         os.mkdir(datasetdir)
     desc_path = os.path.join(datasetdir, "pynet_genomic_pred.tsv")
+    desc_categorical_path = os.path.join(
+        datasetdir, "pynet_genomic_categorical_pred.tsv")
     input_path = os.path.join(datasetdir, "pynet_genomic_pred_inputs.npy")
     if not os.path.isfile(desc_path):
         for cnt, url in enumerate(URLS):
@@ -78,9 +82,22 @@ def fetch_genomic_pred(datasetdir):
         logger.debug("Data X: {0}".format(data_x.shape))
         logger.debug("Data Y: {0}".format(data_y.shape))
         np.save(input_path, data_x.values.astype(float))
+        data_y = data_y.values.T
         metadata = dict(("env{0}".format(idx), val)
-                        for idx, val in enumerate(data_y.values.T))
+                        for idx, val in enumerate(data_y))
         df = pd.DataFrame.from_dict(metadata)
+        data_y_cat = [
+            (np.round(val - np.min(val)) / 2).astype(int) for val in data_y]
+        metadata = {}
+        for idx, env in enumerate(data_y_cat):
+            metadata["env{0}".format(idx)] = env
+            labels = np.unique(env)
+            env_cat = pd.get_dummies(env).values
+            for key, val in zip(labels, env_cat.T):
+                metadata["env{0}_cat{1}".format(idx, key)] = val
+        cat_df = pd.DataFrame.from_dict(metadata)       
         df.to_csv(desc_path, sep="\t", index=False)
+        cat_df.to_csv(desc_categorical_path, sep="\t", index=False)
+    desc_path = desc_categorical_path if to_categorical else desc_path
     return Item(input_path=input_path, output_path=None,
                 metadata_path=desc_path, labels=None)
