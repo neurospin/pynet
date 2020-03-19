@@ -86,8 +86,8 @@ class Observable(object):
 
         Returns
         -------
-        out: bool
-            Fasle if a notification is in progress, otherwise True.
+        outputs: list
+            The information returned by the observers.
         """
         # Chack if a notification if in progress
         if self._locked:
@@ -105,11 +105,16 @@ class Observable(object):
             setattr(signal_to_be_notified, name, value)
 
         # Notify all the observers
+        outputs = []
         for observer in self._observers[signal]:
-            observer(signal_to_be_notified)
+            out = observer(signal_to_be_notified)
+            if out is not None:
+                outputs.append(out)
 
         # Unlock the notification process
         self._locked = False
+
+        return outputs
 
     ######################################################################
     # Properties
