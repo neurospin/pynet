@@ -45,7 +45,21 @@ def multiclass_dice(y_pred, y):
     return dice / n_classes
 
 
+def pearson_correlation(y_pred, y):
+    """ Pearson correlation.
+    """
+    mean_ypred = torch.mean(y_pred)
+    mean_y = torch.mean(y)
+    ypredm = y_pred.sub(mean_ypred)
+    ym = y.sub(mean_y)
+    r_num = ypredm.dot(ym)
+    r_den = torch.norm(ypredm, 2) * torch.norm(ym, 2)
+    r_val = r_num / r_den
+    return r_val
+
+
 METRICS = {
     "accuracy": accuracy,
     "multiclass_dice": multiclass_dice,
+    "pearson_correlation": pearson_correlation
 }
