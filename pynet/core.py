@@ -48,6 +48,7 @@ class Base(Observable):
         Observers will be notified, allowed signals are:
         - 'before_epoch'
         - 'after_epoch'
+        - 'kernel_regularizer'
 
         Parameters
         ----------
@@ -70,7 +71,7 @@ class Base(Observable):
             be used to set specific optimizer parameters.
         """
         super().__init__(
-            signals=["before_epoch", "after_epoch"])
+            signals=["before_epoch", "after_epoch", "regularizer"])
         self.optimizer = kwargs.get("optimizer")
         self.loss = kwargs.get("loss")
         for name in ("optimizer", "loss"):
@@ -247,13 +248,30 @@ class Base(Observable):
                 targets = targets[0]
             logger.debug("  evaluate model.")
             self.optimizer.zero_grad()
-            outputs = self.model(inputs)
+            output_items = self.model(inputs)
+            if not isinstance(output_items, tuple):
+                outputs = output_items
+                layer_outputs = None
+            elif len(output_items) == 1:
+                outputs = output_items[0]
+                layer_outputs = None
+            elif len(output_items) == 2:
+                outputs, layer_outputs = output_items
+            else:
+                raise ValueError(
+                    "The forward method can only return one or "
+                    "two parameters: the forward output, and "
+                    "as an option specific layer outputs dict.")
             logger.debug("  update loss.")
             logger.debug("  outputs: {0} - {1}".format(
                 outputs.shape, outputs.dtype))
             logger.debug("  targets: {0} - {1}".format(
                 targets.shape, targets.dtype))
             batch_loss = self.loss(outputs, targets)
+            regularizations = self.notify_observers(
+                "regularizer", layer_outputs=layer_outputs)
+            for reg in regularizations:
+                batch_loss += reg
             logger.debug("  update model weights.")
             batch_loss.backward()
             self.optimizer.step()
@@ -362,7 +380,18 @@ class Base(Observable):
                 elif len(targers) == 0:
                     targets = None
                 logger.debug("  evaluate model.")
-                outputs = self.model(inputs)
+                output_items = self.model(inputs)
+                if not isinstance(output_items, tuple):
+                    outputs = output_items
+                elif len(output_items) == 1:
+                    outputs = output_items[0]
+                elif len(output_items) == 2:
+                    outputs, _ = output_items
+                else:
+                    raise ValueError(
+                        "The forward method can only return one or "
+                        "two parameters: the forward output, and "
+                        "as an option specific layer outputs in a dict.")
                 if isinstance(outputs, tuple):
                     y.append(outputs[0])
                 else:
