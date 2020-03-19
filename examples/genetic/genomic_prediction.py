@@ -28,7 +28,7 @@ manager = DataManager(
     labels=["env0"],
     metadata_path=data.metadata_path,
     number_of_folds=2,
-    batch_size=1,
+    batch_size=5,
     test_size=0.2,
     continuous_labels=True)
 
@@ -117,16 +117,22 @@ plt.scatter(y_test, y_hat, marker="o")
 # Implements a standard fully connected network (MLP) for a quantitative
 # target.
 # Use Mean Squared Error as loss, ie, quantitative variable, regression.
+# We apply a kernel regularization on the first linear layer to punish the
+# weights which are very large causing the network to overfit, after applying
+# this regularization the weights will become smaller.
+# We also apply an activity regularization on the first layer that tries to
+# make the output smaller so as to remove overfitting. 
 
 import collections
 import torch
 import torch.nn as nn
+from pynet.utils import get_named_layers
 from pynet.classifier import Classifier
 
 class TwoLayersMLP(nn.Module):
     """  Simple two hidden layers percetron.
     """
-    def __init__(self, data_size, nb_neurons, nb_classes):
+    def __init__(self, data_size, nb_neurons, nb_classes, drop_rate=0.2):
         """ Initialize the instance.
 
         Parameters
@@ -137,6 +143,8 @@ class TwoLayersMLP(nn.Module):
             the number of neurons of the hidden layers.
         nb_classes: int
             the number of classes.
+        drop_rate: float, default 0.2
+            the dropout rate.
         """
         super(TwoLayersMLP, self).__init__()
         self.layers = nn.Sequential(collections.OrderedDict([
@@ -144,26 +152,105 @@ class TwoLayersMLP(nn.Module):
             ("activation1", nn.ReLU()),
             ("linear2", nn.Linear(nb_neurons[0], nb_neurons[1])),
             ("activation2", nn.Softplus()),
+            ("drop1", nn.Dropout(drop_rate)),
             ("linear3", nn.Linear(nb_neurons[1], nb_classes))
         ]))
 
-    def forward(self, x): 
-        x = self.layers(x)
+    def forward(self, x):
+        layer1_out = self.layers[0](x)
+        x = self.layers[1:](layer1_out)
+        x = x.view(x.size(0))
+        return x, {"layer1": layer1_out}
+
+def linear1_l2_kernel_regularizer(signal):
+    lambda2 = 0.01
+    model = signal.object.model
+    all_linear2_params = torch.cat([
+        x.view(-1) for x in model.layers[0].parameters()])
+    l2_regularization = lambda2 * torch.norm(all_linear2_params, 2)
+    return l2_regularization
+
+def linear1_l1_activity_regularizer(signal):
+    lambda1 = 0.01
+    layer1_out = model = signal.layer_outputs["layer1"]
+    l1_regularization = lambda1 * torch.norm(layer1_out, 1)
+    return l1_regularization
+
+if 0:
+    nb_snps = X_train.shape[1]
+    model = TwoLayersMLP(nb_snps, nb_neurons=[64, 32], nb_classes=1)
+    print(model)
+    cl = Classifier(
+        optimizer_name="SGD",
+        learning_rate=1e-4,
+        loss_name="MSELoss",
+        metrics=["pearson_correlation"],
+        model=model)
+    cl.add_observer("regularizer", linear1_l2_kernel_regularizer)
+    cl.add_observer("regularizer", linear1_l1_activity_regularizer)
+    test_history, train_history = cl.training(
+        manager=manager,
+        nb_epochs=100,
+        checkpointdir="/tmp/genomic_pred",
+        fold_index=0,
+        with_validation=True)
+    y_hat, X, y_true, loss, values = cl.testing(
+        manager=manager,
+        with_logit=False,
+        predict=False)
+    print(y_hat.shape, y_true.shape)
+    print(y_hat)
+    print(y_true)
+    print("MSE in prediction =", loss)
+    corr = np.corrcoef(y_true, y_hat)[0, 1]
+    print("Corr obs vs pred =", corr)
+    plt.figure()
+    plt.title("MLP: Observed vs Predicted Y")
+    plt.ylabel("Predicted")
+    plt.xlabel("Observed")
+    plt.scatter(y_test, y_hat, marker="o")
+
+
+#############################################################################
+# Implements the same fully connected network (MLP) for a quantitative
+# target but in the context of multiclass target.
+
+
+#############################################################################
+# Implements the same probblem but witth a Convolutional Neural Network (CNN)
+# for a quantitative target.
+
+
+class MyNet(torch.nn.Module):
+    def __init__(self):
+        super(MyNet, self).__init__()
+        self.conv1 = torch.nn.Conv1d(1, 32, kernel_size=3, stride=3, padding=1)
+        self.maxpool = torch.nn.MaxPool1d(kernel_size=2)
+        self.linear = nn.Sequential(collections.OrderedDict([
+            ("linear1", nn.Linear(32 * 213, 64)),
+            ("activation1", nn.ReLU()),
+            ("linear2", nn.Linear(64, 32)),
+            ("activation2", nn.Softplus()),
+            ("linear3", nn.Linear(32, 1))
+        ]))
+    def forward(self, x):
+        x = x.view(x.shape[0], 1, x.shape[1])
+        x = self.maxpool(self.conv1(x))
+        x = x.view(-1, 32 * 213)
+        x = self.linear(x)
         x = x.view(x.size(0))
         return x
-
-nb_snps = X_train.shape[1]
-model = TwoLayersMLP(nb_snps, nb_neurons=[64, 32], nb_classes=1)
+model = MyNet()
 print(model)
 cl = Classifier(
     optimizer_name="SGD",
     learning_rate=1e-4,
     loss_name="MSELoss",
-    #metrics=["accuracy"],
+    metrics=["pearson_correlation"],
     model=model)
 test_history, train_history = cl.training(
     manager=manager,
-    nb_epochs=100,
+    nb_epochs=10,
     checkpointdir="/tmp/genomic_pred",
     fold_index=0,
     with_validation=True)
