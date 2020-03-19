@@ -95,7 +95,7 @@ def fetch_genomic_pred(datasetdir, to_categorical=False):
             env_cat = pd.get_dummies(env).values
             for key, val in zip(labels, env_cat.T):
                 metadata["env{0}_cat{1}".format(idx, key)] = val
-        cat_df = pd.DataFrame.from_dict(metadata)       
+        cat_df = pd.DataFrame.from_dict(metadata)
         df.to_csv(desc_path, sep="\t", index=False)
         cat_df.to_csv(desc_categorical_path, sep="\t", index=False)
     desc_path = desc_categorical_path if to_categorical else desc_path
