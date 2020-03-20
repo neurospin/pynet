@@ -210,3 +210,23 @@ class NvNetCombinedLoss(_Loss):
         logger.info("dice_loss:%.4f, L2_loss:%.4f, KL_div:%.4f, combined_loss:"
                     "%.4f" % (dice_loss, l2_loss, kl_div, combined_loss))
         return combined_loss
+
+
+def mse_loss(x, y):
+    """ Mean Square Error Loss.
+    """
+    return torch.mean((x - y) ** 2)
+
+
+def gradient_loss(s, penalty="l2"):
+    """ Gradient Loss.
+    """
+    dy = torch.abs(s[:, :, 1:, :, :] - s[:, :, :-1, :, :])
+    dx = torch.abs(s[:, :, :, 1:, :] - s[:, :, :, :-1, :])
+    dz = torch.abs(s[:, :, :, :, 1:] - s[:, :, :, :, :-1])
+    if(penalty == "l2"):
+        dy = dy * dy
+        dx = dx * dx
+        dz = dz * dz
+    d = torch.mean(dx) + torch.mean(dy) + torch.mean(dz)
+    return d / 3.0

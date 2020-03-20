@@ -18,3 +18,4 @@ from .orientation import fetch_orientation
 from .echocardiography import fetch_echocardiography
 from .gradcam import fetch_gradcam
 from .genomic import fetch_genomic_pred
+from .registration import fetch_registration
