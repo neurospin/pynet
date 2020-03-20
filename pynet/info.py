@@ -79,7 +79,8 @@ REQUIRES = [
     "PySide2>=5.13.2",
     "scikit-learn>=0.21.3",
     "scikit-image==0.15.0",
-    "visdom>=0.1.8.8"
+    "visdom>=0.1.8.8",
+    "h5py>=2.10.0"
 ]
 EXTRA_REQUIRES = {
 }
