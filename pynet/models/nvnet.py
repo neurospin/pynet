@@ -176,7 +176,7 @@ class NvNet(nn.Module):
             all_shapes.append(shape.astype(int).tolist())
         return all_shapes
 
-    def forward(self, x, debug=True):
+    def forward(self, x):
         if self.debug:
             print("-" * 50)
             print("Tensor: ", x.shape)
