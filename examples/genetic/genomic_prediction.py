@@ -8,8 +8,8 @@ Based on:
 
 - https://github.com/miguelperezenciso/DLpipeline
 
-Loas the data
-------------
+Load the data
+-------------
 
 Load some data.
 You may need to change the 'datasetdir' parameter.
