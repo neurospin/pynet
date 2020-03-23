@@ -23,12 +23,12 @@ class Mock(MagicMock):
 MOCK_MODULES = [
     'torch', 'torch.nn', 'torch.nn.functional', 'torch.utils',
     'torch.utils.data', 'torch.autograd', 'torch.nn.modules',
-    'torch.nn.modules.loss', 'torch.distributions',
-    'torch.distributions.normal'
+    'torch.nn.modules.loss',
     'torchvision', 'torchvision.transforms', 'torchvision.models',
     'torchviz',
     'PySide2',
-    'hiddenlayer']
+    'hiddenlayer',
+    'torch.distributions.normal']
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 
 installdir = os.path.abspath("../..")
