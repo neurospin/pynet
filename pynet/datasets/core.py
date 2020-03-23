@@ -40,7 +40,7 @@ class DataManager(object):
                  sampler="random", input_transforms=None,
                  output_transforms=None, data_augmentation_transforms=None,
                  add_input=False, test_size=0.1, label_mapping=None,
-                 patch_size=None, continuous_labels=False,
+                 patch_size=None, continuous_labels=False, sample_size=1,
                  **dataloader_kwargs):
         """ Splits an input numpy array using memory-mapping into three sets:
         test, train and validation. This function can stratify the data.
@@ -104,6 +104,10 @@ class DataManager(object):
         continuous_labels: bool, default False
             if set consider labels as continuous values; ie. floats otherwise
             a discrete values, ie. integer.
+        sample_size: float, default 1
+            should be between 0.0 and 1.0 and represent the proportion of the
+            dataset used by the manger (random selection that can be usefull
+            during testing.
         """
         # Checks
         if stratify_label is not None and custom_stratification is not None:
@@ -130,7 +134,8 @@ class DataManager(object):
         df = pd.read_csv(metadata_path, sep="\t")
         logger.debug("Metadata:\n{0}".format(df))
         mask = DataManager.get_mask(
-            df=df, projection_labels=projection_labels)
+            df=df, projection_labels=projection_labels,
+            sample_size=sample_size)
         mask_indices = DataManager.get_mask_indices(mask)
         logger.debug("Projection labels: {0}".format(projection_labels))
         logger.debug("Mask: {0}".format(mask))
@@ -428,7 +433,7 @@ class DataManager(object):
         return SetItem(test=_test, train=_train, validation=_validation)
 
     @staticmethod
-    def get_mask(df, projection_labels=None):
+    def get_mask(df, projection_labels=None, sample_size=1):
         """ Filter a table.
 
         Parameters
@@ -438,12 +443,17 @@ class DataManager(object):
         projection_labels: dict, default None
             selects only the data that match the conditions in the dict
             {<column_name>: <value>}.
+        sample_size: float, default 1
+            should be between 0.0 and 1.0 and represent the proportion of the
+            dataset used by the manger (random selection that can be usefull
+            during testing).
 
         Returns
         -------
         mask: a list of boolean values.
         """
-        mask = np.ones(len(df), dtype=np.bool)
+        mask = np.random.choice(2, len(df), p=[1 - sample_size, sample_size])
+        mask = mask.astype(np.bool)
         if projection_labels is None:
             return mask
         for (col, val) in projection_labels.items():
