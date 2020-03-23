@@ -102,7 +102,7 @@ def fetch_registration(datasetdir):
         a named tuple containing 'input_path', 'output_path', and
         'metadata_path'.
     """
-    logger.info("Loading registration dataset.")
+    logger.info("Loading registration dataset...")
     if not os.path.isdir(datasetdir):
         os.mkdir(datasetdir)
     desc_path = os.path.join(datasetdir, "pynet_registration.tsv")
@@ -129,12 +129,13 @@ def fetch_registration(datasetdir):
         else:
             logger.info("Archive already opened!")
         # TODO fix that
-        atlas = (np.load(afile)["vol"] * 7000).astype(int)
+        atlas = np.load(afile)["vol"]
+        atlas *= 7000
         logger.debug("Atlas {0}...".format(atlas.shape))
-        mask = atlas.copy()
+        mask = atlas.astype(int)
         mask[mask > 0] = 1
-        atlas_norm = crop_mask(atlas, mask, target_shape=(128, 128, 128))
-        logger.debug("Norm atlas {0}...".format(atlas_norm.shape))
+        # atlas_norm = crop_mask(atlas, mask, target_shape=(128, 128, 128))
+        # logger.debug("Norm atlas {0}...".format(atlas_norm.shape))
         try:
             import nibabel
             im = nibabel.Nifti1Image(atlas_norm, np.eye(4))
