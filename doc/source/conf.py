@@ -23,7 +23,8 @@ class Mock(MagicMock):
 MOCK_MODULES = [
     'torch', 'torch.nn', 'torch.nn.functional', 'torch.utils',
     'torch.utils.data', 'torch.autograd', 'torch.nn.modules',
-    'torch.nn.modules.loss',
+    'torch.nn.modules.loss', 'torch.distributions',
+    'torch.distributions.normal'
     'torchvision', 'torchvision.transforms', 'torchvision.models',
     'torchviz',
     'PySide2',
