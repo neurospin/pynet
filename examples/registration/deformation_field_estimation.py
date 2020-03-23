@@ -1,18 +1,14 @@
 """
-Practical Deep Learning for Genomic Prediction
+Practical Deep Learning for Image Registration
 ==============================================
 
 Credit: A Grigis
 
-Based on:
-
-- https://github.com/miguelperezenciso/DLpipeline
-
-Loas the data
-------------
+Load the data
+-------------
 
 Load some data.
-You may need to change the 'datasetdir' parameter.
+You may need to change the 'outdir' parameter.
 """
 
 import os
@@ -28,9 +24,9 @@ from pynet.history import History
 from pynet.losses import mse_loss, gradient_loss
 import matplotlib.pyplot as plt
 
-setup_logging(level="info")
+setup_logging(level="debug")
 
-outdir = "/neurospin/nsap/datasets/registration"
+outdir = "/neurospin/nsap/tmp/registration"
 data = fetch_registration(
     datasetdir=outdir)
 manager = DataManager(
@@ -41,7 +37,8 @@ manager = DataManager(
     sampler="random",
     #stratify_label="centers",
     test_size=0.1,
-    add_input=True)
+    add_input=True,
+    sample_size=0.01)
 net = VoxelMorphRegister(
     vol_size=(128, 128, 128),
     enc_nf=[16, 32, 32, 32],
