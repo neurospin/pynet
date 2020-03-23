@@ -16,6 +16,7 @@ You may need to change the 'datasetdir' parameter.
 """
 
 import os
+import sys
 if "CI_MODE" in os.environ:
     sys.exit()
 from pynet.datasets import DataManager, fetch_registration
