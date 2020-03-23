@@ -286,7 +286,8 @@ class Base(Observable):
         logger.debug("Loss {0} ({1})".format(loss, type(loss)))
         return loss, values
 
-    def testing(self, manager, with_logit=False, predict=False):
+    def testing(self, manager, with_logit=False, predict=False,
+                concat_layer_outputs=None):
         """ Evaluate the model.
 
         Parameters
@@ -297,6 +298,9 @@ class Base(Observable):
             apply a softmax to the result.
         predict: bool, default False
             take the argmax over the channels.
+        concat_layer_outputs: list of str, default None
+            the outputs of the intermediate layers to be merged with the
+            predicted data (must be the same size).
 
         Returns
         -------
@@ -313,7 +317,8 @@ class Base(Observable):
         """
         loaders = manager.get_dataloader(test=True)
         y, loss, values = self.test(
-            loaders.test, with_logit=with_logit, predict=predict)
+            loaders.test, with_logit=with_logit, predict=predict,
+            concat_layer_outputs=concat_layer_outputs)
         if loss == 0:
             loss, values, y_true = (None, None, None)
         else:
@@ -334,7 +339,8 @@ class Base(Observable):
                 y_true = y_true[0]
         return y, X, y_true, loss, values
 
-    def test(self, loader, with_logit=False, predict=False):
+    def test(self, loader, with_logit=False, predict=False,
+             concat_layer_outputs=None):
         """ Evaluate the model on the test or validation data.
 
         Parameters
@@ -345,6 +351,9 @@ class Base(Observable):
             apply a softmax to the result.
         predict: bool, default False
             take the argmax over the channels.
+        concat_layer_outputs: list of str, default None
+            the outputs of the intermediate layers to be merged with the
+            predicted data (must be the same size).
 
         Returns
         -------
@@ -381,21 +390,25 @@ class Base(Observable):
                     targets = None
                 logger.debug("  evaluate model.")
                 output_items = self.model(inputs)
+                extra_outputs = []
                 if not isinstance(output_items, tuple):
                     outputs = output_items
                 elif len(output_items) == 1:
                     outputs = output_items[0]
                 elif len(output_items) == 2:
-                    outputs, _ = output_items
+                    outputs, layer_outputs = output_items
+                    if concat_layer_outputs is not None:
+                        for name in concat_layer_outputs:
+                            if name not in layer_outputs:
+                                raise ValueError(
+                                    "Unknown layer output '{0}'. Check the "
+                                    "network forward method.".format(name))
+                            extra_outputs.append(layer_outputs[name])
                 else:
                     raise ValueError(
                         "The forward method can only return one or "
                         "two parameters: the forward output, and "
                         "as an option specific layer outputs in a dict.")
-                if isinstance(outputs, tuple):
-                    y.append(outputs[0])
-                else:
-                    y.append(outputs)
                 if targets is not None:
                     logger.debug("  update loss.")
                     batch_loss = self.loss(outputs, targets)
@@ -405,6 +418,10 @@ class Base(Observable):
                         if name not in values:
                             values[name] = 0
                         values[name] += metric(outputs, targets) / nb_batch
+                if len(extra_outputs) > 0:
+                    y.append(torch.cat([outputs] + extra_outputs, 1))
+                else:
+                    y.append(outputs)
                 logger.debug("Mini-batch done.")
             pbar.finish()
             y = torch.cat(y, 0)
