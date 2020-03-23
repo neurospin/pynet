@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 ##########################################################################
-# NSAp - Copyright (C) CEA, 2019
+# NSAp - Copyright (C) CEA, 2019 - 2020
 # Distributed under the terms of the CeCILL-B license, as published by
 # the CEA-CNRS-INRIA. Refer to the LICENSE file or to
 # http://www.cecill.info/licences/Licence_CeCILL-B_V1-en.html
@@ -10,6 +10,8 @@
 
 # Third party import
 import logging
+import math
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
@@ -215,7 +217,15 @@ class NvNetCombinedLoss(_Loss):
 def mse_loss(x, y):
     """ Mean Square Error Loss.
     """
-    return torch.mean((x - y) ** 2)
+    logger.debug("Compute MSE loss...")
+    y = y[:, 1:]
+    logger.debug("  x: {0} - {1} - {2}".format(
+        x.shape, x.get_device(), x.dtype))
+    logger.debug("  y: {0} - {1} - {2}".format(
+        y.shape, y.get_device(), y.dtype))
+    loss = torch.mean((x - y) ** 2)
+    logger.debug("Done.")
+    return loss
 
 
 def gradient_loss(s, penalty="l2"):
@@ -230,3 +240,73 @@ def gradient_loss(s, penalty="l2"):
         dz = dz * dz
     d = torch.mean(dx) + torch.mean(dy) + torch.mean(dz)
     return d / 3.0
+
+
+def ncc_loss(arr_i, arr_j, win=None):
+    """ Calculate the normalize cross correlation between I and J.
+
+    Parameters
+    ----------
+    arr_i, arr_j: Tensor (batch_size, *vol_shape, nb_feats)
+        the input data.
+    win: list of in, default None
+        the window size tto compute the correlation, default 9.
+    """
+    logger.debug("Compute NCC loss...")
+    arr_j = arr_j[:, 1:]
+    ndims = len(list(arr_i.size())) - 2
+    if ndims not in [1, 2, 3]:
+        raise ValueError("Volumes should be 1 to 3 dimensions, not "
+                         "{0}.".format(ndims))
+    if win is None:
+        win = [9] * ndims
+    device = arr_i.get_device()
+    sum_filt = torch.ones([1, 1, *win]).to(device)
+    pad_no = math.floor(win[0] / 2)
+    stride = tuple([1] * ndims)
+    padding = tuple([pad_no] * ndims)
+    logger.debug("  ndims: {0}".format(ndims))
+    logger.debug("  stride: {0}".format(stride))
+    logger.debug("  padding: {0}".format(padding))
+    logger.debug("  filt: {0} - {1}".format(
+        sum_filt.shape, sum_filt.get_device()))
+    logger.debug("  win: {0}".format(win))
+    logger.debug("  I: {0} - {1} - {2}".format(
+        arr_i.shape, arr_i.get_device(), arr_i.dtype))
+    logger.debug("  J: {0} - {1} - {2}".format(
+        arr_j.shape, arr_j.get_device(), arr_j.dtype))
+
+    def compute_local_sums(arr_i, arr_j, filt, stride, padding, win):
+        conv_fn = getattr(func, "conv{0}d".format(len(win)))
+        logger.debug("  conv: {0}".format(conv_fn))
+
+        arr_i2 = arr_i * arr_i
+        arr_j2 = arr_j * arr_j
+        arr_ij = arr_i * arr_j
+
+        sum_arr_i = conv_fn(arr_i, filt, stride=stride, padding=padding)
+        sum_arr_j = conv_fn(arr_j, filt, stride=stride, padding=padding)
+        sum_arr_i2 = conv_fn(arr_i2, filt, stride=stride, padding=padding)
+        sum_arr_j2 = conv_fn(arr_j2, filt, stride=stride, padding=padding)
+        sum_arr_ij = conv_fn(arr_ij, filt, stride=stride, padding=padding)
+
+        win_size = np.prod(win)
+        logger.debug("  win size: {0}".format(win_size))
+        u_arr_i = sum_arr_i / win_size
+        u_arr_j = sum_arr_j / win_size
+
+        cross = (sum_arr_ij - u_arr_j * sum_arr_i - u_arr_i * sum_arr_j +
+                 u_arr_i * u_arr_j * win_size)
+        var_arr_i = (sum_arr_i2 - 2 * u_arr_i * sum_arr_i + u_arr_i *
+                     u_arr_i * win_size)
+        var_arr_j = (sum_arr_j2 - 2 * u_arr_j * sum_arr_j + u_arr_j *
+                     u_arr_j * win_size)
+
+        return var_arr_i, var_arr_j, cross
+
+    var_arr_i, var_arr_j, cross = compute_local_sums(
+        arr_i, arr_j, sum_filt, stride, padding, win)
+    cc = cross * cross / (var_arr_i * var_arr_j + 1e-5)
+    logger.info("Done.")
+
+    return -1 * torch.mean(cc)
