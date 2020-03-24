@@ -31,7 +31,13 @@ class VoxelMorphNet(nn.Module):
     classical registration methods and makes use of recent developments
     inconvolutional neural networks (CNNs).
 
+    VoxelMorph assumes that input images are pre-affined by an external tool.
+
     2018 CVPR implementation of voxelmorph.
+
+    TODO: expand this model by including anatomical surface alignment, which
+    enables training the network given (optional) anatomical segmentations ->
+    described in the paper.
 
     Reference: https://arxiv.org/abs/1903.03545.
     Code: https://github.com/voxelmorph/voxelmorph.
