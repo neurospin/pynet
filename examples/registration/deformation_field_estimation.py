@@ -18,17 +18,18 @@ if "CI_MODE" in os.environ:
 import logging
 from pynet.datasets import DataManager, fetch_registration
 from pynet.utils import setup_logging
-from pynet.registration import VoxelMorphRegister
+from pynet.interfaces import (
+    VoxelMorphNetRegister, ADDNetRegister, VTNetRegister)
 from torch.optim import lr_scheduler
 from pynet.plotting import plot_history
 from pynet.history import History
 from pynet.losses import mse_loss, ncc_loss, gradient_loss
 import matplotlib.pyplot as plt
 
-setup_logging(level="info")
+setup_logging(level="debug")
 logger = logging.getLogger("pynet")
 
-outdir = "/neurospin/nsap/tmp/registration_ncc"
+outdir = "/neurospin/nsap/tmp/registration"
 data = fetch_registration(
     datasetdir=outdir)
 manager = DataManager(
@@ -49,17 +50,55 @@ manager = DataManager(
 # From the available models load the VoxelMorphRegister, and start the
 # training.
 
-net = VoxelMorphRegister(
-    vol_size=(128, 128, 128),
-    enc_nf=[16, 32, 32, 32],
-    dec_nf=[32, 32, 32, 32, 32, 16, 16],
-    full_size=True,
+addnet_kwargs = {
+    "input_shape": (128, 128, 128),
+    "in_channels": 1,
+    "kernel_size": 3,
+    "padding": 1,
+    "flow_multiplier": 1.
+}
+net = ADDNetRegister(
+    addnet_kwargs,
     optimizer_name="Adam",
     learning_rate=1e-4,
     # weight_decay=1e-5,
     loss=mse_loss, # ncc_loss,
-    use_cuda=True)
+    use_cuda=False)
 print(net.model)
+
+vtnet_kwargs = {
+    "input_shape": (128, 128, 128),
+    "in_channels": 1,
+    "kernel_size": 3,
+    "padding": 1,
+    "flow_multiplier": 1.,
+    "nb_channels": 16
+}
+net = VTNetRegister(
+    vtnet_kwargs,
+    optimizer_name="Adam",
+    learning_rate=1e-4,
+    # weight_decay=1e-5,
+    loss=mse_loss, # ncc_loss,
+    use_cuda=False)
+print(net.model)
+
+vmnet_kwargs = {
+    "vol_size": (128, 128, 128),
+    "enc_nf": [16, 32, 32, 32],
+    "dec_nf": [32, 32, 32, 32, 32, 16, 16],
+    "full_size": True
+}
+net = VoxelMorphNetRegister(
+    vmnet_kwargs,
+    optimizer_name="Adam",
+    learning_rate=1e-4,
+    # weight_decay=1e-5,
+    loss=mse_loss, # ncc_loss,
+    use_cuda=False)
+print(net.model)
+
+stop
 
 def flow_regularizer(signal):
     logger.debug("Compute flow regularizattion...")

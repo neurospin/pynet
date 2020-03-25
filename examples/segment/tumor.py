@@ -32,7 +32,7 @@ from pynet.utils import get_named_layers
 from pynet.utils import setup_logging
 #from pynet.plotting.network import plot_net_rescue
 
-setup_logging(level="debug")
+setup_logging(level="info")
 
 model = models.NvNet(
     input_shape=(128, 128, 128),
@@ -87,7 +87,7 @@ plot_data(dataset.outputs, channel=1, nb_samples=5)
 import os
 from torch.optim import lr_scheduler
 from pynet.losses import NvNetCombinedLoss
-from pynet.segmentation import NvNetSegmenter
+from pynet.interfaces import NvNetSegmenter
 from pynet.plotting import plot_history
 from pynet.history import History
 
@@ -98,16 +98,20 @@ my_loss = NvNetCombinedLoss(
 outdir = "/neurospin/nsap/tmp/nvnet"
 if not os.path.isdir(outdir):
     os.mkdir(outdir)
-trained_model = os.path.join(outdir, "model_0_epoch_9.pth")
+trained_model = os.path.join(outdir, "model_0_epoch_99.pth")
+nvnet_kwargs = {
+    "input_shape": (150, 190, 135),
+    "in_channels": 4,
+    "num_classes": 4,
+    "activation": "relu",
+    "normalization": "group_normalization",
+    "mode": "trilinear",
+    "with_vae": True,
+    "debug": False
+}
 if os.path.isfile(trained_model):
     nvnet = NvNetSegmenter(
-        input_shape=(150, 190, 135),
-        in_channels=4,
-        num_classes=4,
-        activation="relu",
-        normalization="group_normalization",
-        mode="trilinear",
-        with_vae=True,
+        nvnet_kwargs,
         optimizer_name="Adam",
         learning_rate=1e-4,
         weight_decay=1e-5,
@@ -118,14 +122,7 @@ if os.path.isfile(trained_model):
     valid_history = History.load(os.path.join(outdir, "validation_0_epoch_9.pkl"))
 else:
     nvnet = NvNetSegmenter(
-        input_shape=(150, 190, 135),
-        in_channels=4,
-        num_classes=4,
-        activation="relu",
-        normalization="group_normalization",
-        mode="trilinear",
-        with_vae=True,
-        debug=False,
+        nvnet_kwargs,
         optimizer_name="Adam",
         learning_rate=1e-4,
         weight_decay=1e-5,
@@ -156,7 +153,7 @@ plot_history(train_history)
 y_pred, X, y_true, loss, values = nvnet.testing(
     manager=manager,
     with_logit=False,
-    predict=True)
+    predict=False)
 print(y_pred.shape, X.shape, y_true.shape)
 #y_pred = np.expand_dims(y_pred, axis=1)
 #data = np.concatenate((y_pred, y_true, X), axis=1)

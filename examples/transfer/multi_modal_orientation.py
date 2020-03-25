@@ -17,99 +17,46 @@ Read the data
 -------------
 """
 
-import copy
-import numpy as np
 import os
 import sys
-import glob
 
 if "CI_MODE" in os.environ:
     sys.exit()
 
-from pynet.dataset import split_dataset
-from pynet.dataset import LoadDataset
-from pynet.optim import training
-from pynet.utils import get_named_layers
-from pynet.utils import freeze_layers
-from pynet.utils import reset_weights
-import pynet.classifier as classifier
+from pynet.datasets import fetch_orientation
+from pynet.datasets import DataManager
+from skimage.color import gray2rgb
 
-import torch
-import torch.nn as nn
+def prepare(arr):
+    arr = gray2rgb(arr.reshape((64, 64)))
+    arr = arr.transpose(2, 0, 1)
+    return arr
 
+data = fetch_orientation(
+    datasetdir="/tmp/orientation",
+    flatten=True)
+manager = DataManager(
+    input_path=data.input_path,
+    labels=["label"],
+    metadata_path=data.metadata_path,
+    number_of_folds=10,
+    batch_size=1000,
+    stratify_label="label",
+    test_size=0.1,
+    sample_size=(0.1 if "CI_MODE" not in os.environ else 0.1),
+    input_transforms=[prepare])
 
-# To plot pretty figures
-# %matplotlib inline
-import matplotlib
-import matplotlib.pyplot as plt
-plt.rcParams["axes.labelsize"]  = 14
-plt.rcParams["xtick.labelsize"] = 12
-plt.rcParams["ytick.labelsize"] = 12
-def plot_image(image):
-    if torch.is_tensor(image):
-        image = image.cpu().detach().numpy()
-    image = image.transpose(1, 2, 0)
-    image = image.astype(np.int)
-    plt.imshow(image, aspect="equal", interpolation="nearest")
-    plt.axis("off")
+#############################################################################
+# Displaying some images of the test dataset.
 
-datadir = "/neurospin/nsap/hackathon/deeplearning-hackathon-2019/tp4_data"
-dataset_desc = os.path.join(datadir, "dataset.tsv")
-height = 64
-width  = 64
-med_view = {
-        "T1-A": 0,
-        "T1-S": 1,
-        "T1-C": 2,
-        "T2-A": 3,
-        "T2-S": 4,
-        "T2-C": 5,
-        "CT-A": 6,
-        "CT-S": 7,
-        "CT-C": 8
-}
-rev_med_view = dict((val, key) for key, val in med_view.items())
-dataloader_kwargs = {
-    "flatten": False,
-    "squeeze_channel": False,
-    "gray_to_rgb": True,
-    "load": True
-}
-dataset = split_dataset(
-    path=dataset_desc,
-    dataloader=LoadDataset,
-    inputs=["slice"],
-    outputs=None,
-    label="label",
-    number_of_folds=1,
-    batch_size=-1,
-    transforms=None,
-    test_size=0.25,
-    validation_size=0.1,
-    nb_samples=1000,
-    verbose=0,
-    **dataloader_kwargs)
+from pynet.plotting import plot_data
+import numpy as np
 
-fold_index = 0
-batch_index = 0
-X_train = dataset["train"][fold_index][batch_index]["inputs"]
-y_train = dataset["train"][fold_index][batch_index]["labels"]
-X_valid = dataset["validation"][fold_index][batch_index]["inputs"]
-y_valid = dataset["validation"][fold_index][batch_index]["labels"]
-X_test = dataset["test"][batch_index]["inputs"]
-y_test = dataset["test"][batch_index]["labels"]
-print(X_train.shape , y_train.shape)
-print(X_valid.shape, y_valid.shape )
-print(X_test.shape, y_test.shape)
-print(X_train.dtype, y_train.dtype)
+dataset = manager["test"]
+sample = dataset.inputs.reshape(-1, data.height, data.width)
+sample = np.expand_dims(sample, axis=1)
+plot_data(sample, nb_samples=5)
 
-nb_x = 5
-nb_y = 5
-plt.figure(figsize=(15, 15 * nb_x / nb_y), dpi=100)
-for cnt in range(nb_x * nb_y):
-    plt.subplot(nb_x, nb_y , cnt + 1)
-    plot_image(X_train[cnt])
-    plt.title(rev_med_view[y_train[cnt].item()])
 
 #############################################################################
 # Load the model
@@ -118,10 +65,13 @@ for cnt in range(nb_x * nb_y):
 # Load the model and fix all weights.
 # Change the last linear layer.
 
+import pynet.classifier as classifier
+from pynet.utils import get_named_layers, freeze_layers, reset_weights
+import torch.nn as nn
+
 cl = classifier.ResNet18(
     num_classes=1000,
     pretrained="/neurospin/nsap/torch/models/resnet18-5c106cde.pth",
-    batch_size=50,
     optimizer_name="Adam",
     learning_rate = 1e-4,
     loss_name="NLLLoss",
@@ -135,6 +85,7 @@ to_freeze_layers = [
 freeze_layers(cl.model, to_freeze_layers)
 nb_features = cl.model.fc.in_features
 cl.model.fc = nn.Linear(nb_features, 9)
+print(cl.model)
 
 #############################################################################
 # Retrain the model
@@ -142,47 +93,40 @@ cl.model.fc = nn.Linear(nb_features, 9)
 #
 # Train the model
 
+from pynet.plotting import plot_history
+
 def train(cl, dataset):
 
     state = dict(
         (key, val)
-        for key, val in cl.model.state_dict().items() if key.endswith(".weight"))
-    test_history, train_history = training(
-        model=cl,
-        dataset=dataset,
+        for key, val in cl.model.state_dict().items()
+        if key.endswith(".weight"))
+    test_history, train_history = cl.training(
+        manager=manager,
         nb_epochs=5,
-        outdir=None,
-        verbose=1)
+        checkpointdir=None,
+        fold_index=0,
+        with_validation=False)
     train_state = dict(
         (key, val)
-        for key, val in cl.model.state_dict().items() if key.endswith(".weight"))
+        for key, val in cl.model.state_dict().items()
+        if key.endswith(".weight"))
     for key, val in state.items():
         if not np.allclose(val, train_state[key]):
             print("--", key)
 
-    i = 0
-    test_input = X_test[i]
-    test_input = np.expand_dims(test_input, axis=0)
-    y_t = cl.predict_proba(test_input)
-    print(" ** true label      : ", y_test[i] )
-    print(" ** predicted label : ", np.argmax(y_t))
-    plt.figure()
-    plot_image(X_test[i])
-    plt.title("true: " + rev_med_view[int(y_test[i])] +
-              ", predict: " + rev_med_view[np.argmax(y_t)])
-
-    _, losses = train_history["loss"]
-    _, accuracies = train_history["accuracy"]
-
-    plt.figure(figsize=(15, 5))
-    plt.subplot(1, 2, 1)
-    plt.plot(losses)
-    plt.ylabel("Training loss")
-    plt.xlabel("Iterations")
-    plt.subplot(1, 2, 2)
-    plt.plot(accuracies)
-    plt.ylabel("Training accuracy")
-    plt.xlabel("Iterations")
+    idx = 0
+    y_pred_prob, X, y_true, loss, values = cl.testing(
+        manager=manager,
+        with_logit=True,
+        predict=False)
+    y_pred = np.argmax(y_pred_prob, axis=1)
+    print(" ** true label      : ", y_true[idx] )
+    print(" ** predicted label : ", y_pred[idx])
+    titles = ["{0}-{1}".format(data.labels[it1], data.labels[it2])
+              for it1, it2 in zip(y_pred, y_true)]
+    plot_data(X, labels=titles, nb_samples=5)
+    plot_history(train_history)
 
 train(cl, dataset)
 
@@ -195,7 +139,6 @@ train(cl, dataset)
 cl = classifier.ResNet18(
     num_classes=1000,
     pretrained="/neurospin/nsap/torch/models/resnet18-5c106cde.pth",
-    batch_size=50,
     optimizer_name="Adam",
     learning_rate = 1e-4,
     loss_name="NLLLoss",
@@ -209,7 +152,6 @@ train(cl, dataset)
 cl = classifier.ResNet18(
     num_classes=1000,
     pretrained="/neurospin/nsap/torch/models/resnet18-5c106cde.pth",
-    batch_size=50,
     optimizer_name="Adam",
     learning_rate = 1e-4,
     loss_name="NLLLoss",
@@ -220,5 +162,6 @@ cl.model.fc = nn.Linear(nb_features, 9)
 train(cl, dataset)
 
 if "CI_MODE" not in os.environ:
+    import matplotlib.pyplot as plt
     plt.show()
 

@@ -51,7 +51,8 @@ manager = DataManager(
     number_of_folds=10,
     batch_size=1000,
     stratify_label="label",
-    test_size=0.1)
+    test_size=0.1,
+    sample_size=(1 if "CI_MODE" not in os.environ else 0.1))
 
 
 #############################################################################
@@ -125,7 +126,7 @@ cl = Classifier(
     model=model)
 test_history, train_history = cl.training(
     manager=manager,
-    nb_epochs=(10 if "CI_MODE" not in os.environ else 1),
+    nb_epochs=10,
     checkpointdir="/tmp/orientation",
     fold_index=0,
     with_validation=True)
@@ -213,7 +214,7 @@ cl = Classifier(
     model=model)
 test_history, train_history = cl.training(
     manager=manager,
-    nb_epochs=(10 if "CI_MODE" not in os.environ else 1),
+    nb_epochs=10,
     checkpointdir="/tmp/orientation",
     fold_index=0,
     with_validation=True)

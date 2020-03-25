@@ -34,15 +34,13 @@ URL = ("https://deepimaging2019.sciencesconf.org/data/pages/"
 logger = logging.getLogger("pynet")
 
 
-def fetch_echocardiography(datasetdir, small=False):
+def fetch_echocardiography(datasetdir):
     """ Fetch/prepare the echocardiography dataset for pynet.
 
     Parameters
     ----------
     datasetdir: str
         the dataset destination folder.
-    small: bool, default False
-        small dataset for testing.
 
     Returns
     -------
@@ -77,9 +75,6 @@ def fetch_echocardiography(datasetdir, small=False):
         else:
             logger.info("Archive already opened!")
         files = glob.glob(os.path.join(downloaddir, "images", "*.png"))
-        if small:
-            logger.info("Small mode, select only the 50 first images.")
-            files = files[:50]
         nb_files = len(files)
         data = []
         masks = []

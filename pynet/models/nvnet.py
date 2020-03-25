@@ -16,8 +16,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as func
 import numpy as np
+from pynet.interfaces import DeepLearningDecorator
 
 
+@DeepLearningDecorator(family="segmenter")
 class NvNet(nn.Module):
     """ NvNet: combination of Vnet and VAE (variation auto-encoder).
 
@@ -52,7 +54,7 @@ class NvNet(nn.Module):
             print the shape of the tensors during the forward pass.
         """
         # Inheritance
-        super(NvNet, self).__init__()
+        nn.Module.__init__(self)
 
         # Check inputs
         if activation not in ("relu", "elu"):
@@ -211,7 +213,7 @@ class NvNet(nn.Module):
             if self.debug:
                 print("VAE: ", out_vae.shape, out_distr.shape)
             out_final = torch.cat((out_end, out_vae), 1)
-            return out_final, out_distr
+            return [out_final, out_distr]
         else:
             return out_end
 

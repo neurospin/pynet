@@ -38,7 +38,7 @@ logger = logging.getLogger("pynet")
 
 
 class Base(Observable):
-    """ Class to perform classification.
+    """ Base class for perform Deep Learning training.
     """
     def __init__(self, optimizer_name="Adam", learning_rate=1e-3,
                  loss_name="NLLLoss", metrics=None, use_cuda=False,
@@ -421,6 +421,8 @@ class Base(Observable):
                 if len(extra_outputs) > 0:
                     y.append(torch.cat([outputs] + extra_outputs, 1))
                 else:
+                    if isinstance(outputs, list):
+                        outputs = outputs[0]
                     y.append(outputs)
                 logger.debug("Mini-batch done.")
             pbar.finish()

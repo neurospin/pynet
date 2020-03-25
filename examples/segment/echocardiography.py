@@ -33,17 +33,17 @@ from pynet.utils import setup_logging
 setup_logging(level="info")
 
 data = fetch_echocardiography(
-    datasetdir="/tmp/echocardiography",
-    small=(False if "CI_MODE" not in os.environ else True))
+    datasetdir="/tmp/echocardiography")
 manager = DataManager(
     input_path=data.input_path,
     metadata_path=data.metadata_path,
     output_path=data.output_path,
-    number_of_folds=10,
+    number_of_folds=2,
     stratify_label="label",
     sampler="weighted_random",
     batch_size=10,
-    test_size=0.1)
+    test_size=0.1,
+    sample_size=(1 if "CI_MODE" not in os.environ else 0.05))
 dataset = manager["test"]
 print(dataset.inputs.shape, dataset.outputs.shape)
 data = np.concatenate((dataset.inputs, dataset.outputs), axis=1)
@@ -59,7 +59,7 @@ plot_data(data, nb_samples=5)
 
 import torch
 import torch.nn as nn
-from pynet.encoder import UNetEncoder
+from pynet.interfaces import UNetEncoder
 from pynet.plotting import plot_history
 from pynet.history import History
 
@@ -76,16 +76,19 @@ def my_loss(x, y):
     return criterion(x, y)
 outdir = "/tmp/echocardiography"
 trained_model = os.path.join(outdir, "model_0_epoch_9.pth")
+unet_kwargs = {
+    "num_classes": 4,
+    "in_channels": 1,
+    "depth": 5, 
+    "start_filts": 16,
+    "up_mode": "upsample", 
+    "merge_mode": "concat",
+    "batchnorm": False,
+    "dim": "2d"
+}
 if os.path.isfile(trained_model):
     unet = UNetEncoder(
-        num_classes=4,
-        in_channels=1,
-        depth=5, 
-        start_filts=16,
-        up_mode="upsample", 
-        merge_mode="concat",
-        batchnorm=False,
-        dim="2d",
+        unet_kwargs,
         optimizer_name="Adam",
         learning_rate=5e-4,
         metrics=["multiclass_dice"],
@@ -96,14 +99,7 @@ if os.path.isfile(trained_model):
     valid_history = History.load(os.path.join(outdir, "validation_0_epoch_9.pkl"))
 else:
     unet = UNetEncoder(
-        num_classes=4,
-        in_channels=1,
-        depth=5, 
-        start_filts=16,
-        up_mode="upsample", 
-        merge_mode="concat",
-        batchnorm=False,
-        dim="2d",
+        unet_kwargs,
         optimizer_name="Adam",
         learning_rate=5e-4,
         metrics=["multiclass_dice"],

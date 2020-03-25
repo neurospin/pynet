@@ -17,8 +17,10 @@ import collections
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
+from pynet.interfaces import DeepLearningDecorator
 
 
+@DeepLearningDecorator(family="encoder")
 class UNet(nn.Module):
     """ UNet.
 
@@ -68,7 +70,7 @@ class UNet(nn.Module):
             '3d' or '2d' input data.
         """
         # Inheritance
-        super(UNet, self).__init__()
+        nn.Module.__init__(self)
 
         # Check inputs
         if dim in ("2d", "3d"):

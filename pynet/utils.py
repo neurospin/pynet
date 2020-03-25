@@ -15,6 +15,7 @@ A module with common functions.
 import logging
 import warnings
 import os
+import re
 
 # Third party imports
 import torch

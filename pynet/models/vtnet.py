@@ -15,18 +15,22 @@ for Unsupervised medical Image Registration.
 # Imports
 import logging
 import collections
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
 from .voxelmorphnet import SpatialTransformer
+from pynet.interfaces import DeepLearningDecorator
 
 
 # Global parameters
 logger = logging.getLogger("pynet")
 
 
-class VTNet(nn.matodule):
-    """ VTNet.
+@DeepLearningDecorator(family="register")
+class VTNet(nn.Module):
+    """
+    VTNet.
 
     Volume Tweening Network(VTN) consists of several cascaded registration
     subnetworks, after each of which the moving image is warped. The
@@ -55,11 +59,11 @@ class VTNet(nn.matodule):
             the padding size, recommended (kernel_size - 1) / 2
         flow_multiplier: foat, default 1
             weight the flow field by this factor.
-        channels: int, default 16
+        nb_channels: int, default 16
             the number of channels after the first convolution.
         """
         # Inheritance
-        super(VTNet, self).__init__()
+        nn.Module.__init__(self)
 
         # Class parameters
         self.input_shape = input_shape
@@ -78,52 +82,35 @@ class VTNet(nn.matodule):
         # to help refining dense prediction. The network will output the dense
         # flow field, a volume feature map with 3 channels (x,y,z
         # displacements)of the same size as the input.
-        self.down1 = self._conv(
-            in_channels=in_channels, out_channels=nb_channels,
-            kernel_size=kernel_size, stride=2, padding=1, bias=True,
-            negative_slope=0.1)
-        self.down2 = self._conv(
-            in_channels=nb_channels, out_channels=(nb_channels * 2),
-            kernel_size=kernel_size, stride=2, padding=1, bias=True,
-            negative_slope=0.1)
-        self.down3 = self._double_conv(
-            in_channels=(nb_channels * 2), out_channels=(nb_channels * 4),
-            kernel_size=kernel_size, stride=2, padding=1, bias=True,
-            negative_slope=0.1)
-        self.down4 = self._double_conv(
-            in_channels=(nb_channels * 4), out_channels=(nb_channels * 8),
-            kernel_size=kernel_size, stride=2, padding=1, bias=True,
-            negative_slope=0.1)
-        self.down5 = self._double_conv(
-            in_channels=(nb_channels * 8), out_channels=(nb_channels * 16),
-            kernel_size=kernel_size, stride=2, padding=1, bias=True,
-            negative_slope=0.1)
-        self.down6 = self._double_conv(
-            in_channels=(nb_channels * 16), out_channels=(nb_channels * 32),
-            kernel_size=kernel_size, stride=2, padding=1, bias=True,
-            negative_slope=0.1)
-        self.pred6 = self._prediction(in_channels=(nb_channels * 32))
-        self.up5 = self._upconv(
-            in_channels=(nb_channels * 32), out_channels=(nb_channels * 16),
-            kernel_size=4, stride=2, groups=1, negative_slope=0.1)
-        self.pred5 = self._prediction(in_channels=(nb_channels * 16))
-        self.up4 = self._upconv(
-            in_channels=(nb_channels * 16), out_channels=(nb_channels * 8),
-            kernel_size=4, stride=2, groups=1, negative_slope=0.1)
-        self.pred4 = self._prediction(in_channels=(nb_channels * 8))
-        self.up3 = self._upconv(
-            in_channels=(nb_channels * 8), out_channels=(nb_channels * 4),
-            kernel_size=4, stride=2, groups=1, negative_slope=0.1)
-        self.pred3 = self._prediction(in_channels=(nb_channels * 4))
-        self.up2 = self._upconv(
-            in_channels=(nb_channels * 4), out_channels=(nb_channels * 2),
-            kernel_size=4, stride=2, groups=1, negative_slope=0.1)
-        self.pred2 = self._prediction(in_channels=(nb_channels * 2))
-        self.up1 = self._upconv(
-            in_channels=(nb_channels * 2), out_channels=nb_channels,
-            kernel_size=4, stride=2, groups=1, negative_slope=0.1)
+        out_channels = nb_channels
+        for idx in range(1, 3):
+            ops = self._conv(
+                in_channels=in_channels, out_channels=out_channels,
+                kernel_size=kernel_size, stride=2, padding=1, bias=True,
+                negative_slope=0.1)
+            setattr(self, "down{0}".format(idx), ops)
+            in_channels = out_channels
+            out_channels *= 2
+        for idx in range(3, 7):
+            ops = self._double_conv(
+                in_channels=in_channels, out_channels=out_channels,
+                kernel_size=kernel_size, stride=2, padding=1, bias=True,
+                negative_slope=0.1)
+            setattr(self, "down{0}".format(idx), ops)
+            in_channels = out_channels
+            out_channels *= 2
+        out_channels = in_channels // 2
+        for idx in range(5, 0, -1):
+            pred_ops = self._prediction(in_channels=in_channels)
+            ops = self._upconv(
+                in_channels=in_channels, out_channels=out_channels,
+                kernel_size=4, stride=2, groups=1, negative_slope=0.1)
+            setattr(self, "pred{0}".format(idx + 1), pred_ops)
+            setattr(self, "up{0}".format(idx), ops)
+            in_channels = out_channels
+            out_channels = out_channels // 2
         self.pred1 = nn.ConvTranspose3d(
-            in_channels=nb_channels, out_channels=3, kernel_size=4,
+            in_channels=in_channels, out_channels=3, kernel_size=4,
             stride=2, groups=1)
 
         # Finally warp the moving image.
@@ -131,11 +118,11 @@ class VTNet(nn.matodule):
 
         # Init weights
         @torch.no_grad()
-        def weights_init(m):
-            if isinstance(m, nn.Conv3d):
-                torch.nn.init.xavier_uniform_(m.weight)
-                if m.bias:
-                    torch.nn.init.xavier_uniform_(m.bias)
+        def weights_init(module):
+            if isinstance(module, nn.Conv3d):
+                logger.debug("Init weights of {0}...".format(module))
+                torch.nn.init.xavier_uniform_(module.weight)
+                torch.nn.init.constant(module.bias, 0)
         self.apply(weights_init)
 
     def _conv(self, in_channels, out_channels, kernel_size, stride=1,
@@ -246,8 +233,10 @@ class VTNet(nn.matodule):
         return warp, {"flow": flow * 20 * self.flow_multiplier}
 
 
-class ADDNet(nn.matodule):
-    """ ADDNet.
+@DeepLearningDecorator(family="register")
+class ADDNet(nn.Module):
+    """
+    ADDNet.
 
     Affine and Dense Deformable Network (ADDNet): affine registration
     subnetwork predicts a set of affine parameters, after which a flow field
@@ -274,7 +263,7 @@ class ADDNet(nn.matodule):
             weight the flow field by this factor.
         """
         # Inheritance
-        super(ADDNet, self).__init__()
+        nn.Module.__init__(self)
 
         # Class parameters
         self.input_shape = input_shape
@@ -289,37 +278,36 @@ class ADDNet(nn.matodule):
         # The input is downsampled by strided 3D convolutions, and finally a
         # fully-connected layer is applied to produce 12 numeric parameters
         # as output, which represents a 3×3 transform matrix.
-        self.layer1 = self._conv(
-            in_channels=in_channels, out_channels=16, kernel_size=kernel_size,
-            stride=2, padding=1, bias=True, negative_slope=0.1)
-        self.layer2 = self._conv(
-            in_channels=16, out_channels=32, kernel_size=kernel_size,
-            stride=2, padding=1, bias=True, negative_slope=0.1)
-        self.layer3 = self._double_conv(
-            in_channels=32, out_channels=64, kernel_size=kernel_size,
-            stride=2, padding=1, bias=True, negative_slope=0.1)
-        self.layer4 = self._double_conv(
-            in_channels=64, out_channels=128, kernel_size=kernel_size,
-            stride=2, padding=1, bias=True, negative_slope=0.1)
-        self.layer5 = self._double_conv(
-            in_channels=128, out_channels=256, kernel_size=kernel_size,
-            stride=2, padding=1, bias=True, negative_slope=0.1)
-        self.layer6 = self._double_conv(
-            in_channels=256, out_channels=512, kernel_size=kernel_size,
-            stride=2, padding=1, bias=True, negative_slope=0.1)
-        self.linear1 = torch.nn.Linear(512 * self.dense_features, 9)
-        self.linear2 = torch.nn.Linear(512 * self.dense_features, 3)
+        out_channels = 16
+        for idx in range(1, 3):
+            ops = self._conv(
+                in_channels=in_channels, out_channels=out_channels,
+                kernel_size=kernel_size, stride=2, padding=1, bias=True,
+                negative_slope=0.1)
+            setattr(self, "layer{0}".format(idx), ops)
+            in_channels = out_channels
+            out_channels *= 2
+        for idx in range(3, 7):
+            ops = self._double_conv(
+                in_channels=in_channels, out_channels=out_channels,
+                kernel_size=kernel_size, stride=2, padding=1, bias=True,
+                negative_slope=0.1)
+            setattr(self, "layer{0}".format(idx), ops)
+            in_channels = out_channels
+            out_channels *= 2
+        self.linear1 = torch.nn.Linear(in_channels * self.dense_features, 9)
+        self.linear2 = torch.nn.Linear(in_channels * self.dense_features, 3)
 
         # Finally warp the moving image.
         self.spatial_transform = SpatialTransformer(input_shape)
 
         # Init weights
         @torch.no_grad()
-        def weights_init(m):
-            if isinstance(m, nn.Conv3d):
-                torch.nn.init.xavier_uniform_(m.weight)
-                if m.bias:
-                    torch.nn.init.xavier_uniform_(m.bias)
+        def weights_init(module):
+            if isinstance(module, nn.Conv3d):
+                logger.debug("Init weights of {0}...".format(module))
+                torch.nn.init.xavier_uniform_(module.weight)
+                torch.nn.init.constant(module.bias, 0)
         self.apply(weights_init)
 
     def _conv(self, in_channels, out_channels, kernel_size, stride=1,
@@ -356,10 +344,10 @@ class ADDNet(nn.matodule):
 
         displacement(x) = place(x) - x = (Ax + b) - x = Wx + b
         """
+        flow = None
         vec_b = vec_b.view(-1, 1, 1, 1, 3)
         grid = []
         vec_w = []
-        prod = 0
         for idx, size in enumerate(shape):
             reshape_size = [1] * 5
             reshape_size[idx + 1] = -1
@@ -368,8 +356,11 @@ class ADDNet(nn.matodule):
             grid.append(vec.view(tuple(reshape_size)))
             vec_wi = mat_w[:, :, idx]
             vec_w.append(vec_wi.view(-1, 1, 1, 1, 3))
-            prod += grid[-1] * vec_w[-1]
-        flow = prod + vec_b
+            if flow is None:
+                flow = grid[-1] * vec_w[-1]
+            else:
+                flow += grid[-1] * vec_w[-1]
+        flow += vec_b
         return flow
 
     def forward(self, x):
@@ -396,7 +387,6 @@ class ADDNet(nn.matodule):
             x = layer(x)
             logger.debug("  output: {0} - {1} - {2}".format(
                 x.shape, x.get_device(), x.dtype))
-            logger.debug("Done.")
         logger.debug("Flatening...")
         logger.debug("  input: {0} - {1} - {2}".format(
             x.shape, x.get_device(), x.dtype))
@@ -404,17 +394,14 @@ class ADDNet(nn.matodule):
         x = x.view(-1, 512 * self.dense_features)
         logger.debug("  output: {0} - {1} - {2}".format(
             x.shape, x.get_device(), x.dtype))
-        logger.debug("Done.")
         logger.debug("Getting W...")
         vec_w = self.linear1(x)
         logger.debug("  W: {0} - {1} - {2}".format(
             vec_w.shape, vec_w.get_device(), vec_w.dtype))
-        logger.debug("Done.")
         logger.debug("Getting b...")
         vec_b = self.linear2(x)
         logger.debug("  b: {0} - {1} - {2}".format(
             vec_b.shape, vec_b.get_device(), vec_b.dtype))
-        logger.debug("Done.")
 
         logger.debug("Getting A...")
         mat_id = torch.eye(3).to(device)
@@ -422,11 +409,9 @@ class ADDNet(nn.matodule):
         mat_w = vec_w.view(-1, 3, 3) * self.flow_multiplier
         vec_b = vec_b * self.flow_multiplier
         mat_a = mat_w + mat_id
-        logger.debug("Done.")
 
         logger.debug("Getting flow...")
         flow = self._affine_flow(mat_w, vec_b, self.input_shape)
-        logger.debug("Done.")
 
         logger.debug("Applying warp...")
         moving = x[:, :nb_channels]
@@ -435,7 +420,6 @@ class ADDNet(nn.matodule):
         warp = self.spatial_transform(moving, flow)
         logger.debug("  warp: {0} - {1} - {2}".format(
             warp.shape, warp.get_device(), warp.dtype))
-        logger.debug("Done.")
 
         logger.debug("Done.")
 
@@ -466,7 +450,7 @@ class ADDNetRegularizer(object):
         self.det_loss = 0
         self.ortho_loss = 0
 
-    def forward(self, signal):
+    def __call__(self, signal):
         mat_a = signal.layer_outputs["A"]
         device = mat_a.get_device()
         det = mat_a.det()

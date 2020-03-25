@@ -46,9 +46,10 @@ manager = DataManager(
     labels=["label"],
     metadata_path=data.metadata_path,
     number_of_folds=10,
-    batch_size=(10 if "CI_MODE" not in os.environ else 1000),
+    batch_size=10,
     stratify_label="category",
-    test_size=0.1)
+    test_size=0.1,
+    sample_size=(1 if "CI_MODE" not in os.environ else 0.01))
 
 class Net(nn.Module):
     def __init__(self):
