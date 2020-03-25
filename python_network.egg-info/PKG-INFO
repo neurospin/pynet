@@ -1,0 +1,35 @@
+Metadata-Version: 1.1
+Name: python-network
+Version: 0.0.0
+Summary: 
+Helper Module for Deep Learning.
+
+Home-page: https://github.com/neurospin/pyney
+Author: 
+pynet developers
+
+Author-email: antoine.grigis@cea.fr
+License: CeCILL-B
+Description: Helper Module for Deep Learning.
+        
+Platform: O
+Platform: S
+Platform:  
+Platform: I
+Platform: n
+Platform: d
+Platform: e
+Platform: p
+Platform: e
+Platform: n
+Platform: d
+Platform: e
+Platform: n
+Platform: t
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Environment :: Console
+Classifier: Environment :: X11 Applications :: Qt
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Topic :: Scientific/Engineering
+Classifier: Topic :: Utilities
