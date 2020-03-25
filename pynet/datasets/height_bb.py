@@ -21,18 +21,22 @@ import logging
 import numpy as np
 from collections import namedtuple
 import pandas as pd
+import sklearn
 
 
 # Global parameters
 Item = namedtuple("Item", ["input_path", "output_path", "metadata_path",
                            "labels"])
+
 FILES = [
-    ("/home/vf140245/data/external/"
-     "ukb_height.phe"),
-    ("/home/vf140245/data/external/"
-     "ukb_age_sex.cov"),
-    ("/home/vf140245/data/external/"
-     "snp_val_7.npz"),
+    ("/neurospin/tmp/vfrouin/data_DL/"
+     "toy_height.phe"),
+    ("/neurospin/tmp/vfrouin/data_DL/"
+     "toy_age_sex.cov"),
+    ("/neurospin/tmp/vfrouin/data_DL/"
+     "toy_chr19_chunk7_nonan.npz"),
+    ("/neurospin/tmp/vfrouin/data_DL/"
+     "toy_chr19_chunk7_nonan.check"),
 ]
 MSG = (
     "See https://gitlab.com/brainomics/brainomics_notebooks "
@@ -41,41 +45,8 @@ MSG = (
 
 logger = logging.getLogger("pynet")
 
-"""
-tmp = []
-from glob import glob
-for fn in glob('/home/vf140245/data/external/snp_name_*.npz'):
-	print(fn)
-	a = np.load(fn, allow_pickle=True)['arr_0']
-	a = [i.split('_')[1] for i in a]
-	tmp.append(a)
-from swissknife import read_sumstat
-df = read_sumstat('/home/vf140245/data/local/height_gwas19.assoc.linear')
-df.set_index('SNP', inplace=True)
-df['GENO'] = -1
 
-for i, a in enumerate(tmp):
-	asub = list(set(a).intersection(df.index.tolist()))
-	df.loc[asub, 'GENO'] = i
-df.loc[df.P < 1e-8].groupby('GENO').count()
-      CHR  BP  A1  TEST  NMISS  BETA  STAT   P
-GENO                                          
-0      26  26  26    26     26    26    26  26
-1       6   6   6     6      6     6     6   6
-2      10  10  10    10     10    10    10  10
-3      19  19  19    19     19    19    19  19
-4      24  24  24    24     24    24    24  24
-5      37  37  37    37     37    37    37  37
-6       2   2   2     2      2     2     2   2
-7      42  42  42    42     42    42    42  42
-8      41  41  41    41     41    41    41  41
-9      32  32  32    32     32    32    32  32
-
-Choix du chunk #7
-"""
-
-
-def fetch_height_biobank(datasetdir, to_categorical=False):
+def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
     """ Fetch/prepare the height biobank prediction dataset for pynet.
 
     Matrix Y contains the average grain yield, column 1: Grain yield for
@@ -88,6 +59,8 @@ def fetch_height_biobank(datasetdir, to_categorical=False):
         the dataset destination folder.
     to_categorical: bool, default False
         if set convert the observation to categories.
+    check: bool, default False
+        if set check results against the downloaded .check file data
 
     Returns
     -------
@@ -112,27 +85,73 @@ def fetch_height_biobank(datasetdir, to_categorical=False):
             else:
                 logger.debug(
                     "Data '{0}' already downloaded.".format(datafile))
-        data_x = np.load(os.path.join(datasetdir, "snp_val_7.npz"),
+
+        # Get data_x, read from the chunk #7 nan filteredout
+        data_x = np.load(os.path.join(datasetdir,
+                                      "toy_chr19_chunk7_nonan.npz"),
                          allow_pickle=True
                          )['arr_0']
+        logger.info("Data X: {0}".format(data_x.shape))
+        
+        # Get data_y
+        ## Cosmetics
+        cov = pd.read_csv(
+            os.path.join(datasetdir, "toy_age_sex.cov"), sep="\t")             
         data_y = pd.read_csv(
-            os.path.join(datasetdir, "ukb_height.phe"), sep=",")
-        logger.debug("Data X: {0}".format(data_x.shape))
-        logger.debug("Data Y: {0}".format(data_y.shape))
-        # ~ np.save(input_path, data_x.values.astype(float))
+            os.path.join(datasetdir, "toy_height.phe"), sep="\t")
         data_y.drop(['FID', 'IID'], axis=1, inplace=True)
-        data_y['HeightCat'] =  (np.round(data_y.Height - 120.)/15).astype(int)
-        data_y.loc[data_y.HeightCat <0, 'HeightCat'] = 0
+        cov.drop(['FID', 'IID'], axis=1, inplace=True)
+        logger.info("Data Y: {0}".format(data_y.shape))
+        
+        ## residualize
+        logger.info("Residualize Data Y")
+        import statsmodels.api as sm
+        y = data_y.values
+        X = cov.values
+        X = sm.add_constant(X)
+        model= sm.OLS(y, X, missing='drop')
+        results = model.fit()
+        y_res = y - results.predict(X).reshape(-1, 1)
+        data_y['Height'] = y_res
+        data_y['HeightCat'] = pd.qcut(data_y.Height, q=3, labels=[1, 2, 3])
         tmpdf = pd.get_dummies(data_y.HeightCat)
+        d = {}
         for i in tmpdf.columns:
-			tmpdf.rename({int("{}".format(i)):"Height_{}".format(i)}, 
-			axis='columns')
+            d[i] = "Height_{}".format(i)
+        tmpdf.rename(d, axis='columns', inplace=True)
         data_y = pd.concat([data_y,tmpdf], axis=1)
+
+        if check:
+            # check data coherence
+            # check shapes
+            assert (data_x.shape[0]==cov.shape[0])
+            assert (data_x.shape[0]==data_y.shape[0])
+            # check unvariate SNP p wrt check file
+            pvals_res = []
+            for idx in range(data_x.shape[1]):
+                y = y_res
+                X = data_x[:, idx].reshape(-1, 1)
+                X = sm.add_constant(X)
+                model= sm.OLS(y, X, missing='drop')
+                results_res = model.fit()
+                pvals_res.append((results_res.pvalues[0]))
+            pvals_res = np.array(pvals_res)
+            ref = pd.read_csv(os.path.join(datasetdir, "toy_chr19_chunk7_nonan.check"), sep="\t") 
+            ref['runtimeP']= pvals_res
+            ref.sort_values('P from residual').head(20)
+            np.testing.assert_almost_equal(ref['runtimeP'].tolist(),
+                                           ref['P from residual'].tolist()
+                                           )  
+
 	    # now data_y colomns are Height, HeightCat, HeigthCat_0, ..
-	    maskcolumns = data_y.columns.tolist()
-	    maskcolumns.remove('Height')
+        maskcolumns = data_y.columns.tolist()
+        maskcolumns.remove('Height')
+        logger.info("Save Data Y")
         data_y[['Height']].to_csv(desc_path, sep="\t", index=False)
-        data_y[maskcolumns]to_csv(desc_categorical_path, sep="\t", index=False)
+        logger.info("Save Data Y (categorical)")
+        data_y[maskcolumns].to_csv(desc_categorical_path, sep="\t", index=False)
+        logger.info("Save Data X")
+        np.save(input_path, data_x.astype(float))
     desc_path = desc_categorical_path if to_categorical else desc_path
     return Item(input_path=input_path, output_path=None,
                 metadata_path=desc_path, labels=None)
