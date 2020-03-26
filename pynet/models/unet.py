@@ -20,7 +20,7 @@ import torch.nn.functional as func
 from pynet.interfaces import DeepLearningDecorator
 
 
-@DeepLearningDecorator(family="encoder")
+@DeepLearningDecorator(family=("encoder", "segmenter"))
 class UNet(nn.Module):
     """ UNet.
 
