@@ -19,7 +19,8 @@ from unittest.mock import MagicMock
 class Mock(MagicMock):
     @classmethod
     def __getattr__(cls, name):
-        return MagicMock(Module=object)
+        return MagicMock(Module=object, VGG=object, ResNet=object,
+                         DenseNet=object, Inception3=object)
 MOCK_MODULES = [
     'torch', 'torch.nn', 'torch.nn.functional', 'torch.utils',
     'torch.utils.data', 'torch.autograd', 'torch.nn.modules',
@@ -39,7 +40,8 @@ else:
     env["PYTHONPATH"] = installdir
 cmd = ["sphinxdoc", "-v 2", "-p",  installdir, "-n", "pynet", "-o", "..",
        "-m"] + MOCK_MODULES + ['matplotlib', 'matplotlib.pyplot', "-r",
-       "object", "-k", "Module"]
+       "object", "object", "object", "object", "object", "-k", "Module",
+       "VGG", "ResNet", "DenseNet", "Inception3"]
 subprocess.check_call(cmd, env=env)
 sys.path.insert(0, installdir)
 
