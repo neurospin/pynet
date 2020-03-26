@@ -74,14 +74,14 @@ net = Net()
 # Now start the optimisation.
 
 import torch
-from pynet.classifier import Classifier
+from pynet.interfaces import DeepLearningInterface
 
-cl = Classifier(
+cl = DeepLearningInterface(
+    model=net,
     optimizer_name="SGD",
     momentum=0.9,
     learning_rate=0.001,
     loss_name="CrossEntropyLoss",
-    model=net,
     metrics=["accuracy"])
 if "CI_MODE" not in os.environ:
     from pynet.plotting import Board

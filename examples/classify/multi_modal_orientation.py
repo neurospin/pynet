@@ -116,9 +116,9 @@ print(model)
 #############################################################################
 # Then we configure the parameters of the training step and train the model.
 
-from pynet.classifier import Classifier
+from pynet.interfaces import DeepLearningInterface
 
-cl = Classifier(
+cl = DeepLearningInterface(
     optimizer_name="Adam",
     learning_rate=1e-4,
     loss_name="NLLLoss",
@@ -206,7 +206,7 @@ print(X.shape)
 #############################################################################
 # Then we configure the parameters of the training step and train the model.
 
-cl = Classifier(
+cl = DeepLearningInterface(
     optimizer_name="Adam",
     learning_rate=1e-5,
     loss_name="NLLLoss",

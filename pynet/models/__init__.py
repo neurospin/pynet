@@ -15,3 +15,4 @@ from .unet import UNet
 from .nvnet import NvNet
 from .voxelmorphnet import VoxelMorphNet
 from .vtnet import VTNet, ADDNet
+from .torchvisnet import *

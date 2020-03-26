@@ -42,7 +42,7 @@ def get_interfaces(family=None):
         family = [family]
     interfaces = {}
     for key in AVAILABLE_INTERFACES:
-        klass = DeepLearningFramework.REGISTRY[key]
+        klass = DeepLearningInterface.REGISTRY[key]
         if family is not None:
             for cnt, regex in enumerate(family):
                 if re.match(regex, klass.__family__) is not None:
@@ -76,7 +76,7 @@ class DeepLearningMetaRegister(type):
         if name in cls.REGISTRY:
             raise ValueError(
                 "'{0}' name already used in registry.".format(name))
-        if name not in ("DeepLearningFramework", ):
+        if name not in ("DeepLearningInterface", ):
             cls.REGISTRY[name] = new_cls
         logger.debug("  registry: {0}".format(cls.REGISTRY))
         return new_cls
@@ -86,24 +86,23 @@ class DeepLearningMetaRegister(type):
         return cls.REGISTRY
 
 
-class DeepLearningFramework(Base, metaclass=DeepLearningMetaRegister):
-    """ Class to define ready to use Deep Learning framework for defined
+class DeepLearningInterface(Base, metaclass=DeepLearningMetaRegister):
+    """ Class to define ready to use Deep Learning interface for defined
     networks. An attributes section will be used for the documentation of the
     network parameters.
     """
     __family__ = None
     __net__ = None
 
-    def __init__(self, net_kwargs,
-                 pretrained=None, optimizer_name="Adam",
+    def __init__(self, net_kwargs=None, pretrained=None, optimizer_name="Adam",
                  learning_rate=1e-3, loss_name="NLLLoss", metrics=None,
                  use_cuda=False, **kwargs):
         """ Class initilization.
 
         Parameters
         ----------
-        net_kwargs: dict
-            all the parameters associated with the network creation.
+        net_kwargs: dict, default None
+            all the parameters that will be used during the network creation.
         pretrained: path, default None
             path to the pretrained model or weights.
         optimizer_name: str, default 'Adam'
@@ -122,10 +121,13 @@ class DeepLearningFramework(Base, metaclass=DeepLearningMetaRegister):
             specify directly a custom 'optimizer' or 'loss'. Can also be used
             to set specific optimizer parameters.
         """
-        logger.debug("Creating network '{0}'...".format(self.__net__))
-        logger.debug("  family: {0}".format(self.__family__))
-        logger.debug("  kwargs: {0}".format(net_kwargs))
-        self.model = self.__net__(**net_kwargs)
+        if self.__net__ is not None:
+            logger.debug("Creating network '{0}'...".format(self.__net__))
+            logger.debug("  family: {0}".format(self.__family__))
+            logger.debug("  kwargs: {0}".format(net_kwargs))
+            if net_kwargs is None:
+                raise ValueError("Please specify network parameters.")
+            self.model = self.__net__(**net_kwargs)
         Base.__init__(
             self,
             optimizer_name=optimizer_name,
@@ -138,8 +140,8 @@ class DeepLearningFramework(Base, metaclass=DeepLearningMetaRegister):
 
 
 class DeepLearningDecorator(object):
-    """ Decorator to determine the netorks that need to be warped in a
-    Deep Leanring framework environment.
+    """ Decorator to determine the networks that need to be warped in the
+    Deep Leanring interface environment.
 
     In order to make the class publicly accessible, we assign the result of
     the function to a variable dynamically using globals().
@@ -149,11 +151,14 @@ class DeepLearningDecorator(object):
 
         Parameters
         ----------
-        family: str
-            the family associated to the network.
+        family: str or list of str
+            the families associated to the network.
         """
         self.destination_module_globals = globals()
         self.family = family
+        if (not isinstance(self.family, list) and
+                not isinstance(self.family, tuple)):
+            self.family = [family]
 
     def __call__(self, klass, *args, **kwargs):
         """ Create the validator.
@@ -163,17 +168,33 @@ class DeepLearningDecorator(object):
         function: callable
             the function that perform the test.
         """
-        logger.debug("Creating framework for '{0}'...".format(klass))
-        logger.debug("  family: {0}".format(self.family))
-        category = self.family.title().replace(" ", "")
+        for family in self.family:
+            new_klass, klass_name = self._create_interface(klass, family)
+            self.destination_module_globals[klass_name] = new_klass
+        return klass
+
+    def _create_interface(self, klass, family):
+        """ Create the requested interface baed on the family name.
+        """
+        logger.debug("Creating interface for '{0}'...".format(klass))
+        logger.debug("  family: {0}".format(family))
+        category = family.title().replace(" ", "")
         logger.debug("  category: {0}".format(category))
-        class_name = klass.__name__ + category
-        logger.debug("  class name: {0}".format(class_name))
+        klass_name = klass.__name__ + category
+        logger.debug("  class name: {0}".format(klass_name))
         mod_name = self.destination_module_globals["__name__"]
         logger.debug("  mod name: {0}".format(mod_name))
-        doc = textwrap.dedent(klass.__doc__)
-        net_doc = textwrap.dedent(
-            klass.__init__.__doc__.split("----------")[1])
+        doc = textwrap.dedent(klass.__doc__ or "")
+        net_doc = klass.__init__.__doc__
+        if net_doc is None:
+            raise ValueError("Please specify the docstring of the model "
+                             "__init__ method.")
+        net_doc = textwrap.dedent(net_doc)
+        if "----------" not in net_doc:
+            raise ValueError("Please specify the description of the network "
+                             "parameters in the docstring of the model "
+                             "__init__ method.")
+        net_doc = net_doc.split("----------")[1]
         net_doc = net_doc.strip("\n")
         doc += textwrap.dedent("""
         The network kwargs are discribed in the following section.
@@ -184,20 +205,20 @@ class DeepLearningDecorator(object):
         doc += net_doc
         class_parameters = {
             "__module__": mod_name,
-            "_id":  mod_name + "." + class_name,
-            "__bases__": DeepLearningFramework.__bases__,
-            "__mro__": DeepLearningFramework.__mro__,
+            "_id":  mod_name + "." + klass_name,
+            "__bases__": DeepLearningInterface.__bases__,
+            "__mro__": DeepLearningInterface.__mro__,
             "__doc__": doc,
-            "__family__": self.family,
+            "__family__": family,
             "__net__": klass
         }
         new_klass = type(
-            class_name, (DeepLearningFramework, ), class_parameters)
-        self.destination_module_globals[class_name] = new_klass
-        return klass
+            klass_name, (DeepLearningInterface, ), class_parameters)
+
+        return new_klass, klass_name
 
 
 import pynet.models
 
 
-AVAILABLE_INTERFACES = sorted(DeepLearningFramework.get_registry().keys())
+AVAILABLE_INTERFACES = sorted(DeepLearningInterface.get_registry().keys())

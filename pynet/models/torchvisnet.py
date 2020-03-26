@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 ##########################################################################
-# NSAp - Copyright (C) CEA, 2019
+# NSAp - Copyright (C) CEA, 2019 - 2020
 # Distributed under the terms of the CeCILL-B license, as published by
 # the CEA-CNRS-INRIA. Refer to the LICENSE file or to
 # http://www.cecill.info/licences/Licence_CeCILL-B_V1-en.html
@@ -9,71 +9,23 @@
 
 
 """
-Define classifier models.
+Import classifier models defined in torchvision.
 """
 
-# System import
+# Imports
 import re
-
-# Third party import
+import sys
+import torch.nn as nn
 from torchvision import models
-import torch
-import torch.nn.functional as func
-import numpy as np
-
-# Package import
-from pynet.core import Base
+from pynet.interfaces import DeepLearningDecorator
 
 
-class Classifier(Base):
-    """ Class to perform classification.
-    """
-    def __init__(self, optimizer_name="Adam", learning_rate=1e-3,
-                 loss_name="NLLLoss", metrics=None, use_cuda=False,
-                 pretrained=None, **kwargs):
-        """ Class instantiation.
-
-        Observers will be notified, allowed signals are:
-        - 'before_epoch'
-        - 'after_epoch'
-
-        Parameters
-        ----------
-        optimizer_name: str, default 'Adam'
-            the name of the optimizer: see 'torch.optim' for a description
-            of available optimizer.
-        learning_rate: float, default 1e-3
-            the optimizer learning rate.
-        loss_name: str, default 'NLLLoss'
-            the name of the loss: see 'torch.nn' for a description
-            of available loss.
-        metrics: list of str
-            a list of extra metrics that will be computed.
-        use_cuda: bool, default False
-            wether to use GPU or CPU.
-        pretrained: path, default None
-            path to the pretrained model or weights.
-        kwargs: dict
-            specify directly a custom 'model', 'optimizer' or 'loss'. Can also
-            be used to set specific optimizer parameters.
-        """
-        super().__init__(
-            optimizer_name=optimizer_name,
-            learning_rate=learning_rate,
-            loss_name=loss_name,
-            metrics=metrics,
-            use_cuda=use_cuda,
-            pretrained=pretrained,
-            **kwargs)
-
-
-class VGGClassifier(Classifier):
+@DeepLearningDecorator(family="classifier")
+class VGG(models.VGG):
     """ VGGNet (2014) by Simonyan and Zisserman.
     """
     def __init__(self, cfg, num_classes, batch_norm=False, init_weights=True,
-                 pretrained=None, make_layers=models.vgg.make_layers,
-                 optimizer_name="Adam", learning_rate=1e-3,
-                 loss_name="NLLLoss", metrics=None, use_cuda=False, **kwargs):
+                 pretrained=None, make_layers=models.vgg.make_layers):
         """ Class initilization.
 
         Parameters
@@ -93,44 +45,20 @@ class VGGClassifier(Classifier):
             a function to create the feature layers: default 2d max pooling
             with kernel size 2 and stride 2, and convolution with kernel size
             3 and padding 1.
-        optimizer_name: str, default 'Adam'
-            the name of the optimizer: see 'torch.optim' for a description
-            of available optimizer.
-        learning_rate: float, default 1e-3
-            the optimizer learning rate.
-        loss_name: str, default 'NLLLoss'
-            the name of the loss: see 'torch.nn' for a description
-            of available loss.
-        metrics: list of str
-            a list of extra metrics that will be computed.
-        use_cuda: bool, default False
-            wether to use GPU or CPU.
-        kwargs: dict
-            specify directly a custom 'optimizer' or 'loss'. Can also be used
-            to set specific optimizer parameters.
         """
-        self.model = models.VGG(
+        models.VGG.__init__(
+            self,
             features=make_layers(cfg, batch_norm=batch_norm),
             num_classes=num_classes,
             init_weights=init_weights)
-        super().__init__(
-            optimizer_name=optimizer_name,
-            learning_rate=learning_rate,
-            loss_name=loss_name,
-            metrics=metrics,
-            use_cuda=use_cuda,
-            pretrained=pretrained,
-            **kwargs)
 
 
-class DenseNetClassifier(Classifier):
+@DeepLearningDecorator(family="classifier")
+class DenseNet(models.DenseNet):
     """ DenseNet.
     """
     def __init__(self, growth_rate, block_config, num_init_features,
-                 num_classes, bn_size=4, drop_rate=0, memory_efficient=False,
-                 pretrained=None, optimizer_name="Adam",
-                 learning_rate=1e-3, loss_name="NLLLoss", metrics=None,
-                 use_cuda=False, **kwargs):
+                 num_classes, bn_size=4, drop_rate=0, memory_efficient=False):
         """ Class initilization.
 
         Parameters
@@ -151,25 +79,9 @@ class DenseNetClassifier(Classifier):
         memory_efficient: bool, default False
             if True, uses checkpointing. Much more memory efficient,
             but slower.
-        pretrained: str, default None
-            update the weights of the model using this state information.
-        optimizer_name: str, default 'Adam'
-            the name of the optimizer: see 'torch.optim' for a description
-            of available optimizer.
-        learning_rate: float, default 1e-3
-            the optimizer learning rate.
-        loss_name: str, default 'NLLLoss'
-            the name of the loss: see 'torch.nn' for a description
-            of available loss.
-        metrics: list of str
-            a list of extra metrics that will be computed.
-        use_cuda: bool, default False
-            wether to use GPU or CPU.
-        kwargs: dict
-            specify directly a custom 'optimizer' or 'loss'. Can also be used
-            to set specific optimizer parameters.
         """
-        self.model = models.DenseNet(
+        models.DenseNet.__init__(
+            self,
             growth_rate=growth_rate,
             block_config=block_config,
             num_init_features=num_init_features,
@@ -177,24 +89,15 @@ class DenseNetClassifier(Classifier):
             drop_rate=drop_rate,
             num_classes=num_classes,
             memory_efficient=memory_efficient)
-        super().__init__(
-            optimizer_name=optimizer_name,
-            learning_rate=learning_rate,
-            loss_name=loss_name,
-            metrics=metrics,
-            use_cuda=use_cuda,
-            pretrained=pretrained,
-            **kwargs)
 
 
-class ResNetClassifier(Classifier):
+@DeepLearningDecorator(family="classifier")
+class ResNet(models.ResNet):
     """ Residual Neural Network (ResNet) by Kaiming He et al.
     """
     def __init__(self, block, layers, num_classes, zero_init_residual=False,
                  groups=1, width_per_group=64,
-                 replace_stride_with_dilation=None, norm_layer=None,
-                 pretrained=None, optimizer_name="Adam", learning_rate=1e-3,
-                 loss_name="NLLLoss", metrics=None, use_cuda=False, **kwargs):
+                 replace_stride_with_dilation=None, norm_layer=None):
         """ Class initilization.
 
         Parameters
@@ -220,25 +123,9 @@ class ResNetClassifier(Classifier):
         norm_layer: nn Module, default None
             use the specified normalization module, by default use batch
             normalization.
-        pretrained: str, default None
-            update the weights of the model using this state information.
-        optimizer_name: str, default 'Adam'
-            the name of the optimizer: see 'torch.optim' for a description
-            of available optimizer.
-        learning_rate: float, default 1e-3
-            the optimizer learning rate.
-        loss_name: str, default 'NLLLoss'
-            the name of the loss: see 'torch.nn' for a description
-            of available loss.
-        metrics: list of str
-            a list of extra metrics that will be computed.
-        use_cuda: bool, default False
-            wether to use GPU or CPU.
-        kwargs: dict
-            specify directly a custom 'optimizer' or 'loss'. Can also be used
-            to set specific optimizer parameters.
         """
-        self.model = models.ResNet(
+        models.ResNet.__init__(
+            self,
             block=block,
             layers=layers,
             num_classes=num_classes,
@@ -247,23 +134,13 @@ class ResNetClassifier(Classifier):
             width_per_group=width_per_group,
             replace_stride_with_dilation=replace_stride_with_dilation,
             norm_layer=norm_layer)
-        super().__init__(
-            optimizer_name=optimizer_name,
-            learning_rate=learning_rate,
-            loss_name=loss_name,
-            metrics=metrics,
-            use_cuda=use_cuda,
-            pretrained=pretrained,
-            **kwargs)
 
 
-class Inception3(Classifier):
+@DeepLearningDecorator(family="classifier")
+class Inception3(models.Inception3):
     """ Inception v3 by Google.
     """
-    def __init__(self, num_classes, aux_logits=True, transform_input=False,
-                 pretrained=None, optimizer_name="Adam",
-                 learning_rate=1e-3, loss_name="NLLLoss", metrics=None,
-                 use_cuda=False, **kwargs):
+    def __init__(self, num_classes, aux_logits=True, transform_input=False):
         """ Class initilization.
 
         Parameters
@@ -274,36 +151,12 @@ class Inception3(Classifier):
             auxiliary classifier for the training.
         transform_input: bool, default False
             normalize the data.
-        pretrained: str, default None
-            update the weights of the model using this state information.
-        optimizer_name: str, default 'Adam'
-            the name of the optimizer: see 'torch.optim' for a description
-            of available optimizer.
-        learning_rate: float, default 1e-3
-            the optimizer learning rate.
-        loss_name: str, default 'NLLLoss'
-            the name of the loss: see 'torch.nn' for a description
-            of available loss.
-        metrics: list of str
-            a list of extra metrics that will be computed.
-        use_cuda: bool, default False
-            wether to use GPU or CPU.
-        kwargs: dict
-            specify directly a custom 'optimizer' or 'loss'. Can also be used
-            to set specific optimizer parameters.
         """
-        self.model = models.Inception3(
+        models.Inception3.__init__(
+            self,
             num_classes=num_classes,
             aux_logits=aux_logits,
             transform_input=transform_input)
-        super().__init__(
-            optimizer_name=optimizer_name,
-            learning_rate=learning_rate,
-            loss_name=loss_name,
-            metrics=metrics,
-            use_cuda=use_cuda,
-            pretrained=pretrained,
-            **kwargs)
 
 
 def class_factory(klass_name, klass_params, destination_module_globals):
@@ -319,31 +172,22 @@ def class_factory(klass_name, klass_params, destination_module_globals):
     klass_params: dict
         the class specific parameters.
     """
-    class VGGBaseClassifier(VGGClassifier):
+    class VGGBase(VGG):
         """ VGGNet X-layer.
         """
         cfg = None
 
-        def __init__(self, num_classes, batch_norm=False, init_weights=True,
-                     pretrained=None, optimizer_name="Adam",
-                     learning_rate=1e-3, loss_name="NLLLoss", metrics=None,
-                     **kwargs):
+        def __init__(self, num_classes, batch_norm=False, init_weights=True):
             if self.cfg is None:
                 raise ValueError("Please specify a configuration first.")
-            super().__init__(
+            VGG.__init__(
+                self,
                 cfg=self.cfg,
                 num_classes=num_classes,
                 batch_norm=batch_norm,
-                init_weights=init_weights,
-                pretrained=pretrained,
-                make_layers=models.vgg.make_layers,
-                optimizer_name=optimizer_name,
-                learning_rate=learning_rate,
-                loss_name=loss_name,
-                metrics=metrics,
-                **kwargs)
+                init_weights=init_weights)
 
-    class DenseNetBaseClassifier(DenseNetClassifier):
+    class DenseNetBase(DenseNet):
         """ DenseNet-X model.
         """
         growth_rate = None
@@ -351,30 +195,22 @@ def class_factory(klass_name, klass_params, destination_module_globals):
         num_init_features = None
 
         def __init__(self, num_classes, bn_size=4, drop_rate=0,
-                     memory_efficient=False, pretrained=None,
-                     optimizer_name="Adam", learning_rate=1e-3,
-                     loss_name="NLLLoss", metrics=None, use_cuda=False,
-                     **kwargs):
+                     memory_efficient=False):
             for name in ("growth_rate", "block_config", "num_init_features"):
                 if getattr(self, name) is None:
                     raise ValueError(
                         "Please specify '{0}' first.".format(name))
-            super().__init__(
+            DenseNet.__init__(
+                self,
                 growth_rate=self.growth_rate,
                 block_config=self.block_config,
                 num_init_features=self.num_init_features,
                 num_classes=num_classes,
                 bn_size=bn_size,
                 drop_rate=drop_rate,
-                memory_efficient=memory_efficient,
-                pretrained=pretrained,
-                optimizer_name=optimizer_name,
-                learning_rate=learning_rate,
-                loss_name=loss_name,
-                metrics=metrics,
-                **kwargs)
+                memory_efficient=memory_efficient)
 
-    class ResNetBaseClassifier(ResNetClassifier):
+    class ResNetBase(ResNet):
         """ ResNet-X model.
         """
         block = None
@@ -384,15 +220,13 @@ def class_factory(klass_name, klass_params, destination_module_globals):
 
         def __init__(self, num_classes, zero_init_residual=False, groups=1,
                      width_per_group=64, replace_stride_with_dilation=None,
-                     norm_layer=None, pretrained=None,
-                     optimizer_name="Adam", learning_rate=1e-3,
-                     loss_name="NLLLoss", metrics=None, use_cuda=False,
-                     **kwargs):
+                     norm_layer=None):
             for name in ("block", "layers"):
                 if getattr(self, name) is None:
                     raise ValueError(
                         "Please specify '{0}' first.".format(name))
-            super().__init__(
+            ResNet.__init__(
+                self,
                 block=self.block,
                 layers=self.layers,
                 num_classes=num_classes,
@@ -400,60 +234,59 @@ def class_factory(klass_name, klass_params, destination_module_globals):
                 groups=groups,
                 width_per_group=width_per_group,
                 replace_stride_with_dilation=replace_stride_with_dilation,
-                norm_layer=norm_layer,
-                pretrained=pretrained,
-                optimizer_name=optimizer_name,
-                learning_rate=learning_rate,
-                loss_name=loss_name,
-                metrics=metrics,
-                **kwargs)
+                norm_layer=norm_layer)
+    for klass, ref_klass in ((VGGBase, VGG), (DenseNetBase, DenseNet),
+                             (ResNetBase, ResNet)):
+        klass.__doc__ = ref_klass.__doc__
+        klass.__init__.__doc__ = ref_klass.__init__.__doc__
     klass_map = {
-        "VGG": VGGBaseClassifier,
-        "DenseNet": DenseNetBaseClassifier,
-        "ResNet": ResNetBaseClassifier
+        "VGG": VGGBase,
+        "DenseNet": DenseNetBase,
+        "ResNet": ResNetBase
     }
     klass_params.update({
         "__module__": destination_module_globals["__name__"],
         "_id":  destination_module_globals["__name__"] + "." + klass_name
     })
     klass_base_name = re.findall(r"([a-zA-Z]+)[0-9]+", klass_name)[0]
-    destination_module_globals[klass_name] = (
+    decorator = DeepLearningDecorator(family="classifier")
+    destination_module_globals[klass_name] = decorator(
         type(klass_name, (klass_map[klass_base_name], ), klass_params))
 
 
 CFG = {
-    "VGG11Classifier": {
+    "VGG11": {
         "cfg": [64, "M", 128, "M", 256, 256, "M", 512, 512, "M", 512, 512,
                 "M"]
     },
-    "VGG13Classifier": {
+    "VGG13": {
         "cfg": [64, 64, "M", 128, 128, "M", 256, 256, "M", 512, 512, "M", 512,
                 512, "M"]
     },
-    "VGG16Classifier": {
+    "VGG16": {
         "cfg": [64, 64, "M", 128, 128, "M", 256, 256, 256, "M", 512, 512, 512,
                 "M", 512, 512, 512, "M"]
     },
-    "VGG19Classifier": {
+    "VGG19": {
         "cfg": [64, 64, "M", 128, 128, "M", 256, 256, 256, 256, "M", 512, 512,
                 512, 512, "M", 512, 512, 512, 512, "M"]
     },
-    "DenseNet121Classifier": {
+    "DenseNet121": {
         "growth_rate": 32,
         "block_config": (6, 12, 24, 16),
         "num_init_features": 64
     },
-    "DenseNet161Classifier": {
+    "DenseNet161": {
         "growth_rate": 48,
         "block_config": (6, 12, 36, 24),
         "num_init_features": 96
     },
-    "DenseNet169Classifier": {
+    "DenseNet169": {
         "growth_rate": 32,
         "block_config": (6, 12, 32, 32),
         "num_init_features": 64
     },
-    "DenseNet201Classifier": {
+    "DenseNet201": {
         "growth_rate": 32,
         "block_config": (6, 12, 48, 32),
         "num_init_features": 64

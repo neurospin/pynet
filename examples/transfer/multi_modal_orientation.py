@@ -65,12 +65,15 @@ plot_data(sample, nb_samples=5)
 # Load the model and fix all weights.
 # Change the last linear layer.
 
-import pynet.classifier as classifier
+import pynet.interfaces as interfaces
 from pynet.utils import get_named_layers, freeze_layers, reset_weights
 import torch.nn as nn
 
-cl = classifier.ResNet18(
-    num_classes=1000,
+net_kwargs = {
+    "num_classes": 1000
+}
+cl = interfaces.ResNet18Classifier(
+    net_kwargs,
     pretrained="/neurospin/nsap/torch/models/resnet18-5c106cde.pth",
     optimizer_name="Adam",
     learning_rate = 1e-4,
@@ -136,8 +139,8 @@ train(cl, dataset)
 #
 # OK it's not working, let's try different transfer learning strategies.
 
-cl = classifier.ResNet18(
-    num_classes=1000,
+cl = interfaces.ResNet18Classifier(
+    net_kwargs,
     pretrained="/neurospin/nsap/torch/models/resnet18-5c106cde.pth",
     optimizer_name="Adam",
     learning_rate = 1e-4,
@@ -149,8 +152,8 @@ nb_features = cl.model.fc.in_features
 cl.model.fc = nn.Linear(nb_features, 9)
 train(cl, dataset)
 
-cl = classifier.ResNet18(
-    num_classes=1000,
+cl = interfaces.ResNet18Classifier(
+    net_kwargs,
     pretrained="/neurospin/nsap/torch/models/resnet18-5c106cde.pth",
     optimizer_name="Adam",
     learning_rate = 1e-4,

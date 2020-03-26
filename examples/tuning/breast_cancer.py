@@ -20,7 +20,7 @@ import torch.nn.functional as F
 
 from sklearn.metrics import f1_score
 
-from pynet.classifier import Classifier
+from pynet.interfaces import DeepLearningInterface
 from pynet.datasets import DataManager
 
 #############################################################################
@@ -96,7 +96,7 @@ def breast_cancer(x_train, y_train, x_val, y_val, params):
         second_neuron=params["second_neuron"], dropout=params["dropout"])
     net.apply(weights_init_uniform_rule)
     net.init_history()
-    model = Classifier(
+    model = DeepLearningInterface(
         model=net,
         optimizer_name=params["optimizer_name"],
         learning_rate=params["learning_rate"],

@@ -127,7 +127,7 @@ import collections
 import torch
 import torch.nn as nn
 from pynet.utils import get_named_layers
-from pynet.classifier import Classifier
+from pynet.interfaces import DeepLearningInterface
 
 class TwoLayersMLP(nn.Module):
     """  Simple two hidden layers percetron.
@@ -181,7 +181,7 @@ def linear1_l1_activity_regularizer(signal):
 nb_snps = X_train.shape[1]
 model = TwoLayersMLP(nb_snps, nb_neurons=[64, 32], nb_classes=1)
 print(model)
-cl = Classifier(
+cl = DeepLearningInterface(
     optimizer_name="SGD",
     learning_rate=5e-4,
     loss_name="MSELoss",
@@ -237,7 +237,7 @@ class MyNet(torch.nn.Module):
         return x
 model = MyNet()
 print(model)
-cl = Classifier(
+cl = DeepLearningInterface(
     optimizer_name="SGD",
     learning_rate=5e-4,
     loss_name="MSELoss",
@@ -304,7 +304,7 @@ def my_loss(x, y):
         y = y.to(device)
     criterion = nn.CrossEntropyLoss()
     return criterion(x, y)
-cl = Classifier(
+cl = DeepLearningInterface(
     optimizer_name="Adam",
     learning_rate=5e-4,
     loss=my_loss,
