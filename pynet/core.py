@@ -386,7 +386,7 @@ class Base(Observable):
                         targets.append(item.to(self.device))
                 if len(targets) == 1:
                     targets = targets[0]
-                elif len(targers) == 0:
+                elif len(targets) == 0:
                     targets = None
                 logger.debug("  evaluate model.")
                 output_items = self.model(inputs)
