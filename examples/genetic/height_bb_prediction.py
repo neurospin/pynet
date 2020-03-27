@@ -16,6 +16,10 @@ import os
 from pynet.datasets import DataManager, fetch_height_biobank
 from pynet.utils import setup_logging
 
+# This example cannot run in CI : it accesses NS intra filesystems
+if "CI_MODE" in os.environ:
+    sys.exit()
+
 setup_logging(level="info")
 
 data = fetch_height_biobank(datasetdir="/neurospin/tmp/height_bb")
@@ -67,4 +71,4 @@ plt.figure()
 plt.ylabel("-log10 P-value")
 plt.xlabel("SNP")
 plt.plot(pvals, marker="o")
-plt.show()
+
