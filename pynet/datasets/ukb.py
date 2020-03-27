@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-##########################################################################
+########################################################################
 # NSAp - Copyright (C) CEA, 2019
 # Distributed under the terms of the CeCILL-B license, as published by
 # the CEA-CNRS-INRIA. Refer to the LICENSE file or to
 # http://www.cecill.info/licences/Licence_CeCILL-B_V1-en.html
 # for details.
-##########################################################################
+########################################################################
 
 """
 Module provides functions to prepare different toy datasets from UKB.
@@ -99,22 +99,22 @@ def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
         logger.info("Data X: {0}".format(data_x.shape))
 
         # Get data_y
-        ## Cosmetics
+        #  Cosmetics
         cov = pd.read_csv(
-            os.path.join(datasetdir, "toy_age_sex.cov"), sep="\t")             
+            os.path.join(datasetdir, "toy_age_sex.cov"), sep="\t")
         data_y = pd.read_csv(
             os.path.join(datasetdir, "toy_height.phe"), sep="\t")
         data_y.drop(['FID', 'IID'], axis=1, inplace=True)
         cov.drop(['FID', 'IID'], axis=1, inplace=True)
         logger.info("Data Y: {0}".format(data_y.shape))
 
-        ## residualize
+        #  residualize
         logger.info("Residualize Data Y")
         import statsmodels.api as sm
         y = data_y.values
         X = cov.values
         X = sm.add_constant(X)
-        model= sm.OLS(y, X, missing='drop')
+        model = sm.OLS(y, X, missing='drop')
         results = model.fit()
         y_res = y - results.predict(X).reshape(-1, 1)
         data_y['Height'] = y_res
@@ -124,36 +124,41 @@ def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
         for i in tmpdf.columns:
             d[i] = "Height_{}".format(i)
         tmpdf.rename(d, axis='columns', inplace=True)
-        data_y = pd.concat([data_y,tmpdf], axis=1)
+        data_y = pd.concat([data_y, tmpdf], axis=1)
 
         if check:
             # check data coherence
             # check shapes
-            assert (data_x.shape[0]==cov.shape[0])
-            assert (data_x.shape[0]==data_y.shape[0])
+            assert (data_x.shape[0] == cov.shape[0])
+            assert (data_x.shape[0] == data_y.shape[0])
             # check unvariate SNP p wrt check file
             pvals_res = []
             for idx in range(data_x.shape[1]):
                 y = y_res
                 X = data_x[:, idx].reshape(-1, 1)
                 X = sm.add_constant(X)
-                model= sm.OLS(y, X, missing='drop')
+                model = sm.OLS(y, X, missing='drop')
                 results_res = model.fit()
                 pvals_res.append((results_res.pvalues[0]))
             pvals_res = np.array(pvals_res)
-            ref = pd.read_csv(os.path.join(datasetdir, "toy_chr19_chunk7_nonan.check"), sep="\t") 
-            ref['runtimeP']= pvals_res
+            ref = pd.read_csv(
+                          os.path.join(datasetdir,
+                                       "toy_chr19_chunk7_nonan.check"),
+                          sep="\t")
+            ref['runtimeP'] = pvals_res
             ref.sort_values('P from residual').head(20)
-            np.testing.assert_almost_equal(ref['runtimeP'].tolist(),
-                                           ref['P from residual'].tolist()
-                                           )
+            np.testing.assert_almost_equal(
+                                     ref['runtimeP'].tolist(),
+                                     ref['P from residual'].tolist()
+                                     )
 	    # now data_y colomns are Height, HeightCat, HeigthCat_0, ..
         maskcolumns = data_y.columns.tolist()
         maskcolumns.remove('Height')
         logger.info("Save Data Y")
         data_y[['Height']].to_csv(desc_path, sep="\t", index=False)
         logger.info("Save Data Y (categorical)")
-        data_y[maskcolumns].to_csv(desc_categorical_path, sep="\t", index=False)
+        data_y[maskcolumns].to_csv(desc_categorical_path,
+                                   sep="\t", index=False)
         logger.info("Save Data X")
         np.save(input_path, data_x.astype(float))
 
