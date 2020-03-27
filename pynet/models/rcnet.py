@@ -53,9 +53,12 @@ class RCNet(nn.Module):
     This network achieves state-of-the-art performance on both liver CT and
     brain MRI datasets for 3D medical image registration.
 
-    Reference: https://arxiv.org/pdf/1907.12353 -
-               https://arxiv.org/pdf/1902.05020
-    Code: https://github.com/microsoft/Recursive-Cascaded-Networks.
+    Reference:
+    * https://arxiv.org/pdf/1907.12353
+    * https://arxiv.org/pdf/1902.05020
+
+    Code:
+    * https://github.com/microsoft/Recursive-Cascaded-Networks.
     """
     default_params = {
         "weight": 1.,
