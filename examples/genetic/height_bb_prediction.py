@@ -28,7 +28,7 @@ manager = DataManager(
     test_size=0.2,
     continuous_labels=True)
 
-STOP
+
 #############################################################################
 # Basic inspection
 
