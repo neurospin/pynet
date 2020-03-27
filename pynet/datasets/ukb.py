@@ -151,7 +151,7 @@ def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
                                      ref['runtimeP'].tolist(),
                                      ref['P from residual'].tolist()
                                      )
-	    # now data_y colomns are Height, HeightCat, HeigthCat_0, ..
+        # now data_y colomns are Height, HeightCat, HeigthCat_0, ..
         maskcolumns = data_y.columns.tolist()
         maskcolumns.remove('Height')
         logger.info("Save Data Y")
