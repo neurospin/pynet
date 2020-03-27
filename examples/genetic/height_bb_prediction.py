@@ -18,7 +18,7 @@ from pynet.utils import setup_logging
 
 # This example cannot run in CI : it accesses NS intra filesystems
 if "CI_MODE" in os.environ:
-    sys.exit()
+    sys.exit(0)
 
 setup_logging(level="info")
 
