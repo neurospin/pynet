@@ -8,7 +8,9 @@
 ##########################################################################
 
 """
-Module that provides functions to prepare geomic dataset.
+Module provides functions to prepare different toy datasets from UKB.
+  1) toy example about height in UKB with no NaN and known signif snps
+  2)
 """
 
 # Imports
@@ -29,18 +31,19 @@ Item = namedtuple("Item", ["input_path", "output_path", "metadata_path",
                            "labels"])
 
 FILES = [
-    ("/neurospin/tmp/vfrouin/data_DL/"
+    ("/neurospin/ukb/derivatives/brainomics_multivariate/"
      "toy_height.phe"),
-    ("/neurospin/tmp/vfrouin/data_DL/"
+    ("/neurospin/ukb/derivatives/brainomics_multivariate/"
      "toy_age_sex.cov"),
-    ("/neurospin/tmp/vfrouin/data_DL/"
+    ("/neurospin/ukb/derivatives/brainomics_multivariate/"
      "toy_chr19_chunk7_nonan.npz"),
-    ("/neurospin/tmp/vfrouin/data_DL/"
+    ("/neurospin/ukb/derivatives/brainomics_multivariate/"
      "toy_chr19_chunk7_nonan.check"),
 ]
 MSG = (
     "See https://gitlab.com/brainomics/brainomics_notebooks "
-    "and the notebook height_DL_data_preparation.py"
+    "and the notebook "
+    "notebooks/studies/HEIGHT_UKB_DeepLearning.ipynb"
 )
 
 logger = logging.getLogger("pynet")
@@ -71,10 +74,11 @@ def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
     logger.info("Loading UK BioBank height dataset.")
     if not os.path.isdir(datasetdir):
         os.mkdir(datasetdir)
-    desc_path = os.path.join(datasetdir, "pynet_genomic_bb_height.tsv")
+    desc_path = os.path.join(datasetdir, "pynet_bb_height_pred.tsv")
     desc_categorical_path = os.path.join(
-        datasetdir, "pynet_genomic_bb_height_categorical_pred.tsv")
-    input_path = os.path.join(datasetdir, "pynet_genomic_bb_height_inputs.npy")
+        datasetdir, "pynet_bb_height_categorical_pred.tsv")
+    input_path = os.path.join(datasetdir, "pynet_bb_height_pred_inputs.npy")
+    file_todel = []
     if not os.path.isfile(desc_path):
         for cnt, fname in enumerate(FILES):
             logger.debug("Processing {0}...".format(fname))
@@ -82,6 +86,7 @@ def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
             datafile = os.path.join(datasetdir, basename)
             if not os.path.isfile(datafile):
                 shutil.copy(fname, datafile)
+                file_todel.append(datafile)
             else:
                 logger.debug(
                     "Data '{0}' already downloaded.".format(datafile))
@@ -90,9 +95,9 @@ def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
         data_x = np.load(os.path.join(datasetdir,
                                       "toy_chr19_chunk7_nonan.npz"),
                          allow_pickle=True
-                         )['arr_0']
+                         )['genotype']
         logger.info("Data X: {0}".format(data_x.shape))
-        
+
         # Get data_y
         ## Cosmetics
         cov = pd.read_csv(
@@ -102,7 +107,7 @@ def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
         data_y.drop(['FID', 'IID'], axis=1, inplace=True)
         cov.drop(['FID', 'IID'], axis=1, inplace=True)
         logger.info("Data Y: {0}".format(data_y.shape))
-        
+
         ## residualize
         logger.info("Residualize Data Y")
         import statsmodels.api as sm
@@ -141,8 +146,7 @@ def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
             ref.sort_values('P from residual').head(20)
             np.testing.assert_almost_equal(ref['runtimeP'].tolist(),
                                            ref['P from residual'].tolist()
-                                           )  
-
+                                           )
 	    # now data_y colomns are Height, HeightCat, HeigthCat_0, ..
         maskcolumns = data_y.columns.tolist()
         maskcolumns.remove('Height')
@@ -152,6 +156,10 @@ def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
         data_y[maskcolumns].to_csv(desc_categorical_path, sep="\t", index=False)
         logger.info("Save Data X")
         np.save(input_path, data_x.astype(float))
-    desc_path = desc_categorical_path if to_categorical else desc_path
+
+        # Housekeeping
+        desc_path = desc_categorical_path if to_categorical else desc_path
+        for f in file_todel:
+            os.remove(f)
     return Item(input_path=input_path, output_path=None,
                 metadata_path=desc_path, labels=None)

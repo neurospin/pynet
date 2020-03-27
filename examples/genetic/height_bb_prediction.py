@@ -18,7 +18,7 @@ from pynet.utils import setup_logging
 
 setup_logging(level="info")
 
-data = fetch_height_biobank(datasetdir="/neurospin/tmp/vfrouin/tmp_DL/height_bb")
+data = fetch_height_biobank(datasetdir="/neurospin/tmp/height_bb")
 manager = DataManager(
     input_path=data.input_path,
     labels=["Height"],
@@ -28,7 +28,7 @@ manager = DataManager(
     test_size=0.2,
     continuous_labels=True)
 
-
+STOP
 #############################################################################
 # Basic inspection
 
