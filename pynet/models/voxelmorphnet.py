@@ -18,7 +18,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as func
 from torch.distributions.normal import Normal
-from pynet.losses import gradient_loss
 from pynet.interfaces import DeepLearningDecorator
 
 
@@ -318,11 +317,23 @@ class FlowRegularizer(object):
 
     def __call__(self, signal):
         logger.debug("Compute flow regularization...")
-        lambda1 = 0.01
         flow = signal.layer_outputs["flow"]
-        logger.debug("  lambda: {0}".format(lambda1))
+        logger.debug("  lambda: {0}".format(sekf.k1))
         logger.debug("  flow: {0} - {1} - {2}".format(
             flow.shape, flow.get_device(), flow.dtype))
-        flowloss = gradient_loss(flow)
+        flow_loss = self._gradient_loss(flow, penalty="l2")
         logger.debug("Done.")
-        return self.k1 * flowloss
+        return self.k1 * flow_loss
+
+    def _gradient_loss(self, flow, penalty="l2"):
+        """ Gradient Loss.
+        """
+        dy = torch.abs(flow[:, :, 1:, :, :] - flow[:, :, :-1, :, :])
+        dx = torch.abs(flow[:, :, :, 1:, :] - flow[:, :, :, :-1, :])
+        dz = torch.abs(flow[:, :, :, :, 1:] - flows[:, :, :, :, :-1])
+        if (penalty == "l2"):
+            dy = dy * dy
+            dx = dx * dx
+            dz = dz * dz
+        displacement = torch.mean(dx) + torch.mean(dy) + torch.mean(dz)
+        return displacement / 3.0

@@ -209,75 +209,156 @@ class NvNetCombinedLoss(_Loss):
         l2_loss = self.l2_loss(vae_pred, vae_truth)
         kl_div = self.kl_loss(est_mean, est_std)
         combined_loss = dice_loss + self.k1 * l2_loss + self.k2 * kl_div
-        logger.info("dice_loss:%.4f, L2_loss:%.4f, KL_div:%.4f, combined_loss:"
-                    "%.4f" % (dice_loss, l2_loss, kl_div, combined_loss))
+        logger.debug(
+            "dice_loss:%.4f, L2_loss:%.4f, KL_div:%.4f, combined_loss:"
+            "%.4f" % (dice_loss, l2_loss, kl_div, combined_loss))
         return combined_loss
 
 
-def mse_loss(x, y):
-    """ Mean Square Error Loss.
+class MSELoss(_Loss):
+    """ Calculate the Mean Square Error loss between I and J.
     """
-    logger.debug("Compute MSE loss...")
-    y = y[:, 1:]
-    logger.debug("  x: {0} - {1} - {2}".format(
-        x.shape, x.get_device(), x.dtype))
-    logger.debug("  y: {0} - {1} - {2}".format(
-        y.shape, y.get_device(), y.dtype))
-    loss = torch.mean((x - y) ** 2)
-    logger.debug("Done.")
-    return loss
+    def __init__(self, concat=False):
+        """ Init class.
+
+        Parameters
+        ----------
+        concat: bool, default False
+            if set asssume that the target image J is a concatenation of the
+            moving and fixed.
+        """
+        super(MSELoss, self).__init__()
+        self.concat = concat
+
+    def forward(self, arr_i, arr_j):
+        """ Forward method.
+
+        Parameters
+        ----------
+        arr_i, arr_j: Tensor (batch_size, channels, *vol_shape)
+            the input data.
+        """
+        logger.debug("Compute MSE loss...")
+        if self.concat:
+            nb_channels = arr_j.shape[1] // 2
+            arr_j = arr_j[:, nb_channels:]
+        logger.debug("  I: {0} - {1} - {2}".format(
+            arr_i.shape, arr_i.get_device(), arr_i.dtype))
+        logger.debug("  J: {0} - {1} - {2}".format(
+            arr_j.shape, arr_j.get_device(), arr_j.dtype))
+        loss = torch.mean((arr_i - arr_j) ** 2)
+        logger.debug("  loss: {0}".format(loss))
+        logger.debug("Done.")
+        return loss
 
 
-def gradient_loss(s, penalty="l2"):
-    """ Gradient Loss.
+class PCCLoss(_Loss):
+    """ Calculate the Pearson correlation coefficient between I and J.
     """
-    dy = torch.abs(s[:, :, 1:, :, :] - s[:, :, :-1, :, :])
-    dx = torch.abs(s[:, :, :, 1:, :] - s[:, :, :, :-1, :])
-    dz = torch.abs(s[:, :, :, :, 1:] - s[:, :, :, :, :-1])
-    if(penalty == "l2"):
-        dy = dy * dy
-        dx = dx * dx
-        dz = dz * dz
-    d = torch.mean(dx) + torch.mean(dy) + torch.mean(dz)
-    return d / 3.0
+    def __init__(self, concat=False):
+        """ Init class.
+
+        Parameters
+        ----------
+        concat: bool, default False
+            if set asssume that the target image J is a concatenation of the
+            moving and fixed.
+        """
+        super(PCCLoss, self).__init__()
+        self.concat = concat
+
+    def forward(self, arr_i, arr_j):
+        """ Forward method.
+
+        Parameters
+        ----------
+        arr_i, arr_j: Tensor (batch_size, channels, *vol_shape)
+            the input data.
+        """
+        logger.debug("Compute PCC loss...")
+        if self.concat:
+            nb_channels = arr_j.shape[1] // 2
+            arr_j = arr_j[:, nb_channels:]
+        logger.debug("  channels: {0}".format(nb_channels))
+        logger.debug("  I: {0} - {1} - {2}".format(
+            arr_i.shape, arr_i.get_device(), arr_i.dtype))
+        logger.debug("  J: {0} - {1} - {2}".format(
+            arr_j.shape, arr_j.get_device(), arr_j.dtype))
+        centered_arr_i = arr_i - torch.mean(arr_i)
+        centered_arr_j = arr_j - torch.mean(arr_j)
+        pearson_loss = torch.sum(
+            centered_arr_i * centered_arr_j) / (
+                torch.sqrt(torch.sum(centered_arr_i ** 2) + 1e-6) *
+                torch.sqrt(torch.sum(centered_arr_j ** 2) + 1e-6))
+        loss = 1. - pearson_loss
+        logger.debug("  loss: {0}".format(loss))
+        logger.info("Done.")
+        return loss
 
 
-def ncc_loss(arr_i, arr_j, win=None):
+class NCCLoss(_Loss):
     """ Calculate the normalize cross correlation between I and J.
-
-    Parameters
-    ----------
-    arr_i, arr_j: Tensor (batch_size, *vol_shape, nb_feats)
-        the input data.
-    win: list of in, default None
-        the window size tto compute the correlation, default 9.
     """
-    logger.debug("Compute NCC loss...")
-    arr_j = arr_j[:, 1:]
-    ndims = len(list(arr_i.size())) - 2
-    if ndims not in [1, 2, 3]:
-        raise ValueError("Volumes should be 1 to 3 dimensions, not "
-                         "{0}.".format(ndims))
-    if win is None:
-        win = [9] * ndims
-    device = arr_i.get_device()
-    sum_filt = torch.ones([1, 1, *win]).to(device)
-    pad_no = math.floor(win[0] / 2)
-    stride = tuple([1] * ndims)
-    padding = tuple([pad_no] * ndims)
-    logger.debug("  ndims: {0}".format(ndims))
-    logger.debug("  stride: {0}".format(stride))
-    logger.debug("  padding: {0}".format(padding))
-    logger.debug("  filt: {0} - {1}".format(
-        sum_filt.shape, sum_filt.get_device()))
-    logger.debug("  win: {0}".format(win))
-    logger.debug("  I: {0} - {1} - {2}".format(
-        arr_i.shape, arr_i.get_device(), arr_i.dtype))
-    logger.debug("  J: {0} - {1} - {2}".format(
-        arr_j.shape, arr_j.get_device(), arr_j.dtype))
+    def __init__(self, concat=False, win=None):
+        """ Init class.
 
-    def compute_local_sums(arr_i, arr_j, filt, stride, padding, win):
-        conv_fn = getattr(func, "conv{0}d".format(len(win)))
+        Parameters
+        ----------
+        concat: bool, default False
+            if set asssume that the target image J is a concatenation of the
+            moving and fixed.
+        win: list of in, default None
+            the window size to compute the correlation, default 9.
+        """
+        super(NCCLoss, self).__init__()
+        self.concat = concat
+        self.win = win
+
+    def forward(self, arr_i, arr_j):
+        """ Forward method.
+
+        Parameters
+        ----------
+        arr_i, arr_j: Tensor (batch_size, channels, *vol_shape)
+            the input data.
+        """
+        logger.debug("Compute NCC loss...")
+        if self.concat:
+            nb_channels = arr_j.shape[1] // 2
+            arr_j = arr_j[:, nb_channels:]
+        ndims = len(list(arr_i.size())) - 2
+        if ndims not in [1, 2, 3]:
+            raise ValueError("Volumes should be 1 to 3 dimensions, not "
+                             "{0}.".format(ndims))
+        if self.win is None:
+            self.win = [9] * ndims
+        device = arr_i.get_device()
+        sum_filt = torch.ones([1, 1, *self.win]).to(device)
+        pad_no = math.floor(self.win[0] / 2)
+        stride = tuple([1] * ndims)
+        padding = tuple([pad_no] * ndims)
+        logger.debug("  ndims: {0}".format(ndims))
+        logger.debug("  stride: {0}".format(stride))
+        logger.debug("  padding: {0}".format(padding))
+        logger.debug("  filt: {0} - {1}".format(
+            sum_filt.shape, sum_filt.get_device()))
+        logger.debug("  win: {0}".format(self.win))
+        logger.debug("  I: {0} - {1} - {2}".format(
+            arr_i.shape, arr_i.get_device(), arr_i.dtype))
+        logger.debug("  J: {0} - {1} - {2}".format(
+            arr_j.shape, arr_j.get_device(), arr_j.dtype))
+
+        var_arr_i, var_arr_j, cross = self._compute_local_sums(
+            arr_i, arr_j, sum_filt, stride, padding)
+        cc = cross * cross / (var_arr_i * var_arr_j + 1e-5)
+        loss = -1 * torch.mean(cc)
+        logger.debug("  loss: {0}".format(loss))
+        logger.info("Done.")
+
+        return loss
+
+    def _compute_local_sums(self, arr_i, arr_j, filt, stride, padding):
+        conv_fn = getattr(func, "conv{0}d".format(len(self.win)))
         logger.debug("  conv: {0}".format(conv_fn))
 
         arr_i2 = arr_i * arr_i
@@ -290,7 +371,7 @@ def ncc_loss(arr_i, arr_j, win=None):
         sum_arr_j2 = conv_fn(arr_j2, filt, stride=stride, padding=padding)
         sum_arr_ij = conv_fn(arr_ij, filt, stride=stride, padding=padding)
 
-        win_size = np.prod(win)
+        win_size = np.prod(self.win)
         logger.debug("  win size: {0}".format(win_size))
         u_arr_i = sum_arr_i / win_size
         u_arr_j = sum_arr_j / win_size
@@ -304,9 +385,69 @@ def ncc_loss(arr_i, arr_j, win=None):
 
         return var_arr_i, var_arr_j, cross
 
-    var_arr_i, var_arr_j, cross = compute_local_sums(
-        arr_i, arr_j, sum_filt, stride, padding, win)
-    cc = cross * cross / (var_arr_i * var_arr_j + 1e-5)
-    logger.info("Done.")
 
-    return -1 * torch.mean(cc)
+class VMILoss(object):
+    """ Variational Mutual information loss function.
+
+    Reference: http://bayesiandeeplearning.org/2018/papers/136.pdf -
+               https://discuss.pytorch.org/t/help-with-histogram-and-loss-
+               backward/44052/5
+    """
+    def get_positive_expectation(self, p_samples, average=True):
+        log_2 = math.log(2.)
+        Ep = log_2 - F.softplus(-p_samples)
+        # Note JSD will be shifted
+        if average:
+            return Ep.mean()
+        else:
+            return Ep
+
+    def get_negative_expectation(self, q_samples, average=True):
+        log_2 = math.log(2.)
+        Eq = F.softplus(-q_samples) + q_samples - log_2
+        # Note JSD will be shifted
+        if average:
+            return Eq.mean()
+        else:
+            return Eq
+
+    def __call__(self, lmap, gmap):
+        """ The fenchel_dual_loss from the DIM code
+        Reshape tensors dims to (N, Channels, chunks).
+
+        Parameters
+        ----------
+        lmap: Tensor
+            the moving data.
+        gmap: Tensor
+            the fixed data.
+        """
+        lmap = lmap.reshape(2, 128, -1)
+        gmap = gmap.squeeze()
+
+        N, units, n_locals = lmap.size()
+        n_multis = gmap.size(2)
+
+        # First we make the input tensors the right shape.
+        l = lmap.view(N, units, n_locals)
+        l = lmap.permute(0, 2, 1)
+        l = lmap.reshape(-1, units)
+
+        m = gmap.view(N, units, n_multis)
+        m = gmap.permute(0, 2, 1)
+        m = gmap.reshape(-1, units)
+
+        u = torch.mm(m, l.t())
+        u = u.reshape(N, n_multis, N, n_locals).permute(0, 2, 3, 1)
+
+        mask = torch.eye(N).to(l.device)
+        n_mask = 1 - mask
+
+        E_pos = get_positive_expectation(u, average=False).mean(2).mean(2)
+        E_neg = get_negative_expectation(u, average=False).mean(2).mean(2)
+
+        E_pos = (E_pos * mask).sum() / mask.sum()
+        E_neg = (E_neg * n_mask).sum() / n_mask.sum()
+        loss = E_neg - E_pos
+
+        return loss
