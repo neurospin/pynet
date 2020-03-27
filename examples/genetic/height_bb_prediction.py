@@ -13,6 +13,7 @@ You may need to change the 'datasetdir' parameter.
 
 
 import os
+import sys
 from pynet.datasets import DataManager, fetch_height_biobank
 from pynet.utils import setup_logging
 
