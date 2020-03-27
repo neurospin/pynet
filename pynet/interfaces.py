@@ -16,6 +16,7 @@ classifier.
 
 
 # Imports
+import re
 import logging
 import textwrap
 from pynet.core import Base
@@ -50,7 +51,8 @@ def get_interfaces(family=None):
                 cnt += 1
             if cnt == len(family):
                 continue
-        interfaces.setdefault(klass.__family__, []).append(klass)
+        kname = klass.__name__
+        interfaces.setdefault(klass.__family__, {})[kname] = klass
     return interfaces
 
 
