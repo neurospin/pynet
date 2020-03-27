@@ -20,10 +20,11 @@ from pynet.datasets import DataManager, fetch_registration
 from pynet.utils import setup_logging
 from pynet.interfaces import (
     VoxelMorphNetRegister, ADDNetRegister, VTNetRegister)
+from pynet.models.voxelmorphnet import FlowRegularizer
 from torch.optim import lr_scheduler
 from pynet.plotting import plot_history
 from pynet.history import History
-from pynet.losses import mse_loss, ncc_loss, gradient_loss
+from pynet.losses import MSELoss, NCCLoss
 import matplotlib.pyplot as plt
 
 setup_logging(level="debug")
@@ -98,18 +99,7 @@ net = VoxelMorphNetRegister(
     use_cuda=False)
 print(net.model)
 
-stop
-
-def flow_regularizer(signal):
-    logger.debug("Compute flow regularizattion...")
-    lambda1 = 0.01  # recommend 1.0 for ncc, 0.01 for mse
-    flow = signal.layer_outputs["flow"]
-    logger.debug("  lambda: {0}".format(lambda1))
-    logger.debug("  flow: {0} - {1} - {2}".format(
-        flow.shape, flow.get_device(), flow.dtype))
-    grad_regularization = lambda1 * gradient_loss(flow)
-    logger.debug("Done.")
-    return grad_regularization
+flow_regularizer = FlowRegularizer(k1=0.01)
 net.add_observer("regularizer", flow_regularizer)
 
 scheduler = lr_scheduler.ReduceLROnPlateau(
