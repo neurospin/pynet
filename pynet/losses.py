@@ -16,7 +16,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as func
 from torch.autograd import Variable
-from torch.nn.modules.loss import _Loss
 from pynet.utils import Losses
 
 
@@ -149,13 +148,13 @@ class MultiDiceLoss(object):
 
 
 @Losses.register
-class SoftDiceLoss(_Loss):
+class SoftDiceLoss(object):
     """ Soft Dice Loss.
     """
     def __init__(self, *args, **kwargs):
         super(SoftDiceLoss, self).__init__()
 
-    def forward(self, y_pred, y_true, eps=1e-8):
+    def __call__(self, y_pred, y_true, eps=1e-8):
         intersection = torch.sum(torch.mul(y_pred, y_true))
         union = (torch.sum(torch.mul(y_pred, y_pred)) +
                  torch.sum(torch.mul(y_true, y_true)) + eps)
@@ -165,20 +164,20 @@ class SoftDiceLoss(_Loss):
 
 
 @Losses.register
-class CustomKLLoss(_Loss):
+class CustomKLLoss(object):
     """ KL Loss.
     """
     def __init__(self, *args, **kwargs):
         super(CustomKLLoss, self).__init__()
 
-    def forward(self, mean, std):
+    def __call__(self, mean, std):
         return (torch.mean(torch.mul(mean, mean)) +
                 torch.mean(torch.mul(std, std)) -
                 torch.mean(torch.log(torch.mul(std, std))) - 1)
 
 
 @Losses.register
-class NvNetCombinedLoss(_Loss):
+class NvNetCombinedLoss(object):
     """ Combined Loss.
 
     Diceloss + k1 * L2loss + k2 * KLloss
@@ -196,7 +195,7 @@ class NvNetCombinedLoss(_Loss):
         self.l2_loss = nn.MSELoss()
         self.kl_loss = CustomKLLoss()
 
-    def forward(self, outputs, y_true):
+    def __call__(self, outputs, y_true):
         y_pred, y_mid = outputs
         est_mean, est_std = (y_mid[:, :128], y_mid[:, 128:])
         seg_pred = y_pred[:, :self.num_classes]
@@ -221,7 +220,7 @@ class NvNetCombinedLoss(_Loss):
 
 
 @Losses.register
-class MSELoss(_Loss):
+class MSELoss(object):
     """ Calculate the Mean Square Error loss between I and J.
     """
     def __init__(self, concat=False):
@@ -236,7 +235,7 @@ class MSELoss(_Loss):
         super(MSELoss, self).__init__()
         self.concat = concat
 
-    def forward(self, arr_i, arr_j):
+    def __call__(self, arr_i, arr_j):
         """ Forward method.
 
         Parameters
@@ -259,7 +258,7 @@ class MSELoss(_Loss):
 
 
 @Losses.register
-class PCCLoss(_Loss):
+class PCCLoss(object):
     """ Calculate the Pearson correlation coefficient between I and J.
     """
     def __init__(self, concat=False):
@@ -274,7 +273,7 @@ class PCCLoss(_Loss):
         super(PCCLoss, self).__init__()
         self.concat = concat
 
-    def forward(self, arr_i, arr_j):
+    def __call__(self, arr_i, arr_j):
         """ Forward method.
 
         Parameters
@@ -304,7 +303,7 @@ class PCCLoss(_Loss):
 
 
 @Losses.register
-class NCCLoss(_Loss):
+class NCCLoss(object):
     """ Calculate the normalize cross correlation between I and J.
     """
     def __init__(self, concat=False, win=None):
@@ -322,7 +321,7 @@ class NCCLoss(_Loss):
         self.concat = concat
         self.win = win
 
-    def forward(self, arr_i, arr_j):
+    def __call__(self, arr_i, arr_j):
         """ Forward method.
 
         Parameters
