@@ -19,8 +19,8 @@ import torch.nn as nn
 import torch.nn.functional as func
 from torch.distributions.normal import Normal
 from pynet.interfaces import DeepLearningDecorator
-from pynet.models import Networks
-from pynet.models import Regularizers
+from pynet.utils import Networks
+from pynet.utils import Regularizers
 
 
 # Global parameters

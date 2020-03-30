@@ -17,6 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as func
 from torch.autograd import Variable
 from torch.nn.modules.loss import _Loss
+from pynet.utils import Losses
 
 
 # Global parameters
@@ -79,6 +80,7 @@ def dice_loss_2(output, target, weights=1):
     return dice.sum() / dice.size(0)
 
 
+@Losses.register
 class MultiDiceLoss(object):
     """ Define a multy classes dice loss.
 
@@ -146,6 +148,7 @@ class MultiDiceLoss(object):
         return loss_per_channel.sum() / n_classes
 
 
+@Losses.register
 class SoftDiceLoss(_Loss):
     """ Soft Dice Loss.
     """
@@ -161,6 +164,7 @@ class SoftDiceLoss(_Loss):
         return dice_loss
 
 
+@Losses.register
 class CustomKLLoss(_Loss):
     """ KL Loss.
     """
@@ -173,6 +177,7 @@ class CustomKLLoss(_Loss):
                 torch.mean(torch.log(torch.mul(std, std))) - 1)
 
 
+@Losses.register
 class NvNetCombinedLoss(_Loss):
     """ Combined Loss.
 
@@ -215,6 +220,7 @@ class NvNetCombinedLoss(_Loss):
         return combined_loss
 
 
+@Losses.register
 class MSELoss(_Loss):
     """ Calculate the Mean Square Error loss between I and J.
     """
@@ -252,6 +258,7 @@ class MSELoss(_Loss):
         return loss
 
 
+@Losses.register
 class PCCLoss(_Loss):
     """ Calculate the Pearson correlation coefficient between I and J.
     """
@@ -296,6 +303,7 @@ class PCCLoss(_Loss):
         return loss
 
 
+@Losses.register
 class NCCLoss(_Loss):
     """ Calculate the normalize cross correlation between I and J.
     """
@@ -386,6 +394,7 @@ class NCCLoss(_Loss):
         return var_arr_i, var_arr_j, cross
 
 
+@Losses.register
 class VMILoss(object):
     """ Variational Mutual information loss function.
 

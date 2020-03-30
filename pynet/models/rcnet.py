@@ -20,13 +20,13 @@ from collections import namedtuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
-from pynet import get_interfaces
+from pynet.interfaces import get_interfaces
 from pynet.observable import SignalObject
 from pynet.losses import PCCLoss
 from .vtnet import ADDNetRegularizer
 from .voxelmorphnet import FlowRegularizer
-from pynet.models import Networks
-from pynet.models import Regularizers
+from pynet.utils import Networks
+from pynet.utils import Regularizers
 
 
 # Global parameters

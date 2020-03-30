@@ -14,6 +14,7 @@ Helper Module for Deep Learning
 from .info import __version__
 from .utils import setup_logging
 from .utils import logo
+from .utils import get_tools
 from .interfaces import get_interfaces
 
 print(logo())

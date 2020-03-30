@@ -16,6 +16,8 @@ import logging
 import warnings
 import os
 import re
+import sys
+import inspect
 
 # Third party imports
 import torch
@@ -39,6 +41,56 @@ LEVELS = {
     "critical": logging.CRITICAL
 }
 logger = logging.getLogger("pynet")
+
+
+class RegisteryDecorator(object):
+    """ Class that can be used to register class in a registry.
+    """
+    @classmethod
+    def register(cls, klass, *args, **kwargs):
+        name = klass.__name__
+        if name in cls.REGISTRY:
+            raise ValueError(
+                "'{0}' name already used in registry.".format(name))
+        cls.REGISTRY[name] = klass
+        return klass
+
+    @classmethod
+    def get_registry(cls):
+        return cls.REGISTRY
+
+
+class Networks(RegisteryDecorator):
+    """ Class that register all the available networks.
+    """
+    REGISTRY = {}
+
+
+class Regularizers(RegisteryDecorator):
+    """ Class that register all the available regularizers.
+    """
+    REGISTRY = {}
+
+
+class Losses(RegisteryDecorator):
+    """ Class that register all the available losses.
+    """
+    REGISTRY = {}
+
+
+def get_tools():
+    """ List all available Deep Learning tools.
+
+    Returns
+    -------
+    tools: dict
+        all available tools for Deep Learning application.
+    """
+    tools = {}
+    mod_members = dict(inspect.getmembers(sys.modules[__name__]))
+    for key in ["Networks", "Regularizers", "Losses"]:
+        tools[key.lower()] = mod_members[key].get_registry()
+    return tools
 
 
 def setup_logging(level="info", logfile=None):

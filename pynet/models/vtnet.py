@@ -21,8 +21,8 @@ import torch.nn as nn
 import torch.nn.functional as func
 from .voxelmorphnet import SpatialTransformer
 from pynet.interfaces import DeepLearningDecorator
-from pynet.models import Networks
-from pynet.models import Regularizers
+from pynet.utils import Networks
+from pynet.utils import Regularizers
 
 
 # Global parameters

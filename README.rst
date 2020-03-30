@@ -39,6 +39,29 @@ Important links
 - HTML documentation (last stable release): http://neurospin.github.io/pynet
 - HTML documentation (master release): https://python-network.readthedocs.io/
 
+Where to start
+==============
+
+You can list all available Deep Learning tools by executing in a Python shell::
+
+    from pprint import pprint
+    import pynet
+    pprint(pynet.get_tools())
+
+The 'get_tools' function returns a dictionary with all available 'networks',
+'losses', and 'regularizers'.
+
+Then each network has been embeded in a Deep Learning training interface.
+You can list all these interfaces by executing in a Python shell::
+
+    from pprint import pprint
+    import pynet
+    pprint(pynet.get_interfaces(family=None))
+
+The 'get_interfaces' function returns a dictionary with interfaces sorted by
+family names. You can filter the result by providing the family name or a list
+of family names of interest.
+
 Install
 =======
 

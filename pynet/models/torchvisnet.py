@@ -18,7 +18,7 @@ import sys
 import torch.nn as nn
 from torchvision import models
 from pynet.interfaces import DeepLearningDecorator
-from pynet.models import Networks
+from pynet.utils import Networks
 
 
 @Networks.register

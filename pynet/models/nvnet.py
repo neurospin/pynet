@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as func
 import numpy as np
 from pynet.interfaces import DeepLearningDecorator
-from pynet.models import Networks
+from pynet.utils import Networks
 
 
 @Networks.register
