@@ -18,8 +18,10 @@ import sys
 import torch.nn as nn
 from torchvision import models
 from pynet.interfaces import DeepLearningDecorator
+from pynet.models import Networks
 
 
+@Networks.register
 @DeepLearningDecorator(family="classifier")
 class VGG(models.VGG):
     """ VGGNet (2014) by Simonyan and Zisserman.
@@ -53,6 +55,7 @@ class VGG(models.VGG):
             init_weights=init_weights)
 
 
+@Networks.register
 @DeepLearningDecorator(family="classifier")
 class DenseNet(models.DenseNet):
     """ DenseNet.
@@ -91,6 +94,7 @@ class DenseNet(models.DenseNet):
             memory_efficient=memory_efficient)
 
 
+@Networks.register
 @DeepLearningDecorator(family="classifier")
 class ResNet(models.ResNet):
     """ Residual Neural Network (ResNet) by Kaiming He et al.
@@ -136,6 +140,7 @@ class ResNet(models.ResNet):
             norm_layer=norm_layer)
 
 
+@Networks.register
 @DeepLearningDecorator(family="classifier")
 class Inception3(models.Inception3):
     """ Inception v3 by Google.
@@ -250,8 +255,8 @@ def class_factory(klass_name, klass_params, destination_module_globals):
     })
     klass_base_name = re.findall(r"([a-zA-Z]+)[0-9]+", klass_name)[0]
     decorator = DeepLearningDecorator(family="classifier")
-    destination_module_globals[klass_name] = decorator(
-        type(klass_name, (klass_map[klass_base_name], ), klass_params))
+    destination_module_globals[klass_name] = Networks.register(decorator(
+        type(klass_name, (klass_map[klass_base_name], ), klass_params)))
 
 
 CFG = {

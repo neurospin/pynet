@@ -21,6 +21,7 @@ from pynet.utils import setup_logging
 from pynet.interfaces import (
     VoxelMorphNetRegister, ADDNetRegister, VTNetRegister)
 from pynet.models.voxelmorphnet import FlowRegularizer
+from pynet.models.vtnet import ADDNetRegularizer
 from torch.optim import lr_scheduler
 from pynet.plotting import plot_history
 from pynet.history import History
@@ -48,59 +49,65 @@ manager = DataManager(
 # Training
 # --------
 #
-# From the available models load the VoxelMorphRegister, and start the
-# training.
+# From the available models load the VoxelMorphRegister, VTNetRegister or
+# ADDNet  and start the training.
+# Note that the two first estimate a non linear deformation and require
+# the input data to be afinely registered. The ADDNet estimate an affine
+# transform. We will see in the next section how to combine them in an
+# efficient way.
 
-addnet_kwargs = {
-    "input_shape": (128, 128, 128),
-    "in_channels": 1,
-    "kernel_size": 3,
-    "padding": 1,
-    "flow_multiplier": 1.
-}
-net = ADDNetRegister(
-    addnet_kwargs,
-    optimizer_name="Adam",
-    learning_rate=1e-4,
-    # weight_decay=1e-5,
-    loss=mse_loss, # ncc_loss,
-    use_cuda=False)
+base_network = "vtnet"
+
+if base_network == "addnet":
+    addnet_kwargs = {
+        "input_shape": (128, 128, 128),
+        "in_channels": 2,
+        "kernel_size": 3,
+        "padding": 1,
+        "flow_multiplier": 1.
+    }
+    net = ADDNetRegister(
+        addnet_kwargs,
+        optimizer_name="Adam",
+        learning_rate=1e-4,
+        loss=MSELoss(concat=True),
+        use_cuda=False)
+    regularizer = ADDNetRegularizer(k1=0.1, k2=0.1)
+    net.add_observer("regularizer", regularizer)
+elif base_network == "vtnet":
+    vtnet_kwargs = {
+        "input_shape": (128, 128, 128),
+        "in_channels": 2,
+        "kernel_size": 3,
+        "padding": 1,
+        "flow_multiplier": 1.,
+        "nb_channels": 16
+    }
+    net = VTNetRegister(
+        vtnet_kwargs,
+        optimizer_name="Adam",
+        learning_rate=1e-4,
+        loss=MSELoss(concat=True),
+        use_cuda=False)
+    flow_regularizer = FlowRegularizer(k1=0.01)
+    net.add_observer("regularizer", flow_regularizer)
+else:
+    vmnet_kwargs = {
+        "vol_size": (128, 128, 128),
+        "enc_nf": [16, 32, 32, 32],
+        "dec_nf": [32, 32, 32, 32, 32, 16, 16],
+        "full_size": True
+    }
+    net = VoxelMorphNetRegister(
+        vmnet_kwargs,
+        optimizer_name="Adam",
+        learning_rate=1e-4,
+        # weight_decay=1e-5,
+        loss=MSELoss(concat=True), # NCCLoss,
+        use_cuda=False)
+    flow_regularizer = FlowRegularizer(k1=0.01)
+    net.add_observer("regularizer", flow_regularizer)
 print(net.model)
-
-vtnet_kwargs = {
-    "input_shape": (128, 128, 128),
-    "in_channels": 1,
-    "kernel_size": 3,
-    "padding": 1,
-    "flow_multiplier": 1.,
-    "nb_channels": 16
-}
-net = VTNetRegister(
-    vtnet_kwargs,
-    optimizer_name="Adam",
-    learning_rate=1e-4,
-    # weight_decay=1e-5,
-    loss=mse_loss, # ncc_loss,
-    use_cuda=False)
-print(net.model)
-
-vmnet_kwargs = {
-    "vol_size": (128, 128, 128),
-    "enc_nf": [16, 32, 32, 32],
-    "dec_nf": [32, 32, 32, 32, 32, 16, 16],
-    "full_size": True
-}
-net = VoxelMorphNetRegister(
-    vmnet_kwargs,
-    optimizer_name="Adam",
-    learning_rate=1e-4,
-    # weight_decay=1e-5,
-    loss=mse_loss, # ncc_loss,
-    use_cuda=False)
-print(net.model)
-
-flow_regularizer = FlowRegularizer(k1=0.01)
-net.add_observer("regularizer", flow_regularizer)
 
 scheduler = lr_scheduler.ReduceLROnPlateau(
     optimizer=net.optimizer,

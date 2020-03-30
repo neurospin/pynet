@@ -19,12 +19,15 @@ import torch.nn as nn
 import torch.nn.functional as func
 from torch.distributions.normal import Normal
 from pynet.interfaces import DeepLearningDecorator
+from pynet.models import Networks
+from pynet.models import Regularizers
 
 
 # Global parameters
 logger = logging.getLogger("pynet")
 
 
+@Networks.register
 @DeepLearningDecorator(family="register")
 class VoxelMorphNet(nn.Module):
     """ VoxelMorphNet.
@@ -305,6 +308,7 @@ class ConvBlock(nn.Module):
         return out
 
 
+@Regularizers.register
 class FlowRegularizer(object):
     """ VoxelMorphNet Flow Regularization.
 
@@ -318,7 +322,7 @@ class FlowRegularizer(object):
     def __call__(self, signal):
         logger.debug("Compute flow regularization...")
         flow = signal.layer_outputs["flow"]
-        logger.debug("  lambda: {0}".format(sekf.k1))
+        logger.debug("  lambda: {0}".format(self.k1))
         logger.debug("  flow: {0} - {1} - {2}".format(
             flow.shape, flow.get_device(), flow.dtype))
         flow_loss = self._gradient_loss(flow, penalty="l2")
@@ -330,7 +334,7 @@ class FlowRegularizer(object):
         """
         dy = torch.abs(flow[:, :, 1:, :, :] - flow[:, :, :-1, :, :])
         dx = torch.abs(flow[:, :, :, 1:, :] - flow[:, :, :, :-1, :])
-        dz = torch.abs(flow[:, :, :, :, 1:] - flows[:, :, :, :, :-1])
+        dz = torch.abs(flow[:, :, :, :, 1:] - flow[:, :, :, :, :-1])
         if (penalty == "l2"):
             dy = dy * dy
             dx = dx * dx

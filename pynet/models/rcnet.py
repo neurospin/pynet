@@ -25,6 +25,8 @@ from pynet.observable import SignalObject
 from pynet.losses import PCCLoss
 from .vtnet import ADDNetRegularizer
 from .voxelmorphnet import FlowRegularizer
+from pynet.models import Networks
+from pynet.models import Regularizers
 
 
 # Global parameters
@@ -32,6 +34,7 @@ Stem = namedtuple("Stem", ["network", "params"])
 logger = logging.getLogger("pynet")
 
 
+@Networks.register
 class RCNet(nn.Module):
     """ RCnet.
 
@@ -161,6 +164,7 @@ class RCNet(nn.Module):
         return warp, {"flow": flow, "stem_results": stem_results}
 
 
+@Regularizers.register
 class RCNetRegularizer(object):
     """ RCNet Regularization.
 

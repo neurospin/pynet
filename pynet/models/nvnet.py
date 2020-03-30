@@ -17,8 +17,10 @@ import torch.nn as nn
 import torch.nn.functional as func
 import numpy as np
 from pynet.interfaces import DeepLearningDecorator
+from pynet.models import Networks
 
 
+@Networks.register
 @DeepLearningDecorator(family="segmenter")
 class NvNet(nn.Module):
     """ NvNet: combination of Vnet and VAE (variation auto-encoder).
