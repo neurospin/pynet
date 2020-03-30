@@ -2,7 +2,7 @@
 Genome Wide Association with DL for standing height
 ===================================================
 
-Credit: A Grigis
+Credit: V Frouin
 
 Load the data
 -------------
