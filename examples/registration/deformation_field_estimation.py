@@ -19,13 +19,13 @@ import logging
 from pynet.datasets import DataManager, fetch_registration
 from pynet.utils import setup_logging
 from pynet.interfaces import (
-    VoxelMorphNetRegister, ADDNetRegister, VTNetRegister)
+    VoxelMorphNetRegister, ADDNetRegister, VTNetRegister, RCNetRegister)
 from pynet.models.voxelmorphnet import FlowRegularizer
 from pynet.models.vtnet import ADDNetRegularizer
 from torch.optim import lr_scheduler
 from pynet.plotting import plot_history
 from pynet.history import History
-from pynet.losses import MSELoss, NCCLoss
+from pynet.losses import MSELoss, NCCLoss, RCNetLoss
 import matplotlib.pyplot as plt
 
 setup_logging(level="debug")
@@ -56,9 +56,25 @@ manager = DataManager(
 # transform. We will see in the next section how to combine them in an
 # efficient way.
 
-base_network = "vtnet"
+base_network = "rcnet"
 
-if base_network == "addnet":
+if base_network == "rcnet":
+    rcnet_kwargs = {
+        "input_shape": (128, 128, 128),
+        "in_channels": 2,
+        "base_network": "VTNet",
+        "n_cascades": 1,
+        "rep": 1
+    }
+    net = RCNetRegister(
+        rcnet_kwargs,
+        optimizer_name="Adam",
+        learning_rate=1e-4,
+        loss=RCNetLoss(),
+        use_cuda=False)
+    #regularizer = ADDNetRegularizer(k1=0.1, k2=0.1)
+    #net.add_observer("regularizer", regularizer)
+elif base_network == "addnet":
     addnet_kwargs = {
         "input_shape": (128, 128, 128),
         "in_channels": 2,

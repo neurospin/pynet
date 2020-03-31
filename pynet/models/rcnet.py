@@ -20,13 +20,15 @@ from collections import namedtuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
-from pynet.interfaces import get_interfaces
 from pynet.observable import SignalObject
 from pynet.losses import PCCLoss
 from .vtnet import ADDNetRegularizer
 from .voxelmorphnet import FlowRegularizer
+from .voxelmorphnet import SpatialTransformer
+from pynet.interfaces import DeepLearningDecorator
 from pynet.utils import Networks
 from pynet.utils import Regularizers
+from pynet.utils import get_tools
 
 
 # Global parameters
@@ -35,6 +37,7 @@ logger = logging.getLogger("pynet")
 
 
 @Networks.register
+@DeepLearningDecorator(family="register")
 class RCNet(nn.Module):
     """ RCnet.
 
@@ -88,22 +91,22 @@ class RCNet(nn.Module):
         """
         # Inheritance
         logger.debug("RCNet configuration...")
-        RCNet.__init__(self)
+        nn.Module.__init__(self)
 
         # Class parameters
-        available_interfaces = get_interfaces(family="register").values()
-        if base_network not in available_interfaces:
+        available_networks = get_tools()["networks"]
+        if base_network not in available_networks:
             raise ValueError(
                 "Unknown base network '{0}', available networks are "
-                "{1}.".format(base_network, available_interfaces.keys()))
-        self.base_network = available_interfaces[base_network]
+                "{1}.".format(base_network, available_networks.keys()))
+        self.base_network = available_networks[base_network]
         logger.debug("  base network: {0}".format(self.base_network))
         self.stems = [Stem(
-            network=ADDNet(
+            network=available_networks["ADDNet"](
                 input_shape=input_shape, in_channels=in_channels,
                 flow_multiplier=1.),
             params={"raw_weight": 0, "reg_weight": 0})]
-        self.stems = [Stem(
+        self.stems += [Stem(
             network=self.base_network(
                 input_shape=input_shape, in_channels=in_channels,
                 flow_multiplier=(1. / n_cascades)),
@@ -112,21 +115,27 @@ class RCNet(nn.Module):
         for stem in self.stems:
             for key, val in self.default_params.items():
                 if key not in stem.params:
-                    param[key] = val
+                    stem.params[key] = val
         logger.debug("  stems: {0}".format(self.stems))
 
         # Finally warp the moving image: avoid accumulation of interpolation
         # errors, ie. reinterpolate after each cascade.
         self.spatial_transform = SpatialTransformer(input_shape)
 
+    def parameters(self):
+        """ Get the trainable variables.
+        """
+        return list(set(
+            sum([list(stem.network.parameters()) for stem in self.stems], [])))
+
     @property
-    def trainable_variables(self):
-        """ Get the number of trainable variables.
+    def trainable_parameters(self):
+        """ Get the number of trainable parameters.
         """
         nb_params = 0
         for stem in self.stems:
             nb_params += sum(
-                params.numel() for params in stem.interface.model.parameters())
+                params.numel() for params in stem.network.parameters())
         return nb_params
 
     def forward(self, x):
@@ -144,7 +153,7 @@ class RCNet(nn.Module):
         warp, stem_result = self.stems[0].network(
             torch.cat((moving, fixed), dim=1))
         stem_result["warped"] = warp
-        stem_result["agg_flow"] = extra["flow"]
+        stem_result["agg_flow"] = stem_result["flow"]
         stem_result["stem_params"] = self.stems[0].params
         stem_results.append(stem_result)
         for stem in self.stems[1:]:
@@ -189,29 +198,6 @@ class RCNetRegularizer(object):
                     stem_result["loss"] = flow_loss * params["reg_weight"]
         loss = sum([
             stem_result["loss"] * stem_results["stem_params"]["weight"]
-            for stem_result in stem_results])
-        logger.debug("Done.")
-        return loss
-
-
-class RCNetLoss(object):
-    """ RCNet Loss function.
-
-    PCCLoss
-    """
-    def __init__(self):
-        self.similarity_loss = PCCLoss(concat=True)
-
-    def __call__(self, moving, fixed, layer_outputs):
-        logger.debug("Compute RCNet loss...")
-        stem_results = layer_outputs["stem_results"]
-        for stem_result in stem_results:
-            params = stem_results["stem_params"]
-            if params["raw_weight"] > 0:
-                stem_result["raw_loss"] = self.similarity_loss(
-                    stem_result["warped"], fixed) * params["raw_weight"]
-        loss = sum([
-            stem_result["raw_loss"] * stem_results["stem_params"]["weight"]
             for stem_result in stem_results])
         logger.debug("Done.")
         return loss

@@ -394,6 +394,42 @@ class NCCLoss(object):
 
 
 @Losses.register
+class RCNetLoss(object):
+    """ RCNet Loss function.
+
+    This loss needs intermediate layers outputs.
+    Use a callback function to set the 'layer_outputs' class parameter before
+    each evaluation of the loss function.
+    If you use an interface this parameter is updated automatically?
+
+    PCCLoss
+    """
+    def __init__(self):
+        self.similarity_loss = PCCLoss(concat=True)
+        self.layer_outputs = None
+
+    def __call__(self, moving, fixed):
+        logger.debug("Compute RCNet loss...")
+        if self.layer_outputs is None:
+            raise ValueError(
+                "This loss needs intermediate layers outputs. Please register "
+                "an appropriate callback.")
+        stem_results = self.layer_outputs["stem_results"]
+        for stem_result in stem_results:
+            params = stem_result["stem_params"]
+            if params["raw_weight"] > 0:
+                stem_result["raw_loss"] = self.similarity_loss(
+                    stem_result["warped"], fixed) * params["raw_weight"]
+        loss = sum([
+            stem_result["raw_loss"] * stem_result["stem_params"]["weight"]
+            for stem_result in stem_results if "raw_loss" in stem_result])
+        self.layer_outputs = None
+        logger.debug("  loss: {0}".format(loss))
+        logger.debug("Done.")
+        return loss
+
+
+@Losses.register
 class VMILoss(object):
     """ Variational Mutual information loss function.
 
