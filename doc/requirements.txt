@@ -16,3 +16,5 @@ scikit-image==0.15.0
 visdom>=0.1.8.8
 h5py>=2.10.0
 sphinx==2.2.1
+boto3>=1.12.27
+scipy>=0.19.1

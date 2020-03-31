@@ -80,7 +80,9 @@ REQUIRES = [
     "scikit-learn>=0.21.3",
     "scikit-image==0.15.0",
     "visdom>=0.1.8.8",
-    "h5py>=2.10.0"
+    "h5py>=2.10.0",
+    "boto3>=1.12.27",
+    "scipy>=0.19.1"
 ]
 EXTRA_REQUIRES = {
 }
