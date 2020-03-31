@@ -23,6 +23,7 @@ from torchvision import transforms
 from torchvision import datasets
 from collections import namedtuple
 import pandas as pd
+from pynet.datasets import Fetchers
 
 
 # Global parameters
@@ -38,6 +39,7 @@ URLS = [
 logger = logging.getLogger("pynet")
 
 
+@Fetchers.register
 def fetch_gradcam(datasetdir, inception=False):
     """ Fetch/prepare the GradCam dataset for pynet.
 

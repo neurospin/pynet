@@ -21,6 +21,7 @@ import logging
 import numpy as np
 from collections import namedtuple
 import pandas as pd
+from pynet.datasets import Fetchers
 
 
 # Global parameters
@@ -35,6 +36,7 @@ URLS = [
 logger = logging.getLogger("pynet")
 
 
+@Fetchers.register
 def fetch_genomic_pred(datasetdir, to_categorical=False):
     """ Fetch/prepare the genomic prediction dataset for pynet.
 

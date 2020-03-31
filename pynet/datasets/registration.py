@@ -26,6 +26,7 @@ import zipfile
 import skimage
 from collections import namedtuple
 import pandas as pd
+from pynet.datasets import Fetchers
 
 
 # Global parameters
@@ -88,6 +89,7 @@ def crop_mask(volume, segmentation, target_shape=(128, 128, 128)):
     return wl_normalization(crop(volume, bound_l, bound_r, target_shape))
 
 
+@Fetchers.register
 def fetch_registration(datasetdir):
     """ Fetch/prepare the registration dataset for pynet.
 

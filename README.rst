@@ -62,6 +62,18 @@ The 'get_interfaces' function returns a dictionary with interfaces sorted by
 family names. You can filter the result by providing the family name or a list
 of family names of interest.
 
+You can list also all available data fetchers by executing in a Python shell::
+
+    from pprint import pprint
+    import pynet.datasets import get_fetchers
+    pprint(get_fetchers())
+
+The 'get_fetchers' function returns a dictionary with all the declared
+fetchers. Finally you may want to look at the data manger class that provides
+convenient tools to split/stratify you dataset::
+
+    from pynet.datasets import DataManager
+
 Install
 =======
 

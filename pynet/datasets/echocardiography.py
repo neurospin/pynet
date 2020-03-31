@@ -24,6 +24,7 @@ import pandas as pd
 import progressbar
 import urllib
 import tarfile
+from pynet.datasets import Fetchers
 
 
 # Global parameters
@@ -34,6 +35,7 @@ URL = ("https://deepimaging2019.sciencesconf.org/data/pages/"
 logger = logging.getLogger("pynet")
 
 
+@Fetchers.register
 def fetch_echocardiography(datasetdir):
     """ Fetch/prepare the echocardiography dataset for pynet.
 

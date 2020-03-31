@@ -28,6 +28,7 @@ import progressbar
 import urllib
 import tarfile
 from PIL import Image
+from pynet.datasets import Fetchers
 
 
 # Global parameters
@@ -38,6 +39,7 @@ URL = ("https://deepimaging2019.sciencesconf.org/data/pages/"
 logger = logging.getLogger("pynet")
 
 
+@Fetchers.register
 def fetch_orientation(datasetdir, flatten=False):
     """ Fetch/prepare the orientation dataset for pynet.
 

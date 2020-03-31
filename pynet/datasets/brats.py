@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 import progressbar
+from pynet.datasets import Fetchers
 
 
 # Global parameters
@@ -30,6 +31,7 @@ Item = namedtuple("Item", ["input_path", "output_path", "metadata_path"])
 logger = logging.getLogger("pynet")
 
 
+@Fetchers.register
 def fetch_brats(datasetdir):
     """ Fetch/prepare the Brats dataset for pynet.
 

@@ -24,6 +24,7 @@ import numpy as np
 from collections import namedtuple
 import pandas as pd
 import sklearn
+from pynet.datasets import Fetchers
 
 
 # Global parameters
@@ -49,6 +50,7 @@ MSG = (
 logger = logging.getLogger("pynet")
 
 
+@Fetchers.register
 def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
     """ Fetch/prepare the height biobank prediction dataset for pynet.
 

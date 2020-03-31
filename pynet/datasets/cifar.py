@@ -22,6 +22,7 @@ from collections import OrderedDict
 import numpy as np
 import pandas as pd
 import urllib
+from pynet.datasets import Fetchers
 
 
 # Global parameters
@@ -30,6 +31,7 @@ Item = namedtuple("Item", ["input_path", "output_path", "metadata_path",
 logger = logging.getLogger("pynet")
 
 
+@Fetchers.register
 def fetch_cifar(datasetdir):
     """ Fetch/prepare the CIFAR dataset for pynet.
 
