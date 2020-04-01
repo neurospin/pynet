@@ -99,3 +99,25 @@ class Board(object):
                     "xlabel": "iterations",
                     "ylabel": key},
                 win=key)
+
+
+def update_board(signal):
+    """ Callback to update visdom board visualizer.
+
+    Parameters
+    ----------
+    signal: SignalObject
+        an object with the trained model 'object', the emitted signal
+        'signal', the epoch number 'epoch' and the fold index 'fold'.
+    """
+    net = signal.object.model
+    emitted_signal = signal.signal
+    epoch = signal.epoch
+    fold = signal.fold
+    board = signal.object.board
+    data = {}
+    for key in signal.keys:
+        if key in ("epoch", "fold"):
+            continue
+        data[key] = getattr(signal, key)
+    board.update_plots(data)
