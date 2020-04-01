@@ -12,9 +12,15 @@ Define common metrics.
 """
 
 # Third party import
+import logging
 import torch
 import numpy as np
 import torch.nn.functional as func
+import sklearn.metrics as sk_metrics
+
+
+# Global parameters
+logger = logging.getLogger("pynet")
 
 
 def accuracy(y_pred, y):
@@ -58,8 +64,125 @@ def pearson_correlation(y_pred, y):
     return r_val
 
 
+class BinaryClassificationMetrics(object):
+    """ Computes and stores the average and current value.
+    """
+    def __init__(self, score, thr=0.5, with_logit=True):
+        self.thr = 0.5
+        self.score = score
+        self.with_logit = with_logit
+
+    def __call__(self, y_pred, y):
+        if self.with_logit:
+            y_pred = func.sigmoid(y_pred)
+        y_pred = y_pred.view(-1)
+        y = y.view(-1)
+        logger.info("  prediction: {0}".format(
+            y_pred.detach().numpy().tolist()))
+        pred = (y_pred >= self.thr).type(torch.int32)
+        truth = (y >= self.thr).type(torch.int32)
+        logger.info("  class prediction: {0}".format(
+            pred.detach().numpy().tolist()))
+        logger.info("  truth: {0}".format(truth.detach().numpy().tolist()))
+        metrics = {}
+        tp = pred.mul(truth).sum(0).float()
+        tn = (1 - pred).mul(1 - truth).sum(0).float()
+        fp = pred.mul(1 - truth).sum(0).float()
+        fn = (1 - pred).mul(truth).sum(0).float()
+        acc = (tp + tn).sum() / (tp + tn + fp + fn).sum()
+        pre = tp / (tp + fp)
+        rec = tp / (tp + fn)
+        f1 = (2.0 * tp) / (2.0 * tp + fp + fn)
+        metrics = {
+            "true_positive": tp,
+            "true_negative": tn,
+            "false_positive": fp,
+            "false_negative": fn,
+            "accuracy": acc,
+            "precision": pre,
+            "recall": rec
+        }
+        return metrics[self.score]
+
+
+class SKMetrics(object):
+    """ Wraping arounf scikit-learn metrics.
+    """
+    def __init__(self, name, thr=0.5, **kwargs):
+        self.name = name
+        self.thr = thr
+        self.kwargs = kwargs
+        if name in ("false_discovery_rate", "false_negative_rate",
+                    "false_positive_rate", "negative_predictive_value",
+                    "positive_predictive_value", "true_negative_rate",
+                    "true_positive_rate", "accuracy"):
+            self.metric = getattr(sk_metrics, "confusion_matrix")
+        else:
+            self.metric = getattr(sk_metrics, name)
+
+    def __call__(self, y_pred, y):
+        if isinstance(y_pred, torch.Tensor):
+            y_pred = y_pred.detach().numpy()
+        if isinstance(y, torch.Tensor):
+            y = y.detach().numpy()
+        if self.name not in ("roc_auc_score", "average_precision_score",
+                             "log_loss", "brier_score_loss"):
+            y_pred = (y_pred > self.thr).astype(int)
+        metric = self.metric(y, y_pred, **self.kwargs)
+        if self.name in ("false_discovery_rate", "false_negative_rate",
+                         "false_positive_rate", "negative_predictive_value",
+                         "positive_predictive_value", "true_negative_rate",
+                         "true_positive_rate", "accuracy"):
+            tn, fp, fn, tp = metric.ravel()
+        if self.name == "false_discovery_rate":
+            metric = fp / (tp + fp)
+        elif self.name == "false_negative_rate":
+            metric = fn / (tp + fn)
+        elif self.name == "false_positive_rate":
+            metric = fp / (fp + tn)
+        elif self.name == "negative_predictive_value":
+            metric = tn / (tn + fn)
+        elif self.name == "positive_predictive_value":
+            metric = tp / (tp + fp)
+        elif self.name == "true_negative_rate":
+            metric = tn / (tn + fp)
+        elif self.name == "true_positive_rate":
+            metric = tp / (tp + fn)
+        elif self.name == "accuracy":
+            metric = (tp + tn) / (tp + fp + fn + tn)
+        return metric
+
+
 METRICS = {
     "accuracy": accuracy,
     "multiclass_dice": multiclass_dice,
-    "pearson_correlation": pearson_correlation
+    "pearson_correlation": pearson_correlation,
+    "binary_accuracy": BinaryClassificationMetrics("accuracy"),
+    "binary_true_positive": BinaryClassificationMetrics("true_positive"),
+    "binary_true_negative": BinaryClassificationMetrics("true_negative"),
+    "binary_false_positive": BinaryClassificationMetrics("false_positive"),
+    "binary_true_negative": BinaryClassificationMetrics("false_negative"),
+    "binary_precision": BinaryClassificationMetrics("precision"),
+    "binary_recall": BinaryClassificationMetrics("recall")
+}
+
+BINARY_METRICS = {
+    "accuracy": SKMetrics("accuracy"),
+    "average_precision": SKMetrics("average_precision_score"),
+    "cohen_kappa": SKMetrics("cohen_kappa_score"),
+    "roc_auc": SKMetrics("roc_auc_score"),
+    "average_precision": SKMetrics("average_precision_score"),
+    "log_loss": SKMetrics("log_loss"),
+    "brier_loss": SKMetrics("brier_score_loss"),
+    "f1_score": SKMetrics("fbeta_score", beta=1),
+    "f2_score": SKMetrics("fbeta_score", beta=2),
+    "matthews_corrcoef": SKMetrics("matthews_corrcoef"),
+    "precision": SKMetrics("precision_score"),
+    "false_discovery_rate": SKMetrics("false_discovery_rate"),
+    "false_negative_rate": SKMetrics("false_negative_rate"),
+    "false_positive_rate": SKMetrics("false_positive_rate"),
+    "negative_predictive_value": SKMetrics("negative_predictive_value"),
+    "positive_predictive_value": SKMetrics("positive_predictive_value"),
+    "true_negative_rate": SKMetrics("true_negative_rate"),
+    "true_positive_rate": SKMetrics("true_positive_rate"),
 }
