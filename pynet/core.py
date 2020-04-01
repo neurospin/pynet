@@ -441,7 +441,7 @@ class Base(Observable):
                 if logit_function == "softmax":
                     y = func.softmax(y, dim=1)
                 elif logit_function == "sigmoid":
-                    y = func.sigmoid(y)
+                    y = torch.sigmoid(y)
                 else:
                     raise ValueError("Unsupported logit function.")
             y = y.cpu().detach().numpy()

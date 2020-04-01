@@ -28,10 +28,11 @@ from pynet.utils import setup_logging
 from pynet.plotting import Board, update_board
 from pynet.interfaces import DeepLearningInterface
 from sklearn.metrics import classification_report
-from pynet.metrics import SKMetrics, BINARY_METRICS, METRICS
+from pynet.metrics import SKMetrics, SK_METRICS, METRICS
 import collections
 import torch
 import torch.nn as nn
+from torch.optim import lr_scheduler
 import pandas as pd
 from scipy.stats import spearmanr
 import seaborn as sns
@@ -40,19 +41,20 @@ import matplotlib.pyplot as plt
 setup_logging(level="info")
 logger = logging.getLogger("pynet")
 
-use_toy = True
+use_toy = False
+dtype = "all"
 
 data = fetch_impac(
     datasetdir="/neurospin/nsap/datasets/impac",
     mode="train",
-    dtype="all")
-nb_features = 7710
+    dtype=dtype)
+nb_features = data.nb_features
 manager = DataManager(
     input_path=data.input_path,
     labels=["participants_asd"],
     metadata_path=data.metadata_path,
     number_of_folds=3,
-    batch_size=10,
+    batch_size=128,
     sampler="random",
     test_size=2,
     sample_size=1)
@@ -67,8 +69,11 @@ if use_toy:
         y1 = torch.zeros(nb_samples, 1)
         y2 = torch.ones(nb_samples, 1)
         y = torch.cat([y1, y2], dim=0)
-        print(x.shape, y.shape)
         toy_data[name] = (x, y)
+        if name == "train":
+            plt.figure()
+            plt.scatter(x1[:, 0], x1[:, 1], color="b")
+            plt.scatter(x2[:, 0], x2[:, 1], color="r")
     manager = DataManager.from_numpy(
         train_inputs=toy_data["train"][0], train_labels=toy_data["train"][1],
         batch_size=50, test_inputs=toy_data["test"][0],
@@ -137,9 +142,9 @@ extra_metric = METRICS["binary_accuracy"]
 extra_metric.thr = 0.4
 cl = DeepLearningInterface(
     optimizer_name="Adam",
-    learning_rate=5e-5,
+    learning_rate=1e-4,
     weight_decay=1.1e-4,
-    metrics=[extra_metric],
+    metrics=["binary_accuracy", "sk_roc_auc"],
     loss=my_loss,
     model=model)
 cl.board = Board(port=8097, host="http://localhost", env="main") 
@@ -147,18 +152,26 @@ cl.add_observer("after_epoch", update_board)
 outdir = "/tmp/impac"
 if not os.path.isdir(outdir):
     os.mkdir(outdir)
+scheduler = lr_scheduler.ReduceLROnPlateau(
+    optimizer=cl.optimizer,
+    mode="min",
+    factor=0.1,
+    patience=5,
+    verbose=True,
+    eps=1e-8)
 test_history, train_history = cl.training(
     manager=manager,
-    nb_epochs=60,
+    nb_epochs=200,
     checkpointdir=outdir,
     fold_index=0,
+    scheduler=scheduler,
     with_validation=(not use_toy))
 
-data = fetch_impac(
-    datasetdir="/neurospin/nsap/datasets/impac",
-    mode="test",
-    dtype="all")
 if not use_toy:
+    data = fetch_impac(
+        datasetdir="/neurospin/nsap/datasets/impac",
+        mode="test",
+        dtype=dtype)
     manager = DataManager(
         input_path=data.input_path,
         labels=["participants_asd"],
@@ -177,14 +190,14 @@ print(y_pred)
 print(y_true)
 fig, ax = plt.subplots()
 cmap = plt.get_cmap('Blues')
-cm = SKMetrics("confusion_matrix")(y_pred, y_true)
+cm = SKMetrics("confusion_matrix", with_logit=False)(y_pred, y_true)
 sns.heatmap(cm, cmap=cmap, annot=True, fmt="g", ax=ax)
 ax.set_xlabel("predicted values")
 ax.set_ylabel("actual values")
 metrics = {}
-for name, metric in BINARY_METRICS.items():
+for name, metric in SK_METRICS.items():
+    metric.with_logit = False
     value = metric(y_pred, y_true)
-    metrics.setdefault(name, []).append(value)
     metrics.setdefault(name, []).append(value)
 metrics = pd.DataFrame.from_dict(metrics)
 metrics["brier_loss"] *= -1.0
@@ -196,4 +209,4 @@ print(classification_report(y_true, y_pred >= 0.4))
 print(metrics)
 #plot_metric_rank_correlations(metrics)
 
-#plt.show()
+plt.show()

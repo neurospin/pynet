@@ -74,16 +74,16 @@ class BinaryClassificationMetrics(object):
 
     def __call__(self, y_pred, y):
         if self.with_logit:
-            y_pred = func.sigmoid(y_pred)
+            y_pred = torch.sigmoid(y_pred)
         y_pred = y_pred.view(-1)
         y = y.view(-1)
-        logger.info("  prediction: {0}".format(
+        logger.debug("  prediction: {0}".format(
             y_pred.detach().numpy().tolist()))
         pred = (y_pred >= self.thr).type(torch.int32)
         truth = (y >= self.thr).type(torch.int32)
-        logger.info("  class prediction: {0}".format(
+        logger.debug("  class prediction: {0}".format(
             pred.detach().numpy().tolist()))
-        logger.info("  truth: {0}".format(truth.detach().numpy().tolist()))
+        logger.debug("  truth: {0}".format(truth.detach().numpy().tolist()))
         metrics = {}
         tp = pred.mul(truth).sum(0).float()
         tn = (1 - pred).mul(1 - truth).sum(0).float()
@@ -108,10 +108,11 @@ class BinaryClassificationMetrics(object):
 class SKMetrics(object):
     """ Wraping arounf scikit-learn metrics.
     """
-    def __init__(self, name, thr=0.5, **kwargs):
+    def __init__(self, name, thr=0.5, with_logit=True, **kwargs):
         self.name = name
         self.thr = thr
         self.kwargs = kwargs
+        self.with_logit = with_logit
         if name in ("false_discovery_rate", "false_negative_rate",
                     "false_positive_rate", "negative_predictive_value",
                     "positive_predictive_value", "true_negative_rate",
@@ -121,6 +122,10 @@ class SKMetrics(object):
             self.metric = getattr(sk_metrics, name)
 
     def __call__(self, y_pred, y):
+        if self.with_logit:
+            y_pred = torch.sigmoid(y_pred)
+            y_pred = y_pred.view(-1, 1)
+            y = y.view(-1, 1)
         if isinstance(y_pred, torch.Tensor):
             y_pred = y_pred.detach().numpy()
         if isinstance(y, torch.Tensor):
@@ -166,7 +171,7 @@ METRICS = {
     "binary_recall": BinaryClassificationMetrics("recall")
 }
 
-BINARY_METRICS = {
+SK_METRICS = {
     "accuracy": SKMetrics("accuracy"),
     "average_precision": SKMetrics("average_precision_score"),
     "cohen_kappa": SKMetrics("cohen_kappa_score"),
@@ -186,3 +191,6 @@ BINARY_METRICS = {
     "true_negative_rate": SKMetrics("true_negative_rate"),
     "true_positive_rate": SKMetrics("true_positive_rate"),
 }
+
+METRICS.update(
+    dict(("sk_{0}".format(key), val) for key, val in SK_METRICS.items()))

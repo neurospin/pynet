@@ -66,7 +66,7 @@ URLS = [URL + name for name in ["anatomy.csv", "anatomy_qc.csv",
                                 "fmri_repetition_time.csv",
                                 "participants.csv", "test.csv", "train.csv"]]
 Item = namedtuple("Item", ["input_path", "output_path", "metadata_path",
-                           "labels"])
+                           "labels", "nb_features"])
 logger = logging.getLogger("pynet")
 
 
@@ -291,6 +291,7 @@ def fetch_impac(datasetdir, mode="train", dtype="all"):
         features = features[:, 7503:]
     elif dtype == "fmri":
         features = features[:, :7503]
+    nb_features = features.shape[1]
     np.save(selected_input_path, features)
     return Item(input_path=selected_input_path, output_path=None,
-                metadata_path=desc_path, labels=None)
+                metadata_path=desc_path, labels=None, nb_features=nb_features)
