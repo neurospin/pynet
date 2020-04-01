@@ -307,7 +307,7 @@ class DataManager(object):
                 add_input=add_input,
                 label_mapping=label_mapping,
                 patch_size=patch_size)
-            dataset["test"] = [test_dataset]
+            dataset["test"] = test_dataset
         if train_inputs is not None:
             train_dataset = ArrayDataset(
                 inputs=train_inputs,
