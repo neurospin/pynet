@@ -94,12 +94,15 @@ class Base(Observable):
                                  "'pytorch.nn'.")
             self.loss = getattr(torch.nn, loss_name)()
         self.metrics = {}
-        for name in (metrics or []):
-            if name not in mmetrics.METRICS:
+        for inst_or_name in (metrics or []):
+            if not isinstance(inst_or_name, str):
+                self.metrics[inst_or_name.__class__.__name__] = inst_or_name
+                continue
+            if inst_or_name not in mmetrics.METRICS:
                 raise ValueError("Metric '{0}' not yet supported: you can try "
                                  "to fill the 'METRICS' factory, or ask for "
-                                 "some help!")
-            self.metrics[name] = mmetrics.METRICS[name]
+                                 "some help!".format(inst_or_name))
+            self.metrics[inst_or_name] = mmetrics.METRICS[inst_or_name]
         if use_cuda and not torch.cuda.is_available():
             raise ValueError("No GPU found: unset 'use_cuda' parameter.")
         if pretrained is not None:
@@ -159,7 +162,7 @@ class Base(Observable):
             reset_weights(self.model)
             loaders = manager.get_dataloader(
                 train=True,
-                validation=True,
+                validation=with_validation,
                 fold_index=fold)
             for epoch in range(nb_epochs):
                 logger.debug("Running epoch {0}:".format(fold))
@@ -288,8 +291,8 @@ class Base(Observable):
         logger.debug("Loss {0} ({1})".format(loss, type(loss)))
         return loss, values
 
-    def testing(self, manager, with_logit=False, predict=False,
-                concat_layer_outputs=None):
+    def testing(self, manager, with_logit=False, logit_function="softmax",
+                predict=False, concat_layer_outputs=None):
         """ Evaluate the model.
 
         Parameters
@@ -297,7 +300,9 @@ class Base(Observable):
         manager: a pynet DataManager
             a manager containing the test data.
         with_logit: bool, default False
-            apply a softmax to the result.
+            apply the logit function to the result.
+        logit_function: str, default 'softmax'
+            choose the logit function.
         predict: bool, default False
             take the argmax over the channels.
         concat_layer_outputs: list of str, default None
@@ -319,8 +324,8 @@ class Base(Observable):
         """
         loaders = manager.get_dataloader(test=True)
         y, loss, values = self.test(
-            loaders.test, with_logit=with_logit, predict=predict,
-            concat_layer_outputs=concat_layer_outputs)
+            loaders.test, with_logit=with_logit, logit_function=logit_function,
+            predict=predict, concat_layer_outputs=concat_layer_outputs)
         if loss == 0:
             loss, values, y_true = (None, None, None)
         else:
@@ -341,8 +346,8 @@ class Base(Observable):
                 y_true = y_true[0]
         return y, X, y_true, loss, values
 
-    def test(self, loader, with_logit=False, predict=False,
-             concat_layer_outputs=None):
+    def test(self, loader, with_logit=False, logit_function="softmax",
+             predict=False, concat_layer_outputs=None):
         """ Evaluate the model on the test or validation data.
 
         Parameters
@@ -350,7 +355,9 @@ class Base(Observable):
         loader: a pytorch Dataset
             the data laoder.
         with_logit: bool, default False
-            apply a softmax to the result.
+            apply the logit function to the result.
+        logit_funtction: str, default 'softmax'
+            choose the logit function.
         predict: bool, default False
             take the argmax over the channels.
         concat_layer_outputs: list of str, default None
@@ -431,7 +438,12 @@ class Base(Observable):
             y = torch.cat(y, 0)
             if with_logit:
                 logger.debug("Apply logit.")
-                y = func.softmax(y, dim=1)
+                if logit_function == "softmax":
+                    y = func.softmax(y, dim=1)
+                elif logit_function == "sigmoid":
+                    y = func.sigmoid(y)
+                else:
+                    raise ValueError("Unsupported logit function.")
             y = y.cpu().detach().numpy()
             if predict:
                 logger.debug("Apply predict.")
