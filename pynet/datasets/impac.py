@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 ##########################################################################
-# NSAp - Copyright (C) CEA, 2019
+# NSAp - Copyright (C) CEA, 2019 - 2020
 # Distributed under the terms of the CeCILL-B license, as published by
 # the CEA-CNRS-INRIA. Refer to the LICENSE file or to
 # http://www.cecill.info/licences/Licence_CeCILL-B_V1-en.html
@@ -24,6 +24,7 @@ import logging
 import requests
 import zipfile
 import hashlib
+import warnings
 from collections import namedtuple
 from collections import OrderedDict
 import numpy as np
@@ -32,6 +33,10 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import FunctionTransformer
 from pynet.datasets import Fetchers
+try:
+    from nilearn.connectome import ConnectivityMeasure
+except:
+    warnings.warn("You need to install nilearn.")
 
 
 # Global parameters
@@ -159,10 +164,10 @@ def _load_fmri(fmri_filenames):
 
 
 class FeatureExtractor(BaseEstimator, TransformerMixin):
+    """ Make a transformer which will load the time series and compute the
+    connectome matrix.
+    """
     def __init__(self):
-        """ Make a transformer which will load the time series and compute the
-        connectome matrix.
-        """
         self.transformer_fmri = make_pipeline(
             FunctionTransformer(func=_load_fmri, validate=False),
             ConnectivityMeasure(kind="tangent", vectorize=True))
@@ -180,17 +185,20 @@ class FeatureExtractor(BaseEstimator, TransformerMixin):
         X_connectome = pd.DataFrame(X_connectome, index=X_df.index)
         X_connectome.columns = ["connectome_{0}".format(i)
                                 for i in range(X_connectome.columns.size)]
-        # get the anatomical information
         X_anatomy = X_df[[col for col in X_df.columns
                           if col.startswith("anatomy")]]
         X_anatomy = X_anatomy.drop(columns="anatomy_select")
-        # concatenate both matrices
+        logger.debug("  X connectome: {0}".format(X_connectome.shape))
+        logger.debug("  X anatomy: {0}".format(X_anatomy.shape))
         return pd.concat([X_connectome, X_anatomy], axis=1)
 
 
 @Fetchers.register
-def fetch_impac(datasetdir, mode="train"):
+def fetch_impac(datasetdir, mode="train", dtype="all"):
     """ Fetch/prepare the IMPAC dataset for pynet.
+
+    To compute the functional connectivity using the rfMRI data, we use the
+    BASC atlas with 122 ROIs.
 
     Parameters
     ----------
@@ -198,6 +206,8 @@ def fetch_impac(datasetdir, mode="train"):
         the dataset destination folder.
     mode: str
         ask the 'train' or 'test' dataset.
+    dtype: str, default 'all'
+        the features type: 'anatomy', 'fmri', or 'all'.
 
     Returns
     -------
@@ -205,12 +215,12 @@ def fetch_impac(datasetdir, mode="train"):
         a named tuple containing 'input_path', 'output_path', and
         'metadata_path'.
     """
-    from nilearn.connectome import ConnectivityMeasure
-
     logger.info("Loading impac dataset.")
     if not os.path.isdir(datasetdir):
         os.mkdir(datasetdir)
     train_desc_path = os.path.join(datasetdir, "pynet_impac_train.tsv")
+    selected_input_path = os.path.join(
+            datasetdir, "pynet_impac_inputs_selection.npy")
     train_input_path = os.path.join(
         datasetdir, "pynet_impac_inputs_train.npy")
     train_output_path = os.path.join(
@@ -276,5 +286,11 @@ def fetch_impac(datasetdir, mode="train"):
     else:
         input_path, output_path, desc_path = (
             test_input_path, test_output_path, test_desc_path)
-    return Item(input_path=input_path, output_path=None,
+    features = np.load(input_path)
+    if dtype == "anatomy":
+        features = features[:, 7503:]
+    elif dtype == "fmri":
+        features = features[:, :7503]
+    np.save(selected_input_path, features)
+    return Item(input_path=selected_input_path, output_path=None,
                 metadata_path=desc_path, labels=None)
