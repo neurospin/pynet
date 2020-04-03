@@ -52,11 +52,14 @@ The 'get_tools' function returns a dictionary with all available 'networks',
 'losses', 'regularizers', and 'metrics'.
 
 Then each network has been embeded in a Deep Learning training interface.
+Network parameters are set using the NetParameters object.
 You can list all these interfaces by executing in a Python shell::
 
     from pprint import pprint
     import pynet
     pprint(pynet.get_interfaces(family=None))
+    params = pynet.NetParameters(param1=1, param2=2)
+    params.param3 = 3
 
 The 'get_interfaces' function returns a dictionary with interfaces sorted by
 family names. You can filter the result by providing the family name or a list
