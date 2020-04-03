@@ -28,6 +28,7 @@ if "CI_MODE" in os.environ:
 
 from pprint import pprint
 import pynet.models as models
+from pynet import NetParameters
 from pynet.utils import get_named_layers
 from pynet.utils import setup_logging
 #from pynet.plotting.network import plot_net_rescue
@@ -99,19 +100,18 @@ outdir = "/neurospin/nsap/tmp/nvnet"
 if not os.path.isdir(outdir):
     os.mkdir(outdir)
 trained_model = os.path.join(outdir, "model_0_epoch_99.pth")
-nvnet_kwargs = {
-    "input_shape": (150, 190, 135),
-    "in_channels": 4,
-    "num_classes": 4,
-    "activation": "relu",
-    "normalization": "group_normalization",
-    "mode": "trilinear",
-    "with_vae": True,
-    "debug": False
-}
+nvnet_params = NetParameters
+    input_shape=(150, 190, 135),
+    in_channels=4,
+    num_classes=4,
+    activation="relu",
+    normalization="group_normalization",
+    mode="trilinear",
+    with_vae=True,
+    debug=False)
 if os.path.isfile(trained_model):
     nvnet = NvNetSegmenter(
-        nvnet_kwargs,
+        nvnet_params,
         optimizer_name="Adam",
         learning_rate=1e-4,
         weight_decay=1e-5,
@@ -122,7 +122,7 @@ if os.path.isfile(trained_model):
     valid_history = History.load(os.path.join(outdir, "validation_0_epoch_9.pkl"))
 else:
     nvnet = NvNetSegmenter(
-        nvnet_kwargs,
+        nvnet_params,
         optimizer_name="Adam",
         learning_rate=1e-4,
         weight_decay=1e-5,

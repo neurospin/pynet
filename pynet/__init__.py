@@ -11,11 +11,13 @@
 Helper Module for Deep Learning
 """
 
+import pynet.metrics
 from .info import __version__
 from .utils import setup_logging
 from .utils import logo
 from .utils import get_tools
 from .interfaces import get_interfaces
+from .interfaces import NetParameters
 
 print(logo())
 setup_logging(level="info")

@@ -16,6 +16,7 @@ import sys
 if "CI_MODE" in os.environ:
     sys.exit()
 import logging
+from pynet import NetParameters
 from pynet.datasets import DataManager, fetch_registration
 from pynet.utils import setup_logging
 from pynet.interfaces import (
@@ -59,15 +60,14 @@ manager = DataManager(
 base_network = "rcnet"
 
 if base_network == "rcnet":
-    rcnet_kwargs = {
-        "input_shape": (128, 128, 128),
-        "in_channels": 2,
-        "base_network": "VTNet",
-        "n_cascades": 1,
-        "rep": 1
-    }
+    rcnet_params = NetParameters(
+        input_shape=(128, 128, 128),
+        in_channels=2,
+        base_network="VTNet",
+        n_cascades=1,
+        rep=1)
     net = RCNetRegister(
-        rcnet_kwargs,
+        rcnet_params,
         optimizer_name="Adam",
         learning_rate=1e-4,
         loss=RCNetLoss(),
@@ -75,15 +75,14 @@ if base_network == "rcnet":
     #regularizer = ADDNetRegularizer(k1=0.1, k2=0.1)
     #net.add_observer("regularizer", regularizer)
 elif base_network == "addnet":
-    addnet_kwargs = {
-        "input_shape": (128, 128, 128),
-        "in_channels": 2,
-        "kernel_size": 3,
-        "padding": 1,
-        "flow_multiplier": 1.
-    }
+    addnet_params = NetParameters(
+        input_shape=(128, 128, 128),
+        in_channels=2,
+        kernel_size=3,
+        padding=1,
+        flow_multiplier=1.)
     net = ADDNetRegister(
-        addnet_kwargs,
+        addnet_params,
         optimizer_name="Adam",
         learning_rate=1e-4,
         loss=MSELoss(concat=True),
@@ -91,16 +90,15 @@ elif base_network == "addnet":
     regularizer = ADDNetRegularizer(k1=0.1, k2=0.1)
     net.add_observer("regularizer", regularizer)
 elif base_network == "vtnet":
-    vtnet_kwargs = {
-        "input_shape": (128, 128, 128),
-        "in_channels": 2,
-        "kernel_size": 3,
-        "padding": 1,
-        "flow_multiplier": 1.,
-        "nb_channels": 16
-    }
+    vtnet_params = NetParameters(
+        input_shape=(128, 128, 128),
+        in_channels=2,
+        kernel_size=3,
+        padding=1,
+        flow_multiplier=1.,
+        nb_channels=16)
     net = VTNetRegister(
-        vtnet_kwargs,
+        vtnet_params,
         optimizer_name="Adam",
         learning_rate=1e-4,
         loss=MSELoss(concat=True),
@@ -108,14 +106,13 @@ elif base_network == "vtnet":
     flow_regularizer = FlowRegularizer(k1=0.01)
     net.add_observer("regularizer", flow_regularizer)
 else:
-    vmnet_kwargs = {
-        "vol_size": (128, 128, 128),
-        "enc_nf": [16, 32, 32, 32],
-        "dec_nf": [32, 32, 32, 32, 32, 16, 16],
-        "full_size": True
-    }
+    vmnet_params = NetParameters(
+        vol_size=(128, 128, 128),
+        enc_nf=[16, 32, 32, 32],
+        dec_nf=[32, 32, 32, 32, 32, 16, 16],
+        full_size=True)
     net = VoxelMorphNetRegister(
-        vmnet_kwargs,
+        vmnet_params,
         optimizer_name="Adam",
         learning_rate=1e-4,
         # weight_decay=1e-5,

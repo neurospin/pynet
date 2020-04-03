@@ -88,6 +88,21 @@ class DeepLearningMetaRegister(type):
         return cls.REGISTRY
 
 
+class NetParameters(object):
+    """ Put all the networks parameters to this class.
+    You can do this during the init or by setting instance parameters or
+    both.
+    """
+    def __init__(self, **kwargs):
+        object.__setattr__(self, "net_kwargs", kwargs)
+
+    def __setattr__(self, name, value):
+        self.net_kwargs[name] = value
+
+    def __repr__(self):
+        return repr(self.net_kwargs)
+
+
 class DeepLearningInterface(Base, metaclass=DeepLearningMetaRegister):
     """ Class to define ready to use Deep Learning interface for defined
     networks. An attributes section will be used for the documentation of the
@@ -96,14 +111,14 @@ class DeepLearningInterface(Base, metaclass=DeepLearningMetaRegister):
     __family__ = None
     __net__ = None
 
-    def __init__(self, net_kwargs=None, pretrained=None, optimizer_name="Adam",
+    def __init__(self, net_params=None, pretrained=None, optimizer_name="Adam",
                  learning_rate=1e-3, loss_name="NLLLoss", metrics=None,
                  use_cuda=False, **kwargs):
         """ Class initilization.
 
         Parameters
         ----------
-        net_kwargs: dict, default None
+        net_params: NetParameters, default None
             all the parameters that will be used during the network creation.
         pretrained: path, default None
             path to the pretrained model or weights.
@@ -126,10 +141,10 @@ class DeepLearningInterface(Base, metaclass=DeepLearningMetaRegister):
         if self.__net__ is not None:
             logger.debug("Creating network '{0}'...".format(self.__net__))
             logger.debug("  family: {0}".format(self.__family__))
-            logger.debug("  kwargs: {0}".format(net_kwargs))
-            if net_kwargs is None:
+            logger.debug("  params: {0}".format(net_params))
+            if net_params is None or not isinstance(net_params, NetParameters):
                 raise ValueError("Please specify network parameters.")
-            self.model = self.__net__(**net_kwargs)
+            self.model = self.__net__(**net_params.net_kwargs)
         Base.__init__(
             self,
             optimizer_name=optimizer_name,

@@ -59,6 +59,7 @@ plot_data(data, nb_samples=5)
 
 import torch
 import torch.nn as nn
+from pynet import NetParameters
 from pynet.interfaces import UNetEncoder
 from pynet.plotting import plot_history
 from pynet.history import History
@@ -76,19 +77,18 @@ def my_loss(x, y):
     return criterion(x, y)
 outdir = "/tmp/echocardiography"
 trained_model = os.path.join(outdir, "model_0_epoch_9.pth")
-unet_kwargs = {
-    "num_classes": 4,
-    "in_channels": 1,
-    "depth": 5, 
-    "start_filts": 16,
-    "up_mode": "upsample", 
-    "merge_mode": "concat",
-    "batchnorm": False,
-    "dim": "2d"
-}
+unet_params = NetParameters(
+    num_classes=4,
+    in_channels=1,
+    depth=5, 
+    start_filts=16,
+    up_mode="upsample", 
+    merge_mode="concat",
+    batchnorm=False,
+    dim="2d")
 if os.path.isfile(trained_model):
     unet = UNetEncoder(
-        unet_kwargs,
+        unet_params,
         optimizer_name="Adam",
         learning_rate=5e-4,
         metrics=["multiclass_dice"],
@@ -99,7 +99,7 @@ if os.path.isfile(trained_model):
     valid_history = History.load(os.path.join(outdir, "validation_0_epoch_9.pkl"))
 else:
     unet = UNetEncoder(
-        unet_kwargs,
+        unet_params,
         optimizer_name="Adam",
         learning_rate=5e-4,
         metrics=["multiclass_dice"],
