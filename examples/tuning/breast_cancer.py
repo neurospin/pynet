@@ -16,7 +16,7 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-#from torch_optimizer import torch_optimizer
+# from torch_optimizer import torch_optimizer
 
 from sklearn.metrics import f1_score
 
@@ -43,6 +43,7 @@ print("Validation: ", x_val.shape, y_val.shape)
 # model in anyway, or without introducing any new syntax. The below example
 # shows clearly how this works.
 
+
 class BreastCancerNet(nn.Module, talos.utils.TorchHistory):
     def __init__(self, n_feature, first_neuron, second_neuron, dropout):
         super(BreastCancerNet, self).__init__()
@@ -51,12 +52,14 @@ class BreastCancerNet(nn.Module, talos.utils.TorchHistory):
         self.hidden1 = torch.nn.Linear(first_neuron, second_neuron)
         self.dropout = torch.nn.Dropout(dropout)
         self.out = torch.nn.Linear(second_neuron, 2)
+
     def forward(self, x):
         x = F.relu(self.hidden(x))
         x = self.dropout(x)
         x = torch.sigmoid(self.hidden1(x))
         x = self.out(x)
         return x
+
 
 def update_talos_history(signal):
         """ Callback to update talos history.
@@ -78,8 +81,10 @@ def update_talos_history(signal):
             if value is not None:
                 net.append_history(value, key)
 
+
 def breast_cancer(x_train, y_train, x_val, y_val, params):
     print("Iteration parameters: ", params)
+
     def weights_init_uniform_rule(m):
         classname = m.__class__.__name__
         if classname.find('Linear') != -1:
@@ -123,6 +128,7 @@ def breast_cancer(x_train, y_train, x_val, y_val, params):
 # - as a single value [in a list]
 # For values we don't want to use, it's ok to set it as None.
 
+
 params = {
     "first_neuron": [200, 100],
     "second_neuron": [30, 50],
@@ -154,7 +160,7 @@ scan_object = talos.Scan(x=x_train,
 
 
 #############################################################################
-# Access the results through the Scan object 
+# Access the results through the Scan object
 # ------------------------------------------
 #
 
@@ -194,7 +200,8 @@ print("get the round with the best result")
 print(analyze_object.rounds2high('val_accuracy'))
 
 print("get the best paramaters")
-print(analyze_object.best_params('val_accuracy', ['accuracy', 'loss', 'val_loss']))
+print(analyze_object.best_params(
+    'val_accuracy', ['accuracy', 'loss', 'val_loss']))
 
 print("get correlation for hyperparameters against a metric")
 print(analyze_object.correlate('val_loss', ['accuracy', 'loss', 'val_loss']))
@@ -215,7 +222,8 @@ print("heatmap correlation")
 analyze_object.plot_corr('val_loss', ['accuracy', 'loss', 'val_loss'])
 
 print("a four dimensional bar grid")
-analyze_object.plot_bars('batch_size', 'val_accuracy', 'first_neuron', 'learning_rate')
+analyze_object.plot_bars(
+    'batch_size', 'val_accuracy', 'first_neuron', 'learning_rate')
 
 if "CI_MODE" not in os.environ:
     import matplotlib.pyplot as plt

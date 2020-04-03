@@ -1,5 +1,5 @@
 """
-pynet: predicting autism 
+pynet: predicting autism
 ========================
 
 Credit: A Grigis
@@ -80,6 +80,7 @@ if use_toy:
         batch_size=50, test_inputs=toy_data["test"][0],
         test_labels=toy_data["test"][1])
 
+
 class DenseFeedForwardNet(nn.Module):
     def __init__(self, nb_features):
         """ Initialize the instance.
@@ -105,10 +106,11 @@ class DenseFeedForwardNet(nn.Module):
             ("linear2", nn.Linear(50, 100)),
             ("relu2", nn.PReLU(1)),
             ("linear3", nn.Linear(100, 1))
-        ]))        
+        ]))
 
     def forward(self, x):
         return self.layers(x)
+
 
 def my_loss(x, y):
     logger.debug("Binary cross-entropy loss...")
@@ -123,6 +125,7 @@ def my_loss(x, y):
     logger.debug("  y: {0} - {1}".format(y.shape, y.dtype))
     return criterion(x, y)
 
+
 def plot_metric_rank_correlations(metrics):
     """ Display rank correlations for all numerical metrics calculated over N
     experiments.
@@ -133,9 +136,10 @@ def plot_metric_rank_correlations(metrics):
         a data frame with all computedd metrics as columns and N rows.
     """
     fig, ax = plt.subplots()
-    labels =  metrics.columns
+    labels = metrics.columns
     sns.heatmap(spearmanr(metrics)[0], annot=True, cmap=plt.get_cmap("Blues"),
                 xticklabels=labels, yticklabels=labels, ax=ax)
+
 
 model = DenseFeedForwardNet(nb_features)
 print(model)
@@ -146,7 +150,7 @@ cl = DeepLearningInterface(
     metrics=["binary_accuracy", "sk_roc_auc_score"],
     loss=my_loss,
     model=model)
-cl.board = Board(port=8097, host="http://localhost", env="main") 
+cl.board = Board(port=8097, host="http://localhost", env="main")
 cl.add_observer("after_epoch", update_board)
 scheduler = lr_scheduler.ReduceLROnPlateau(
     optimizer=cl.optimizer,
@@ -204,6 +208,6 @@ for name, metric in sk_metrics.items():
 metrics = pd.DataFrame.from_dict(metrics)
 print(classification_report(y_true, y_pred >= 0.4))
 print(metrics)
-#plot_metric_rank_correlations(metrics)
+# plot_metric_rank_correlations(metrics)
 
 plt.show()

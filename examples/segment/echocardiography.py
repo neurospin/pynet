@@ -64,25 +64,28 @@ from pynet.interfaces import UNetEncoder
 from pynet.plotting import plot_history
 from pynet.history import History
 
+
 def my_loss(x, y):
     """ nn.CrossEntropyLoss expects a torch.LongTensor containing the class
     indices without the channel dimension.
     """
-    #y = torch.sum(y, dim=1).type(torch.LongTensor)
+    # y = torch.sum(y, dim=1).type(torch.LongTensor)
     device = y.get_device()
     y = torch.argmax(y, dim=1).type(torch.LongTensor)
     if device != -1:
         y = y.to(device)
     criterion = nn.CrossEntropyLoss()
     return criterion(x, y)
+
+
 outdir = "/tmp/echocardiography"
 trained_model = os.path.join(outdir, "model_0_epoch_9.pth")
 unet_params = NetParameters(
     num_classes=4,
     in_channels=1,
-    depth=5, 
+    depth=5,
     start_filts=16,
-    up_mode="upsample", 
+    up_mode="upsample",
     merge_mode="concat",
     batchnorm=False,
     dim="2d")
@@ -95,8 +98,10 @@ if os.path.isfile(trained_model):
         loss=my_loss,
         pretrained=trained_model,
         use_cuda=False)
-    train_history = History.load(os.path.join(outdir, "train_0_epoch_9.pkl"))
-    valid_history = History.load(os.path.join(outdir, "validation_0_epoch_9.pkl"))
+    train_history = History.load(
+        os.path.join(outdir, "train_0_epoch_9.pkl"))
+    valid_history = History.load(
+        os.path.join(outdir, "validation_0_epoch_9.pkl"))
 else:
     unet = UNetEncoder(
         unet_params,
@@ -135,8 +140,3 @@ plot_data(data, nb_samples=5, random=False)
 if "CI_MODE" not in os.environ:
     import matplotlib.pyplot as plt
     plt.show()
-    
-
-
-
-

@@ -72,4 +72,3 @@ plt.figure()
 plt.ylabel("-log10 P-value")
 plt.xlabel("SNP")
 plt.plot(pvals, marker="o")
-

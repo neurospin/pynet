@@ -63,7 +63,7 @@ p = pca.fit(X).fit_transform(X)
 Ntrain = X_train.shape[0]
 plt.figure()
 plt.title("PCA decomposition")
-plt.scatter(p[0:Ntrain,0], p[0:Ntrain,1], label="Train")
+plt.scatter(p[0:Ntrain, 0], p[0:Ntrain, 1], label="Train")
 plt.scatter(p[Ntrain:, 0], p[Ntrain:, 1], label="Test", color="orange")
 plt.legend(loc="best")
 
@@ -86,7 +86,7 @@ plt.xlabel("SNP")
 plt.plot(pvals, marker="o")
 N_best = 100
 snp_list = pvals.argsort()[-N_best:].squeeze().tolist()
-min_P_value = 2 # P = 0.01
+min_P_value = 2  # P = 0.01
 print(np.nonzero(pvals > min_P_value))
 snp_list = np.nonzero(pvals > min_P_value)[0].squeeze().tolist()
 X_train_filter = X_train[:, snp_list]
@@ -121,13 +121,14 @@ plt.scatter(y_test, y_hat, marker="o")
 # weights which are very large causing the network to overfit, after applying
 # this regularization the weights will become smaller.
 # We also apply an activity regularization on the first layer that tries to
-# make the output smaller so as to remove overfitting. 
+# make the output smaller so as to remove overfitting.
 
 import collections
 import torch
 import torch.nn as nn
 from pynet.utils import get_named_layers
 from pynet.interfaces import DeepLearningInterface
+
 
 class TwoLayersMLP(nn.Module):
     """  Simple two hidden layers percetron.
@@ -164,6 +165,7 @@ class TwoLayersMLP(nn.Module):
             x = x.view(x.size(0))
         return x, {"layer1": layer1_out}
 
+
 def linear1_l2_kernel_regularizer(signal):
     lambda2 = 0.01
     model = signal.object.model
@@ -172,11 +174,13 @@ def linear1_l2_kernel_regularizer(signal):
     l2_regularization = lambda2 * torch.norm(all_linear2_params, 2)
     return l2_regularization
 
+
 def linear1_l1_activity_regularizer(signal):
     lambda1 = 0.01
     layer1_out = model = signal.layer_outputs["layer1"]
     l1_regularization = lambda1 * torch.norm(layer1_out, 1)
     return l1_regularization
+
 
 nb_snps = X_train.shape[1]
 model = TwoLayersMLP(nb_snps, nb_neurons=[64, 32], nb_classes=1)
@@ -228,6 +232,7 @@ class MyNet(torch.nn.Module):
             ("activation2", nn.Softplus()),
             ("linear3", nn.Linear(32, 1))
         ]))
+
     def forward(self, x):
         x = x.view(x.shape[0], 1, x.shape[1])
         x = self.maxpool(self.conv1(x))
@@ -235,6 +240,8 @@ class MyNet(torch.nn.Module):
         x = self.linear(x)
         x = x.view(x.size(0))
         return x
+
+
 model = MyNet()
 print(model)
 cl = DeepLearningInterface(
@@ -294,6 +301,8 @@ y_train = manager["train"][0].labels[train_dataset.indices]
 print(y_train.shape)
 model = TwoLayersMLP(nb_snps, nb_neurons=[64, 32], nb_classes=3)
 print(model)
+
+
 def my_loss(x, y):
     """ nn.CrossEntropyLoss expects a torch.LongTensor containing the class
     indices without the channel dimension.
@@ -304,6 +313,8 @@ def my_loss(x, y):
         y = y.to(device)
     criterion = nn.CrossEntropyLoss()
     return criterion(x, y)
+
+
 cl = DeepLearningInterface(
     optimizer_name="Adam",
     learning_rate=5e-4,

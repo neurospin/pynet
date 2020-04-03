@@ -41,7 +41,7 @@ manager = DataManager(
     number_of_folds=10,
     batch_size=1,
     sampler="random",
-    #stratify_label="centers",
+    # stratify_label="centers",
     test_size=0.1,
     add_input=True,
     sample_size=1)
@@ -72,8 +72,8 @@ if base_network == "rcnet":
         learning_rate=1e-4,
         loss=RCNetLoss(),
         use_cuda=False)
-    #regularizer = ADDNetRegularizer(k1=0.1, k2=0.1)
-    #net.add_observer("regularizer", regularizer)
+    # regularizer = ADDNetRegularizer(k1=0.1, k2=0.1)
+    # net.add_observer("regularizer", regularizer)
 elif base_network == "addnet":
     addnet_params = NetParameters(
         input_shape=(128, 128, 128),
@@ -116,7 +116,7 @@ else:
         optimizer_name="Adam",
         learning_rate=1e-4,
         # weight_decay=1e-5,
-        loss=MSELoss(concat=True), # NCCLoss,
+        loss=MSELoss(concat=True),  # NCCLoss,
         use_cuda=False)
     flow_regularizer = FlowRegularizer(k1=0.01)
     net.add_observer("regularizer", flow_regularizer)
@@ -150,10 +150,9 @@ y_pred, X, y_true, loss, values = net.testing(
     predict=False,
     concat_layer_outputs=["flow"])
 print(y_pred.shape, X.shape, y_true.shape)
-#y_pred = np.expand_dims(y_pred, axis=1)
-#data = np.concatenate((y_pred, y_true, X), axis=1)
-#plot_data(data, nb_samples=5)
-
+# y_pred = np.expand_dims(y_pred, axis=1)
+# data = np.concatenate((y_pred, y_true, X), axis=1)
+# plot_data(data, nb_samples=5)
 
 if "CI_MODE" not in os.environ:
     plt.show()

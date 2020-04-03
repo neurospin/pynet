@@ -336,7 +336,7 @@ class DataManager(object):
             dataset["validation"] = [validation_dataset]
         return cls(input_path=dataset,
                    metadata_path=None,
-                   sampler=None,
+                   sampler="random",
                    batch_size=batch_size,
                    number_of_folds=1,
                    continuous_labels=continuous_labels)

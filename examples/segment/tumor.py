@@ -31,7 +31,7 @@ import pynet.models as models
 from pynet import NetParameters
 from pynet.utils import get_named_layers
 from pynet.utils import setup_logging
-#from pynet.plotting.network import plot_net_rescue
+# from pynet.plotting.network import plot_net_rescue
 
 setup_logging(level="info")
 
@@ -45,7 +45,7 @@ model = models.NvNet(
     with_vae=True)
 layers = get_named_layers(model)
 pprint(layers)
-#graph_file = plot_net_rescue(model, (1, 1, 128, 128, 128))
+# graph_file = plot_net_rescue(model, (1, 1, 128, 128, 128))
 
 #############################################################################
 # Import the brats dataset
@@ -67,9 +67,9 @@ manager = DataManager(
     number_of_folds=10,
     batch_size=1,
     stratify_label="grade",
-    #input_transforms=[
-    #    RandomFlipDimensions(ndims=3, proba=0.5, with_channels=True),
-    #    Offset(nb_channels=4, factor=0.1)],
+    # input_transforms=[
+    #     RandomFlipDimensions(ndims=3, proba=0.5, with_channels=True),
+    #     Offset(nb_channels=4, factor=0.1)],
     sampler="random",
     add_input=True,
     test_size=0.1,
@@ -100,7 +100,7 @@ outdir = "/neurospin/nsap/tmp/nvnet"
 if not os.path.isdir(outdir):
     os.mkdir(outdir)
 trained_model = os.path.join(outdir, "model_0_epoch_99.pth")
-nvnet_params = NetParameters
+nvnet_params = NetParameters(
     input_shape=(150, 190, 135),
     in_channels=4,
     num_classes=4,
@@ -118,8 +118,10 @@ if os.path.isfile(trained_model):
         loss=my_loss,
         pretrained=trained_model,
         use_cuda=True)
-    train_history = History.load(os.path.join(outdir, "train_0_epoch_9.pkl"))
-    valid_history = History.load(os.path.join(outdir, "validation_0_epoch_9.pkl"))
+    train_history = History.load(
+        os.path.join(outdir, "train_0_epoch_9.pkl"))
+    valid_history = History.load(
+        os.path.join(outdir, "validation_0_epoch_9.pkl"))
 else:
     nvnet = NvNetSegmenter(
         nvnet_params,
@@ -155,11 +157,10 @@ y_pred, X, y_true, loss, values = nvnet.testing(
     with_logit=False,
     predict=False)
 print(y_pred.shape, X.shape, y_true.shape)
-#y_pred = np.expand_dims(y_pred, axis=1)
-#data = np.concatenate((y_pred, y_true, X), axis=1)
-#plot_data(data, nb_samples=5)
+# y_pred = np.expand_dims(y_pred, axis=1)
+# data = np.concatenate((y_pred, y_true, X), axis=1)
+# plot_data(data, nb_samples=5)
 
 if "CI_MODE" not in os.environ:
     import matplotlib.pyplot as plt
     plt.show()
-

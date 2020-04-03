@@ -27,10 +27,12 @@ from pynet.datasets import fetch_orientation
 from pynet.datasets import DataManager
 from skimage.color import gray2rgb
 
+
 def prepare(arr):
     arr = gray2rgb(arr.reshape((64, 64)))
     arr = arr.transpose(2, 0, 1)
     return arr
+
 
 data = fetch_orientation(
     datasetdir="/tmp/orientation",
@@ -76,7 +78,7 @@ cl = interfaces.ResNet18Classifier(
     net_params,
     pretrained="/neurospin/nsap/torch/models/resnet18-5c106cde.pth",
     optimizer_name="Adam",
-    learning_rate = 1e-4,
+    learning_rate=1e-4,
     loss_name="NLLLoss",
     metrics=["accuracy"])
 print(cl.model)
@@ -97,6 +99,7 @@ print(cl.model)
 # Train the model
 
 from pynet.plotting import plot_history
+
 
 def train(cl, dataset):
 
@@ -124,12 +127,13 @@ def train(cl, dataset):
         with_logit=True,
         predict=False)
     y_pred = np.argmax(y_pred_prob, axis=1)
-    print(" ** true label      : ", y_true[idx] )
+    print(" ** true label      : ", y_true[idx])
     print(" ** predicted label : ", y_pred[idx])
     titles = ["{0}-{1}".format(data.labels[it1], data.labels[it2])
               for it1, it2 in zip(y_pred, y_true)]
     plot_data(X, labels=titles, nb_samples=5)
     plot_history(train_history)
+
 
 train(cl, dataset)
 
@@ -143,7 +147,7 @@ cl = interfaces.ResNet18Classifier(
     net_params,
     pretrained="/neurospin/nsap/torch/models/resnet18-5c106cde.pth",
     optimizer_name="Adam",
-    learning_rate = 1e-4,
+    learning_rate=1e-4,
     loss_name="NLLLoss",
     metrics=["accuracy"])
 to_freeze_layers = ["conv1", "bn1", "relu", "maxpool", "layer1", "layer2"]
@@ -156,7 +160,7 @@ cl = interfaces.ResNet18Classifier(
     net_params,
     pretrained="/neurospin/nsap/torch/models/resnet18-5c106cde.pth",
     optimizer_name="Adam",
-    learning_rate = 1e-4,
+    learning_rate=1e-4,
     loss_name="NLLLoss",
     metrics=["accuracy"])
 reset_weights(cl.model)
@@ -167,4 +171,3 @@ train(cl, dataset)
 if "CI_MODE" not in os.environ:
     import matplotlib.pyplot as plt
     plt.show()
-

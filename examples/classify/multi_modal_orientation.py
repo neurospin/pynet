@@ -1,5 +1,5 @@
 """
-pynet: multi modal slice orientation prediction 
+pynet: multi modal slice orientation prediction
 ===============================================
 
 Credit: A Grigis
@@ -83,6 +83,7 @@ import torch.nn as nn
 image_size = data.height * data.width
 nb_neurons = 16
 
+
 class OneLayerMLP(nn.Module):
     """  Simple one hidden layer percetron.
     """
@@ -106,10 +107,11 @@ class OneLayerMLP(nn.Module):
             ("softmax", nn.LogSoftmax(dim=1))
         ]))
 
-    def forward(self, x): 
+    def forward(self, x):
         x = self.layers(x)
         return x
- 
+
+
 model = OneLayerMLP(image_size, nb_neurons, 9)
 print(model)
 
@@ -168,6 +170,7 @@ plot_history(train_history)
 #
 # Now we will create a neural network using convolutional layers.
 
+
 class My_Net(torch.nn.Module):
     def __init__(self):
         super(My_Net, self).__init__()
@@ -176,7 +179,7 @@ class My_Net(torch.nn.Module):
         self.maxpool = torch.nn.MaxPool2d(kernel_size=2)
         self.linear = torch.nn.Linear(16 * 16 * 16, 9)
 
-    def forward(self, X): 
+    def forward(self, X):
         X = X.view(-1, 1, 64, 64)
         X = torch.nn.functional.relu(self.conv1(X))
         X = torch.nn.functional.relu(self.conv2(X))
@@ -186,6 +189,7 @@ class My_Net(torch.nn.Module):
 
 #############################################################################
 # Here, we check how the input size changes through each layer.
+
 
 model = My_Net()
 

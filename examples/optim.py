@@ -51,6 +51,7 @@ manager = DataManager(
     test_size=0.1,
     sample_size=(1 if "CI_MODE" not in os.environ else 0.01))
 
+
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -60,6 +61,7 @@ class Net(nn.Module):
         self.fc1 = nn.Linear(16 * 5 * 5, 120)
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, 10)
+
     def forward(self, x):
         x = self.pool(func.relu(self.conv1(x)))
         x = self.pool(func.relu(self.conv2(x)))
@@ -68,6 +70,8 @@ class Net(nn.Module):
         x = func.relu(self.fc2(x))
         x = self.fc3(x)
         return x
+
+
 net = Net()
 
 #############################################################################
@@ -85,6 +89,7 @@ cl = DeepLearningInterface(
     metrics=["accuracy"])
 if "CI_MODE" not in os.environ:
     from pynet.plotting import Board
+
     def update_board(signal):
         """ Callback to update visdom board visualizer.
 
@@ -104,7 +109,7 @@ if "CI_MODE" not in os.environ:
                 continue
             data[key] = getattr(signal, key)
         board.update_plots(data)
-    board = Board(port=8097, host="http://localhost", env="main")  
+    board = Board(port=8097, host="http://localhost", env="main")
     cl.add_observer("after_epoch", update_board)
 test_history, train_history = cl.training(
     manager=manager,

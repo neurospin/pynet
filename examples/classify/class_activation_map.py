@@ -103,8 +103,10 @@ manager2 = DataManager(
     test_size=1)
 loaders2 = manager2.get_dataloader(test=True)
 
-for loaders, model_name in ((loaders1, "vgg19"), (loaders1, "densenet201"),
-                            (loaders1, "resnet18"), (loaders2, "inception_v3")):
+for loaders, model_name in ((loaders1, "vgg19"),
+                            (loaders1, "densenet201"),
+                            (loaders1, "resnet18"),
+                            (loaders2, "inception_v3")):
 
     heatmaps = []
     print("-" * 10)

@@ -71,4 +71,3 @@ import os
 if "CI_MODE" not in os.environ:
     import matplotlib.pyplot as plt
     plt.show()
-

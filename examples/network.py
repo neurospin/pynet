@@ -40,9 +40,9 @@ from pynet.plotting.network import plot_net, plot_net_rescue
 model = UNet(
     num_classes=2,
     in_channels=1,
-    depth=3, 
+    depth=3,
     start_filts=8,
-    up_mode="upsample", 
+    up_mode="upsample",
     merge_mode="concat",
     batchnorm=True)
 if "CI_MODE" not in os.environ:
@@ -75,4 +75,3 @@ plot_data(hook_x[:, :1])
 if "CI_MODE" not in os.environ:
     import matplotlib.pyplot as plt
     plt.show()
-
