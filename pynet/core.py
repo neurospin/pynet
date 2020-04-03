@@ -14,6 +14,7 @@ Core classes.
 # System import
 import re
 import os
+import types
 import warnings
 import logging
 from collections import OrderedDict
@@ -94,15 +95,18 @@ class Base(Observable):
                                  "'pytorch.nn'.")
             self.loss = getattr(torch.nn, loss_name)()
         self.metrics = {}
-        for inst_or_name in (metrics or []):
-            if not isinstance(inst_or_name, str):
-                self.metrics[inst_or_name.__class__.__name__] = inst_or_name
+        for obj_or_name in (metrics or []):
+            if isinstance(obj_or_name, types.FunctionType):
+                self.metrics[obj_or_name.__name__] = obj_or_name
                 continue
-            if inst_or_name not in mmetrics.METRICS:
+            if hasattr(obj_or_name, "__call__"):
+                self.metrics[obj_or_name.__class__.__name__] = obj_or_name
+                continue
+            if obj_or_name not in mmetrics.METRICS:
                 raise ValueError("Metric '{0}' not yet supported: you can try "
                                  "to fill the 'METRICS' factory, or ask for "
-                                 "some help!".format(inst_or_name))
-            self.metrics[inst_or_name] = mmetrics.METRICS[inst_or_name]
+                                 "some help!".format(obj_or_name))
+            self.metrics[obj_or_name] = mmetrics.METRICS[obj_or_name]
         if use_cuda and not torch.cuda.is_available():
             raise ValueError("No GPU found: unset 'use_cuda' parameter.")
         if pretrained is not None:
