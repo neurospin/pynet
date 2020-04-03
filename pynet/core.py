@@ -103,6 +103,8 @@ class Base(Observable):
                 self.metrics[obj_or_name.__class__.__name__] = obj_or_name
                 continue
             if obj_or_name not in Metrics.get_registry():
+                logger.info("Available metrics:\n{0}".format(
+                    Metrics.get_registry()))
                 raise ValueError("Metric '{0}' not yet supported: you can try "
                                  "to fill the 'Metrics' factory, or ask for "
                                  "some help!".format(obj_or_name))
