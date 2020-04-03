@@ -17,4 +17,5 @@ from .nvnet import NvNet
 from .voxelmorphnet import VoxelMorphNet
 from .vtnet import VTNet, ADDNet
 from .rcnet import RCNet
+from .brainnetcnn import BrainNetCNN
 from .torchvisnet import *

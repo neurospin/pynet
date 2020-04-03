@@ -20,7 +20,6 @@ import os
 import sys
 if "CI_MODE" in os.environ:
     sys.exit()
-import pynet
 import logging
 import pynet
 from pynet.datasets import fetch_impac
