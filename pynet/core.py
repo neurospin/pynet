@@ -30,7 +30,7 @@ import numpy as np
 from pynet.utils import checkpoint
 from pynet.history import History
 from pynet.observable import Observable
-import pynet.metrics as mmetrics
+from pynet.utils import Metrics
 from pynet.utils import reset_weights
 
 
@@ -102,11 +102,11 @@ class Base(Observable):
             if hasattr(obj_or_name, "__call__"):
                 self.metrics[obj_or_name.__class__.__name__] = obj_or_name
                 continue
-            if obj_or_name not in mmetrics.METRICS:
+            if obj_or_name not in Metrics.get_registry():
                 raise ValueError("Metric '{0}' not yet supported: you can try "
-                                 "to fill the 'METRICS' factory, or ask for "
+                                 "to fill the 'Metrics' factory, or ask for "
                                  "some help!".format(obj_or_name))
-            self.metrics[obj_or_name] = mmetrics.METRICS[obj_or_name]
+            self.metrics[obj_or_name] = Metrics.get_registry()[obj_or_name]
         if use_cuda and not torch.cuda.is_available():
             raise ValueError("No GPU found: unset 'use_cuda' parameter.")
         if pretrained is not None:

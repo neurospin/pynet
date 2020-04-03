@@ -17,12 +17,14 @@ import torch
 import numpy as np
 import torch.nn.functional as func
 import sklearn.metrics as sk_metrics
+from pynet.utils import Metrics
 
 
 # Global parameters
 logger = logging.getLogger("pynet")
 
 
+@Metrics.register
 def accuracy(y_pred, y):
     y_pred = y_pred.data.max(dim=1)[1]
     accuracy = y_pred.eq(y).sum().cpu().numpy() / y.size()[0]
@@ -38,6 +40,7 @@ def _dice(y_pred, y):
     return (2. * intersection + 1.) / (flat_y_pred.sum() + flat_y.sum() + 1.)
 
 
+@Metrics.register
 def multiclass_dice(y_pred, y):
     """ Extension of the dice to a n classes problem.
     """
@@ -51,6 +54,7 @@ def multiclass_dice(y_pred, y):
     return dice / n_classes
 
 
+@Metrics.register
 def pearson_correlation(y_pred, y):
     """ Pearson correlation.
     """
@@ -158,39 +162,19 @@ class SKMetrics(object):
         return metric
 
 
-METRICS = {
-    "accuracy": accuracy,
-    "multiclass_dice": multiclass_dice,
-    "pearson_correlation": pearson_correlation,
-    "binary_accuracy": BinaryClassificationMetrics("accuracy"),
-    "binary_true_positive": BinaryClassificationMetrics("true_positive"),
-    "binary_true_negative": BinaryClassificationMetrics("true_negative"),
-    "binary_false_positive": BinaryClassificationMetrics("false_positive"),
-    "binary_true_negative": BinaryClassificationMetrics("false_negative"),
-    "binary_precision": BinaryClassificationMetrics("precision"),
-    "binary_recall": BinaryClassificationMetrics("recall")
-}
+for name in ("accuracy", "true_positive", "true_negative", "false_positive",
+             "false_negative", "precision", "recall"):
+    Metrics.register(
+        BinaryClassificationMetrics(name), name="binary_{0}".format(name))
 
-SK_METRICS = {
-    "accuracy": SKMetrics("accuracy"),
-    "average_precision": SKMetrics("average_precision_score"),
-    "cohen_kappa": SKMetrics("cohen_kappa_score"),
-    "roc_auc": SKMetrics("roc_auc_score"),
-    "average_precision": SKMetrics("average_precision_score"),
-    "log_loss": SKMetrics("log_loss"),
-    "brier_loss": SKMetrics("brier_score_loss"),
-    "f1_score": SKMetrics("fbeta_score", beta=1),
-    "f2_score": SKMetrics("fbeta_score", beta=2),
-    "matthews_corrcoef": SKMetrics("matthews_corrcoef"),
-    "precision": SKMetrics("precision_score"),
-    "false_discovery_rate": SKMetrics("false_discovery_rate"),
-    "false_negative_rate": SKMetrics("false_negative_rate"),
-    "false_positive_rate": SKMetrics("false_positive_rate"),
-    "negative_predictive_value": SKMetrics("negative_predictive_value"),
-    "positive_predictive_value": SKMetrics("positive_predictive_value"),
-    "true_negative_rate": SKMetrics("true_negative_rate"),
-    "true_positive_rate": SKMetrics("true_positive_rate"),
-}
+for name in ("accuracy", "average_precision_score", "cohen_kappa_score",
+             "roc_auc_score", "log_loss", "matthews_corrcoef",
+             "precision_score", "false_discovery_rate", "false_negative_rate",
+             "false_positive_rate", "negative_predictive_value",
+             "positive_predictive_value", "true_negative_rate",
+             "true_positive_rate"):
+    Metrics.register(
+        SKMetrics(name), name="sk_{0}".format(name))
 
-METRICS.update(
-    dict(("sk_{0}".format(key), val) for key, val in SK_METRICS.items()))
+Metrics.register(SKMetrics("fbeta_score", beta=1), name="f1_score")
+Metrics.register(SKMetrics("fbeta_score", beta=2), name="f2_score")

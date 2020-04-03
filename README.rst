@@ -49,7 +49,7 @@ You can list all available Deep Learning tools by executing in a Python shell::
     pprint(pynet.get_tools())
 
 The 'get_tools' function returns a dictionary with all available 'networks',
-'losses', and 'regularizers'.
+'losses', 'regularizers', and 'metrics'.
 
 Then each network has been embeded in a Deep Learning training interface.
 You can list all these interfaces by executing in a Python shell::

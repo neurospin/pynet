@@ -22,13 +22,14 @@ if "CI_MODE" in os.environ:
     sys.exit()
 import pynet
 import logging
+import pynet
 from pynet.datasets import fetch_impac
 from pynet.datasets import DataManager
 from pynet.utils import setup_logging
 from pynet.plotting import Board, update_board
 from pynet.interfaces import DeepLearningInterface
 from sklearn.metrics import classification_report
-from pynet.metrics import SKMetrics, SK_METRICS, METRICS
+from pynet.metrics import SKMetrics
 import collections
 import torch
 import torch.nn as nn
@@ -45,7 +46,7 @@ use_toy = False
 dtype = "all"
 
 data = fetch_impac(
-    datasetdir="/neurospin/nsap/datasets/impac",
+    datasetdir="/tmp/impac",
     mode="train",
     dtype=dtype)
 nb_features = data.nb_features
@@ -138,20 +139,15 @@ def plot_metric_rank_correlations(metrics):
 
 model = DenseFeedForwardNet(nb_features)
 print(model)
-extra_metric = METRICS["binary_accuracy"]
-extra_metric.thr = 0.4
 cl = DeepLearningInterface(
     optimizer_name="Adam",
     learning_rate=1e-4,
     weight_decay=1.1e-4,
-    metrics=["binary_accuracy", "sk_roc_auc"],
+    metrics=["binary_accuracy", "sk_roc_auc_score"],
     loss=my_loss,
     model=model)
 cl.board = Board(port=8097, host="http://localhost", env="main") 
 cl.add_observer("after_epoch", update_board)
-outdir = "/tmp/impac"
-if not os.path.isdir(outdir):
-    os.mkdir(outdir)
 scheduler = lr_scheduler.ReduceLROnPlateau(
     optimizer=cl.optimizer,
     mode="min",
@@ -162,7 +158,7 @@ scheduler = lr_scheduler.ReduceLROnPlateau(
 test_history, train_history = cl.training(
     manager=manager,
     nb_epochs=200,
-    checkpointdir=outdir,
+    checkpointdir=None,
     fold_index=0,
     scheduler=scheduler,
     with_validation=(not use_toy))
@@ -186,8 +182,11 @@ y_pred, X, y_true, loss, values = cl.testing(
     with_logit=True,
     logit_function="sigmoid",
     predict=False)
-print(y_pred)
-print(y_true)
+result = pd.DataFrame.from_dict(collections.OrderedDict([
+    ("pred", (y_pred.squeeze() > 0.5).astype(int)),
+    ("truth", y_true.squeeze()),
+    ("prob", y_pred.squeeze())]))
+print(result)
 fig, ax = plt.subplots()
 cmap = plt.get_cmap('Blues')
 cm = SKMetrics("confusion_matrix", with_logit=False)(y_pred, y_true)
@@ -195,16 +194,14 @@ sns.heatmap(cm, cmap=cmap, annot=True, fmt="g", ax=ax)
 ax.set_xlabel("predicted values")
 ax.set_ylabel("actual values")
 metrics = {}
-for name, metric in SK_METRICS.items():
+sk_metrics = dict(
+    (key, val) for key, val in pynet.get_tools()["metrics"].items()
+    if key.startswith("sk_"))
+for name, metric in sk_metrics.items():
     metric.with_logit = False
     value = metric(y_pred, y_true)
     metrics.setdefault(name, []).append(value)
 metrics = pd.DataFrame.from_dict(metrics)
-metrics["brier_loss"] *= -1.0
-metrics["log_loss"] *= -1.0
-metrics["false_discovery_rate"] *= -1.0
-metrics["false_negative_rate"] *= -1.0
-metrics["false_positive_rate"] *= -1.0
 print(classification_report(y_true, y_pred >= 0.4))
 print(metrics)
 #plot_metric_rank_correlations(metrics)

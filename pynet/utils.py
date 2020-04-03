@@ -47,13 +47,18 @@ class RegisteryDecorator(object):
     """ Class that can be used to register class in a registry.
     """
     @classmethod
-    def register(cls, klass, *args, **kwargs):
-        name = klass.__name__
+    def register(cls, obj_or_klass, *args, **kwargs):
+        if "name" in kwargs:
+            name = kwargs["name"]
+        elif hasattr(obj_or_klass, "__name__"):
+            name = obj_or_klass.__name__
+        else:
+            name = obj_or_klass.__class__.__name__
         if name in cls.REGISTRY:
             raise ValueError(
                 "'{0}' name already used in registry.".format(name))
-        cls.REGISTRY[name] = klass
-        return klass
+        cls.REGISTRY[name] = obj_or_klass
+        return obj_or_klass
 
     @classmethod
     def get_registry(cls):
@@ -78,6 +83,12 @@ class Losses(RegisteryDecorator):
     REGISTRY = {}
 
 
+class Metrics(RegisteryDecorator):
+    """ Class that register all the available losses.
+    """
+    REGISTRY = {}
+
+
 def get_tools():
     """ List all available Deep Learning tools.
 
@@ -88,7 +99,7 @@ def get_tools():
     """
     tools = {}
     mod_members = dict(inspect.getmembers(sys.modules[__name__]))
-    for key in ["Networks", "Regularizers", "Losses"]:
+    for key in ["Networks", "Regularizers", "Losses", "Metrics"]:
         tools[key.lower()] = mod_members[key].get_registry()
     return tools
 
