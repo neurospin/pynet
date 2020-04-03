@@ -53,6 +53,14 @@ if LooseVersion(sphinx.__version__) < LooseVersion("1.8"):
 else:
     sphinx_math = "sphinx.ext.imgmath"
 
+def skip(app, what, name, obj, would_skip, options):
+    if name == "__init__":
+        return False
+    return would_skip
+
+def setup(app):
+    app.connect("autodoc-skip-member", skip)
+
 # -- General configuration --------------------------------------------------
 
 # If extensions (or modules to document with autodoc) are in another directory,

@@ -191,15 +191,16 @@ class DeepLearningDecorator(object):
         if net_doc is None:
             raise ValueError("Please specify the docstring of the model "
                              "__init__ method.")
-        net_doc = textwrap.dedent(net_doc)
         if "----------" not in net_doc:
             raise ValueError("Please specify the description of the network "
                              "parameters in the docstring of the model "
                              "__init__ method.")
-        net_doc = net_doc.split("----------")[1]
+        net_doc = textwrap.dedent(net_doc.split("----------")[1])
         net_doc = net_doc.strip("\n")
         doc += textwrap.dedent("""
-        The network kwargs are discribed in the following section.
+        See the 'DeepLearningInterface' documentation for the  documentation
+        of the generic parameters.
+        The network parameters are discribed in the following section.
 
         Attributes
         ----------
