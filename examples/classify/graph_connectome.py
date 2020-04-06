@@ -25,13 +25,13 @@ from pynet.datasets import DataManager, get_fetchers
 from pynet.utils import setup_logging
 from pynet.metrics import SKMetrics
 from pynet.plotting import Board, update_board
-from sklearn.metrics import classification_report
-from sklearn.metrics import roc_curve, auc
+from mne.viz import circular_layout, plot_connectivity_circle
 import collections
 import torch
 import torch.nn as nn
 from torch.optim import lr_scheduler
 import scipy
+from scipy.stats.stats import pearsonr
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -44,8 +44,11 @@ logger = logging.getLogger("pynet")
 outdir = "/tmp/graph_connectome"
 (injury, x_train, y_train, x_test, y_test, x_valid,
  y_valid) = get_fetchers()["fetch_connectome"](outdir)
-for data in (x_train, y_train, x_test, y_test, x_valid, y_valid):
-    print(data.shape)
+labels = [str(idx) for idx in range(1, x_train.shape[-1] + 1)]
+for name, (x, y) in (("train", (x_train, y_train)),
+                     ("test", (x_test, y_test)),
+                     ("validation", (x_valid, y_valid))):
+    print("{0}: x {1} - y {2}".format(name, x.shape, y.shape))
 
 # View the realistic base connectome and the injury signatures.
 plt.figure(figsize=(16, 4))
@@ -77,32 +80,21 @@ manager = DataManager.from_numpy(
     train_inputs=x_train, train_labels=y_train,
     validation_inputs=x_valid, validation_labels=y_valid,
     test_inputs=x_test, test_labels=y_valid,
-    batch_size=5)
+    batch_size=14, continuous_labels=True)
 interfaces = pynet.get_interfaces()["graph"]
 net_params = pynet.NetParameters(
     input_shape=(90, 90),
     in_channels=1,
-    num_classes=2)
-loss = pynet.get_tools()["losses"]["MSELoss"]()
+    num_classes=2,
+    twice_e2e=False,
+    dense_sml=True)
+my_loss = pynet.get_tools()["losses"]["MSELoss"]()
 model = interfaces["BrainNetCNNGraph"](
     net_params,
     optimizer_name="Adam",
-    learning_rate=1e-4,
-    weight_decay=1.1e-4,
-    loss=loss)
-
-def my_loss(x, y):
-    logger.debug("Binary cross-entropy loss...")
-    device = y.get_device()
-    criterion = nn.BCEWithLogitsLoss()
-    x = x.view(-1, 1)
-    y = y.view(-1, 1)
-    y = y.type(torch.float32)
-    if device != -1:
-        y = y.to(device)
-    logger.debug("  x: {0} - {1}".format(x.shape, x.dtype))
-    logger.debug("  y: {0} - {1}".format(y.shape, y.dtype))
-    return criterion(x, y)
+    learning_rate=0.01,
+    weight_decay= 0.0005,
+    loss=my_loss)
 
 model.board = Board(port=8097, host="http://localhost", env="main")
 model.add_observer("after_epoch", update_board)
@@ -115,7 +107,7 @@ scheduler = lr_scheduler.ReduceLROnPlateau(
     eps=1e-8)
 test_history, train_history = model.training(
     manager=manager,
-    nb_epochs=100,
+    nb_epochs=15,
     checkpointdir=None,
     fold_index=0,
     scheduler=scheduler,
@@ -124,32 +116,61 @@ y_pred, X, y_true, loss, values = model.testing(
     manager=manager,
     with_logit=True,
     predict=False)
-y_pred = y_pred[:, 1]
-y_true = y_true[:, 1]
+y_pred_0, y_pred_1 = y_pred.T
+y_true_0, y_true_1 = y_true.T
 result = pd.DataFrame.from_dict(collections.OrderedDict([
-    ("pred", (y_pred > 0.5).astype(int)),
-    ("truth", y_true),
-    ("prob", y_pred)]))
+    ("pred_0", y_pred_0),
+    ("truth_0", y_true_0),
+    ("pred_1", y_pred_1),
+    ("truth_1", y_true_1)]))
 print(result)
-print(classification_report(y_true, y_pred > 0.5))
 
-fig, ax = plt.subplots()
-cmap = plt.get_cmap('Blues')
-cm = SKMetrics("confusion_matrix", with_logit=False)(y_pred, y_true)
-sns.heatmap(cm, cmap=cmap, annot=True, fmt="g", ax=ax)
-ax.set_xlabel("predicted values")
-ax.set_ylabel("actual values")
-fpr, tpr, _ = roc_curve(y_true, y_pred)
-roc_auc = auc(fpr, tpr)
-plt.figure()
-plt.plot(fpr, tpr, color="darkorange", lw=2,
-         label="ROC curve (area = %0.2f)" % roc_auc)
-plt.plot([0, 1], [0, 1], color="navy", lw=2, linestyle="--")
-plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
-plt.xlabel("False Positive Rate")
-plt.ylabel("True Positive Rate")
-plt.title("Receiver operating characteristic")
-plt.legend(loc="lower right")
+
+def regression_metrics(pred_labels, true_labels):
+    """ Regression metrics as deefined is the tutorial.
+    """
+    met = {}
+    met["mad"] = np.mean((abs(pred_labels - true_labels)))
+    met["std_mad"] = np.std(abs(pred_labels - true_labels))
+    # There's multiple labels.
+    if np.shape(np.squeeze(pred_labels).shape)[0] > 1:
+        n_labels = pred_labels.shape[1]
+        for idx in range(n_labels):
+            pred_values = pred_labels[:, idx]
+            actual_values = true_labels[:, idx]
+            r, p = pearsonr(pred_values, actual_values)
+            met["corr_" + str(idx)] = r
+            met["p_" + str(idx)] = p
+    # Only 1 label.
+    else:
+        r, p = pearsonr(pred_labels, true_labels)
+        met["corr_0"] = r
+        met["p_0"] = p
+    return met
+
+print("E2E prediction results:")
+test_metrics_0 = regression_metrics(y_pred_0, y_true_0)
+print("class 0: {0}".format(test_metrics_0))
+test_metrics_1 = regression_metrics(y_pred_1, y_true_1)
+print("class 1: {0}".format(test_metrics_1))
+
+# Saliency map is the gradient of the maximum score value with respect to
+# the input image.
+model.model.eval()
+X = torch.from_numpy(x_test)
+X.requires_grad_()
+scores = model.model(X)
+scores.backward(torch.ones(scores.shape, dtype=torch.float32))
+saliency, _ = torch.max(X.grad.data.abs(), dim=1)
+saliency = np.mean(saliency.numpy(), axis=0)
+
+hemi_size = len(labels) // 2
+node_order = labels[:hemi_size]
+node_order.extend(labels[hemi_size:][::-1])
+node_angles = circular_layout(labels, node_order, start_pos=90,
+                              group_boundaries=[0, hemi_size])
+plot_connectivity_circle(saliency, labels, n_lines=300,
+                         node_angles=node_angles,
+                         title="Partial derivatives mapped on a circle plot")
 
 plt.show()

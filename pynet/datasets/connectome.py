@@ -30,8 +30,6 @@ from pynet.datasets import Fetchers
 CONNECTOME_URL = (
     "https://github.com/jeremykawahara/ann4brains/raw/master/"
     "examples/data/base.mat")
-Item = namedtuple("Item", ["input_path", "output_path", "metadata_path",
-                           "labels"])
 logger = logging.getLogger("pynet")
 
 
@@ -40,6 +38,13 @@ def fetch_connectome(datasetdir):
     """ Fetch/prepare the Connectome injury dataset for pynet.
 
     Refactoring of ann4brains.synthetic.injury.ConnectomeInjury.
+
+    To simulate realistic synthetic examples, a mean connectome
+    of preterm infant data is perturbed by a simulated focal brain injury
+    using a local signature pattern.
+    Two focal injury signatures are applied on two injury regions. These two
+    regions are chosen as the two rows with the highest median responses in
+    order to simulate injury to important regions (i.e., hubs) of the brain.
 
     Parameters
     ----------
