@@ -49,30 +49,42 @@ class BrainNetCNN(nn.Module):
     Reference: https://www2.cs.sfu.ca/~hamarneh/ecopy/neuroimage2017.pdf.
     Code: https://github.com/nicofarr/brainnetcnnVis_pytorch.
     """
-    def __init__(self, input_shape, in_channels, num_classes, twice_e2e=False,
-                 dense_sml=True):
+    def __init__(self, input_shape, in_channels, num_classes, nb_e2e=32,
+                 nb_e2n=64, nb_n2g=30, dropout=0.5, leaky_alpha=0.33,
+                 twice_e2e=False, dense_sml=True):
         """ Init class.
 
         Parameters
         ----------
         input_shape: tuple
-            the data shape.
+            the size of the functional connectivity matrix.
         in_channels: int
             number of channels in the input tensor.
         num_classes: int
             the number of classes to be predicted.
         twice_e2e: bool, default False
             if set use two E2E filter twice.
+        nb_e2e: int, default 32
+            number of e2e filters.
+        nb_e2n: int, default 64
+            number of e2n filters.
+        nb_n2g: int, default 30
+            number of n2g filters.
+        dropout: float, default 0.5
+            the dropout rate.
+        leaky_alpha: float, default 0.33
+            leaky ReLU alpha rate.
+        twice_e2e: bool, default False
+            if set apply two times the Edge-to-Edge layer.
         dense_sml: bool, default True
-            if set reduce the number of hidden dense layers.
+            if set reduce the number of hidden dense layers otherwise set
+            nb_n2g to 256.
         """
         # Inheritance
         nn.Module.__init__(self)
 
         # Class parameters
         self.num_classes = num_classes
-        self.in_channels = in_channels
-        self.kernel_height, self.kernel_width = input_shape
         self.twice_e2e = twice_e2e
         self.dense_sml = dense_sml
 
@@ -87,45 +99,44 @@ class BrainNetCNN(nn.Module):
         # features learned by the previous layers.
         if self.twice_e2e:
             self.e2e = nn.Sequential(collections.OrderedDict([
-                ("e2e1", E2EBlock(input_shape, in_channels, 32, bias=True)),
-                ("e2e2", E2EBlock(input_shape, 32, 32, bias=True))
+                ("e2e1", Edge2Edge(input_shape, in_channels, nb_e2e)),
+                ("relu1", nn.LeakyReLU(negative_slope=leaky_alpha)),
+                ("e2e2", Edge2Edge(input_shape, nb_e2e, nb_e2e)),
+                ("relu2", nn.LeakyReLU(negative_slope=leaky_alpha))
             ]))
         else:
             self.e2e = nn.Sequential(collections.OrderedDict([
-                ("e2e", E2EBlock(input_shape, in_channels, 32, bias=True)),
+                ("e2e", Edge2Edge(input_shape, in_channels, nb_e2e)),
+                ("relu", nn.LeakyReLU(negative_slope=leaky_alpha)),
             ]))
         self.e2n = nn.Sequential(collections.OrderedDict([
-            ("e2n", torch.nn.Conv2d(32, 64, (1, self.kernel_width), stride=1)),
-            ("dropout", nn.Dropout(0.5)),
-            ("relu", nn.LeakyReLU(negative_slope=0.33))
+            ("e2n", Edge2Node(input_shape, nb_e2e, nb_e2n)),
+            ("relu", nn.LeakyReLU(negative_slope=leaky_alpha)),
+            ("dropout", nn.Dropout(dropout))
+        ]))
+        self.n2g = nn.Sequential(collections.OrderedDict([
+            ("n2g", Node2Graph(input_shape, nb_e2n, nb_n2g)),
+            ("relu", nn.LeakyReLU(negative_slope=leaky_alpha)),
         ]))
         if self.dense_sml:
-            self.n2g = nn.Sequential(collections.OrderedDict([
-                ("n2g", torch.nn.Conv2d(64, 30, (self.kernel_height, 1))),
-                ("relu", nn.LeakyReLU(negative_slope=0.33)),
-            ]))
             self.dense_layers = nn.Sequential(collections.OrderedDict([
-                ("dense", torch.nn.Linear(30, self.num_classes))
+                ("dense", torch.nn.Linear(nb_n2g, self.num_classes))
             ]))
         else:
-            self.n2g = nn.Sequential(collections.OrderedDict([
-                ("n2g", torch.nn.Conv2d(64, 256, (self.kernel_height, 1))),
-                ("relu", nn.LeakyReLU(negative_slope=0.33)),
-            ]))
             self.dense_layers = nn.Sequential(collections.OrderedDict([
-                ("dense1", torch.nn.Linear(256, 128)),
-                ("dropout1", nn.Dropout(0.5)),
-                ("relu1", nn.LeakyReLU(negative_slope=0.33)),
+                ("dense1", torch.nn.Linear(nb_n2g, 128)),
+                ("dropout1", nn.Dropout(dropout)),
+                ("relu1", nn.LeakyReLU(negative_slope=leaky_alpha)),
                 ("dense2", torch.nn.Linear(128, 30)),
-                ("dropout2", nn.Dropout(0.5)),
-                ("relu2", nn.LeakyReLU(negative_slope=0.33)),
+                ("dropout2", nn.Dropout(dropout)),
+                ("relu2", nn.LeakyReLU(negative_slope=leaky_alpha)),
                 ("dense3", torch.nn.Linear(30, self.num_classes))
             ]))
 
         # Init weights
         @torch.no_grad()
         def weights_init(module):
-            if isinstance(module, nn.Conv2d):
+            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
                 logger.debug("Init weights of {0}...".format(module))
                 torch.nn.init.xavier_uniform_(module.weight)
                 torch.nn.init.constant(module.bias, 0)
@@ -153,31 +164,93 @@ class BrainNetCNN(nn.Module):
         return out
 
 
-class E2EBlock(nn.Module):
-    """ Implementation of the Edge-to-Edge filter.
+class Edge2Edge(nn.Module):
+    """ Implementation of the Edge-to-Edge (e2e) layer.
 
     The E2E filter is defined in terms of topological locality, by combining
     the weights of edges that share nodes together.
     """
-    def __init__(self, input_shape, in_planes, out_planes, bias=False):
-        super(E2EBlock, self).__init__()
+    def __init__(self, input_shape, channels, filters):
+        """ Init class.
+
+        Parameters
+        ----------
+        input_shape: int
+            the size of the functional connectivity matrix.
+        channels: int
+            number of input channel.
+        filters: int
+            number of output channel
+        """
+        super(Edge2Edge, self).__init__()
         self.kernel_height, self.kernel_width = input_shape
-        self.conv_1xd = torch.nn.Conv2d(
-            in_planes, out_planes, (1, self.kernel_width), bias=bias,
-            stride=1)
-        self.conv_dx1 = torch.nn.Conv2d(
-            in_planes, out_planes, (self.kernel_height, 1), bias=bias,
-            stride=1)
+        self.row_conv = nn.Conv2d(channels, filters, (1, self.kernel_width))
+        self.col_conv = nn.Conv2d(channels, filters, (self.kernel_height, 1))
 
     def forward(self, x):
+        """ e2e by two conv2d with line filter.
+        """
         logger.debug("E2E layer...")
         logger.debug("  input: {0} - {1} - {2}".format(
             x.shape, x.get_device(), x.dtype))
-        conv_1xd = self.conv_1xd(x)
-        logger.debug("  1xd: {0} - {1} - {2}".format(
-            conv_1xd.shape, conv_1xd.get_device(), conv_1xd.dtype))
-        conv_dx1 = self.conv_dx1(x)
-        logger.debug("  dx1: {0} - {1} - {2}".format(
-            conv_dx1.shape, conv_dx1.get_device(), conv_dx1.dtype))
-        return (torch.cat([conv_dx1] * self.kernel_width, dim=2) +
-                torch.cat([conv_1xd] * self.kernel_height, dim=3))
+        row = self.row_conv(x)
+        logger.debug("  row: {0} - {1} - {2}".format(
+            row.shape, row.get_device(), row.dtype))
+        col = self.col_conv(x)
+        logger.debug("  col: {0} - {1} - {2}".format(
+            col.shape, col.get_device(), col.dtype))
+        return (torch.cat([col] * self.kernel_width, dim=2) +
+                torch.cat([row] * self.kernel_height, dim=3))
+
+
+class Edge2Node(nn.Module):
+    """ Implementation of the Edge-to-Node (e2n) layer.
+    """
+    def __init__(self, input_shape, channels, filters):
+        """ Init class.
+
+        Parameters
+        ----------
+        input_shape: int
+            the size of the functional connectivity matrix.
+        channels: int
+            number of input channel.
+        filters: int
+            number of output channel
+        """
+        super(Edge2Node, self).__init__()
+        self.kernel_height, self.kernel_width = input_shape
+        self.row_conv = nn.Conv2d(channels, filters, (1, self.kernel_width))
+        self.col_conv = nn.Conv2d(channels, filters, (self.kernel_height, 1))
+
+    def forward(self, x):
+        """ e2n by add two conv2d.
+        """
+        row = self.row_conv(x)
+        col = self.col_conv(x)
+        return row + col.permute(0, 1, 3, 2)
+
+
+class Node2Graph(nn.Module):
+    """ Implementation of the Node-to-Graph (n2g) layer.
+    """
+    def __init__(self, input_shape, channels, filters):
+        """ Init class.
+
+        Parameters
+        ----------
+        input_shape: int
+            the size of the functional connectivity matrix.
+        channels: int
+            number of input channel.
+        filters: int
+            number of output channel
+        """
+        super(Node2Graph, self).__init__()
+        self.kernel_height, self.kernel_width = input_shape
+        self.conv = nn.Conv2d(channels, filters, (self.kernel_height, 1))
+
+    def forward(self, x):
+        """ n2g by convolution.
+        """
+        return self.conv(x)

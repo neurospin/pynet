@@ -80,12 +80,17 @@ manager = DataManager.from_numpy(
     train_inputs=x_train, train_labels=y_train,
     validation_inputs=x_valid, validation_labels=y_valid,
     test_inputs=x_test, test_labels=y_valid,
-    batch_size=14, continuous_labels=True)
+    batch_size=128, continuous_labels=True)
 interfaces = pynet.get_interfaces()["graph"]
 net_params = pynet.NetParameters(
     input_shape=(90, 90),
     in_channels=1,
     num_classes=2,
+    nb_e2e=32,
+    nb_e2n=64,
+    nb_n2g=30,
+    dropout=0.5,
+    leaky_alpha=0.1,
     twice_e2e=False,
     dense_sml=True)
 my_loss = pynet.get_tools()["losses"]["MSELoss"]()
@@ -94,8 +99,7 @@ model = interfaces["BrainNetCNNGraph"](
     optimizer_name="Adam",
     learning_rate=0.01,
     weight_decay= 0.0005,
-    loss=my_loss)
-
+    loss_name="MSELoss")
 model.board = Board(port=8097, host="http://localhost", env="main")
 model.add_observer("after_epoch", update_board)
 scheduler = lr_scheduler.ReduceLROnPlateau(
