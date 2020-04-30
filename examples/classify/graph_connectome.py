@@ -79,7 +79,7 @@ for idx in range(3):
 manager = DataManager.from_numpy(
     train_inputs=x_train, train_labels=y_train,
     validation_inputs=x_valid, validation_labels=y_valid,
-    test_inputs=x_test, test_labels=y_valid,
+    test_inputs=x_test, test_labels=y_test,
     batch_size=128, continuous_labels=True)
 interfaces = pynet.get_interfaces()["graph"]
 net_params = pynet.NetParameters(
