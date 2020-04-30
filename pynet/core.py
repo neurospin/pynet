@@ -258,7 +258,8 @@ class Base(Observable):
             logger.debug("  evaluate model.")
             self.optimizer.zero_grad()
             output_items = self.model(inputs)
-            if not isinstance(output_items, tuple):
+            if (not isinstance(output_items, tuple) and
+                    not isinstance(output_items, list)):
                 outputs = output_items
                 layer_outputs = None
             elif len(output_items) == 1:
@@ -406,10 +407,13 @@ class Base(Observable):
                 logger.debug("  evaluate model.")
                 output_items = self.model(inputs)
                 extra_outputs = []
-                if not isinstance(output_items, tuple):
+                if (not isinstance(output_items, tuple) and
+                        not isinstance(output_items, list)):
                     outputs = output_items
+                    layer_outputs = None
                 elif len(output_items) == 1:
                     outputs = output_items[0]
+                    layer_outputs = None
                 elif len(output_items) == 2:
                     outputs, layer_outputs = output_items
                     if concat_layer_outputs is not None:
@@ -426,6 +430,8 @@ class Base(Observable):
                         "as an option specific layer outputs in a dict.")
                 if targets is not None:
                     logger.debug("  update loss.")
+                    if hasattr(self.loss, "layer_outputs"):
+                        self.loss.layer_outputs = layer_outputs
                     batch_loss = self.loss(outputs, targets)
                     loss += float(batch_loss) / nb_batch
                     for name, metric in self.metrics.items():
