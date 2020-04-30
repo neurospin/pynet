@@ -53,7 +53,7 @@ class FocalLoss(object):
         ----------
         gamma: float, default 2
             the focusing parameter >=0.
-        alpha: float, default None
+        alpha: float or list of float, default None
             if set use alpha-balanced variant of the focal loss.
         reduction: str, default 'mean'
             specifies the reduction to apply to the output: 'none' - no
@@ -68,9 +68,13 @@ class FocalLoss(object):
         self.reduction = reduction
         self.with_logit = with_logit
         self.eps = 1e-6
+        self.layer_outputs = None
 
     def __call__(self, output, target):
         """ Compute the loss.
+
+        An update of the alpha parameter can be released with the layer outputs
+        that is expected to be a dict.
 
         Parameters
         ----------
@@ -90,6 +94,9 @@ class FocalLoss(object):
 
         n_batch, n_classes = output.shape[:2]
         device = output.device
+        if (isinstance(self.layer_outputs, dict) and
+                "alpha" in self.layer_outputs):
+            self.alpha = self.layer_outputs["alpha"]
         if self.with_logit:
             output = func.softmax(output, dim=1)
         output = output + self.eps
@@ -102,8 +109,14 @@ class FocalLoss(object):
 
         # Compute the focal loss
         weight = torch.pow(1 - output, self.gamma)
-        alpha = self.alpha or 1
-        focal = -alpha * weight * torch.log(output)
+        self.alpha = self.alpha or 1.
+        if not isinstance(self.alpha, list):
+            self.alpha = [self.alpha] * n_classes
+        if len(self.alpha) != n_classes:
+            raise ValueError("Invalid alphas.")
+        focal = weight * torch.log(output)
+        for idx, alpha in enumerate(self.alpha):
+            focal[:, idx] = -alpha * focal[:, idx]
         tmp_loss = torch.sum(target_one_hot * focal, dim=1)
 
         # Reduction
