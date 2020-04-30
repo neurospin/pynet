@@ -188,6 +188,7 @@ class NvNetCombinedLoss(object):
     """
     def __init__(self, num_classes, k1=0.1, k2=0.1):
         super(NvNetCombinedLoss, self).__init__()
+        self.layer_outputs = None
         self.num_classes = num_classes
         self.k1 = k1
         self.k2 = k2
@@ -196,7 +197,8 @@ class NvNetCombinedLoss(object):
         self.kl_loss = CustomKLLoss()
 
     def __call__(self, outputs, y_true):
-        y_pred, y_mid = outputs
+        y_pred = outputs
+        y_mid = self.layer_outputs
         est_mean, est_std = (y_mid[:, :128], y_mid[:, 128:])
         seg_pred = y_pred[:, :self.num_classes]
         seg_truth = y_true[:, :self.num_classes]
