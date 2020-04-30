@@ -164,53 +164,65 @@ class DataManager(object):
         val_indices, train_indices, test_indices = (None, None, None)
         (self.stratify_labels, self.stratify_categories,
          self.sampler_weights) = (None, None, None)
-        dummy_mask_like = np.ones(np.sum(mask))
-        if custom_stratification is not None:
-            for key in ("train", "test"):
-                if key not in custom_stratification:
-                    raise ValueError("Unformed custom straitification.")
-            train_mask = DataManager.get_mask(
-                df, custom_stratification["train"])
-            test_mask = DataManager.get_mask(
-                df, custom_stratification["test"])
-            train_mask &= mask
-            test_mask &= mask
-            train_indices = DataManager.get_mask_indices(train_mask)
-            test_indices = DataManager.get_mask_indices(test_mask)
-            if "validation" in custom_stratification:
-                val_mask = DataManager.get_mask(
-                    df, custom_stratification["validation"])
-                val_mask &= mask
-                val_indices = DataManager.get_mask_indices(val_indices)
-        elif stratify_label is not None:
+        if stratify_label is not None:
             self.stratify_labels = df[stratify_label].values
             self.stratify_categories = set(self.stratify_labels[mask])
             self.sampler_weights = Counter(self.stratify_labels[mask])
-            splitter = StratifiedShuffleSplit(
-                n_splits=1, random_state=0, test_size=self.test_size)
-            train_mask, test_mask = next(splitter.split(
-                dummy_mask_like, self.stratify_labels[mask]))
-            train_indices = mask_indices[train_mask]
-            test_indices = mask_indices[test_mask]
+        if self.test_size == 0:
+            train_indices = mask_indices
+            test_indices = None
         else:
-            if test_size == 1:
-                train_indices, test_indices = (None, mask_indices)
+            dummy_mask_like = np.ones(np.sum(mask))
+            if custom_stratification is not None:
+                for key in ("train", "test"):
+                    if key not in custom_stratification:
+                        raise ValueError("Unformed custom straitification.")
+                train_mask = DataManager.get_mask(
+                    df, custom_stratification["train"])
+                test_mask = DataManager.get_mask(
+                    df, custom_stratification["test"])
+                train_mask &= mask
+                test_mask &= mask
+                train_indices = DataManager.get_mask_indices(train_mask)
+                test_indices = DataManager.get_mask_indices(test_mask)
+                if "validation" in custom_stratification:
+                    val_mask = DataManager.get_mask(
+                        df, custom_stratification["validation"])
+                    val_mask &= mask
+                    val_indices = DataManager.get_mask_indices(val_indices)
+            elif stratify_label is not None:
+                splitter = StratifiedShuffleSplit(
+                    n_splits=1, random_state=0, test_size=self.test_size)
+                train_mask, test_mask = next(splitter.split(
+                    dummy_mask_like, self.stratify_labels[mask]))
+                train_indices = mask_indices[train_mask]
+                test_indices = mask_indices[test_mask]
             else:
-                splitter = ShuffleSplit(
-                    n_splits=1, random_state=0, test_size=test_size)
-                train_indices, test_indices = next(splitter.split(
-                    dummy_mask_like))
-                train_indices = mask_indices[train_indices]
-                test_indices = mask_indices[test_indices]
-        logger.debug("Train+Validation indices: {0}".format(train_indices))
-        logger.debug("Test indices: {0}".format(test_indices))
-        self.dataset["test"] = ArrayDataset(
-            self.inputs, test_indices, labels=self.labels,
-            outputs=self.outputs, add_input=self.add_input,
-            input_transforms=self.input_transforms,
-            output_transforms=self.output_transforms,
-            label_mapping=label_mapping,
-            patch_size=patch_size)
+                if test_size == 1:
+                    train_indices, test_indices = (None, mask_indices)
+                else:
+                    splitter = ShuffleSplit(
+                        n_splits=1, random_state=0, test_size=test_size)
+                    train_indices, test_indices = next(splitter.split(
+                        dummy_mask_like))
+                    train_indices = mask_indices[train_indices]
+                    test_indices = mask_indices[test_indices]
+        logger.debug("Train+Validation indices: {0}-{1}".format(
+            len(train_indices) if train_indices is not None else None,
+            train_indices))
+        logger.debug("Test indices: {0}-{1}".format(
+            len(test_indices) if test_indices is not None else None,
+            test_indices))
+        if test_indices is None:
+            self.dataset["test"] = None
+        else:
+            self.dataset["test"] = ArrayDataset(
+                self.inputs, test_indices, labels=self.labels,
+                outputs=self.outputs, add_input=self.add_input,
+                input_transforms=self.input_transforms,
+                output_transforms=self.output_transforms,
+                label_mapping=label_mapping,
+                patch_size=patch_size)
         if train_indices is None:
             return
 
@@ -445,7 +457,7 @@ class DataManager(object):
             {<column_name>: <value>}.
         sample_size: float, default 1
             should be between 0.0 and 1.0 and represent the proportion of the
-            dataset used by the manger (random selection that can be usefull
+            dataset used by the manager (random selection that can be usefull
             during testing).
 
         Returns
@@ -565,7 +577,7 @@ class ArrayDataset(Dataset):
         else:
             indices = self.indices[item]
 
-        # Load the rerquested data
+        # Load the requested data
         logger.debug("Precomputed indices: {0}".format(indices))
         _inputs = self.inputs[indices]
         _labels, _outputs = (None, None)
