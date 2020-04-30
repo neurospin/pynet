@@ -135,7 +135,7 @@ class FocalLoss(object):
 class DiceLoss(object):
     """ Define a multy classes Dice Loss.
 
-    Dice = (2 |X| intersec |Y|) / (|X| + |Y|)
+    Dice = (2 X intersec Y) / (X + Y)
 
     Note that PyTorch optimizers minimize a loss. In this case, we would like
     to maximize the dice loss so we return 1 - Dice.
