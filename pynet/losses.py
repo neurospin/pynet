@@ -23,128 +23,158 @@ from pynet.utils import Losses
 logger = logging.getLogger("pynet")
 
 
-def dice_loss_1(logits, true, eps=1e-7):
-    """ Computes the Sørensen–Dice loss.
-    Note that PyTorch optimizers minimize a loss. In this
-    case, we would like to maximize the dice loss so we
-    return the negated dice loss.
-    true: a tensor of shape [B, 1, H, W].
-    logits: a tensor of shape [B, C, H, W]. Corresponds to
-    the raw output or logits of the model.
-    eps: added to the denominator for numerical stability.
-    dice_loss: the Sørensen–Dice loss.
-    """
-    num_classes = logits.shape[1]
-    if num_classes == 1:
-        true_1_hot = torch.eye(num_classes + 1)[true.squeeze(1)]
-        true_1_hot = true_1_hot.permute(0, 3, 1, 2).float()
-        true_1_hot_f = true_1_hot[:, 0:1, :, :]
-        true_1_hot_s = true_1_hot[:, 1:2, :, :]
-        true_1_hot = torch.cat([true_1_hot_s, true_1_hot_f], dim=1)
-        pos_prob = torch.sigmoid(logits)
-        neg_prob = 1 - pos_prob
-        probas = torch.cat([pos_prob, neg_prob], dim=1)
-    else:
-        true_1_hot = torch.eye(num_classes)[true.squeeze(1)]
-        true_1_hot = true_1_hot.permute(0, 3, 1, 2).float()
-        probas = F.softmax(logits, dim=1)
-    true_1_hot = true_1_hot.type(logits.type())
-    dims = (0,) + tuple(range(2, true.ndimension()))
-    intersection = torch.sum(probas * true_1_hot, dims)
-    cardinality = torch.sum(probas + true_1_hot, dims)
-    dice_loss = (2. * intersection / (cardinality + eps)).mean()
-    return (1 - dice_loss)
-
-
-def dice_loss_2(output, target, weights=1):
-    """
-    output : NxCxHxW Variable
-    target :  NxHxW LongTensor
-    weights : C FloatTensor
-    """
-    output = func.softmax(output, dim=1)
-    target = torch.argmax(target, dim=1).type(torch.LongTensor)
-    encoded_target = output.data.clone().zero_()
-    encoded_target.scatter_(1, target.unsqueeze(1), 1)
-    encoded_target = Variable(encoded_target)
-
-    assert output.size() == encoded_target.size(), "Input sizes must be equal."
-    assert output.dim() == 4, "Input must be a 4D Tensor."
-
-    num = (output * encoded_target).sum(dim=3).sum(dim=2)
-    den1 = output.pow(2).sum(dim=3).sum(dim=2)
-    den2 = encoded_target.pow(2).sum(dim=3).sum(dim=2)
-
-    dice = (2 * num / (den1 + den2)) * weights
-    return dice.sum() / dice.size(0)
-
-
 @Losses.register
-class MultiDiceLoss(object):
-    """ Define a multy classes dice loss.
+class FocalLoss(object):
+    """ Define a Focal Loss.
 
-    Note that PyTorch optimizers minimize a loss. In this case, we would like
-    to maximize the dice loss so we return the negated dice loss.
+    Loss(pt) = −αt(1−pt)γlog(pt)
+
+    where pt is the model's estimated probability for each class.
+
+    When an example is misclassified and pt is small, the modulating factor
+    is near 1 and the loss is unaffected. As pt goes to 1, the factor goes to
+    0 and the loss for well-classified examples is down-weighted.
+    The focusing parameter γ smoothly adjusts the rate at which easy examples
+    are down-weighted. When γ= 0, the loss is equivalent to cross entropy, and
+    as γ isincreased the effect of the modulating factor is likewise increased.
+    For instance, with γ= 2, an example classified with pt= 0.9 would have
+    100×lower loss compared with cross entropy and with pt≈0.968 it would have
+    1000×lower loss.
+    Then we use an α-balanced variant of the focal loss for addressing class
+    imbalance with a weighting factor α∈[0,1]. In practice α may be set by
+    inverse class frequency.
+
+    Reference: https://arxiv.org/abs/1708.02002
     """
-    def __init__(self, weight=None, ignore_index=None, nb_batch=None):
+    def __init__(self, gamma=2, alpha=None, reduction="mean", with_logit=True):
         """ Class instanciation.
 
         Parameters
         ----------
-        weight: FloatTensor (C), default None
-             a manual rescaling weight given to each class.
-        ignore_index: int, default None
-            specifies a target value that is ignored and does not contribute
-            to the input gradient.
-        nb_batch: int, default None
-            the number of mini batch to rescale loss between 0 and 1.
+        gamma: float, default 2
+            the focusing parameter >=0.
+        alpha: float, default None
+            if set use alpha-balanced variant of the focal loss.
+        reduction: str, default 'mean'
+            specifies the reduction to apply to the output: 'none' - no
+            reduction will be applied, 'mean' - the sum of the output
+            will be divided by the number of elements in the output, 'sum'
+            - the output will be summed.
+        with_logit: bool, default True
+            apply the softmax logit function to the result.
         """
-        self.weight = weight or 1
-        self.ignore_index = ignore_index
-        self.nb_batch = nb_batch or 1
+        self.gamma = gamma
+        self.alpha = alpha
+        self.reduction = reduction
+        self.with_logit = with_logit
+        self.eps = 1e-6
 
     def __call__(self, output, target):
         """ Compute the loss.
 
-        Note that this criterion is performing nn.Softmax() on the model
-        outputs.
+        Parameters
+        ----------
+        output: Tensor (N,C,*)
+            predicted labels where C is the number of classes.
+        target: Tensor (N,*)
+            true labels where each value is 0≤targets[i]≤C−1.
+        """
+        if len(output.shape) < 2:
+            raise ValueError("Invalid labels shape {0}.".format(output.shape))
+        if output.shape[0] != target.shape[0]:
+            raise ValueError("Expected pred & true labels same batch size.")
+        if output.shape[2:] != target.shape[1:]:
+            raise ValueError("Expected pred & true labels same data size.")
+        if output.device != target.device:
+            raise ValueError("Pred & true labels must be in the same device.")
+
+        n_batch, n_classes = output.shape[:2]
+        device = output.device
+        if self.with_logit:
+            output = func.softmax(output, dim=1)
+        output = output + self.eps
+
+        # Create the labels one hot encoded tensor
+        one_hot = torch.zeros(n_batch, n_classes, *target.shape[1:],
+                              device=device, dtype=output.dtype)
+        target_one_hot = one_hot.scatter_(
+            1, target.unsqueeze(1), 1.) + self.eps
+
+        # Compute the focal loss
+        weight = torch.pow(1 - output, self.gamma)
+        alpha = self.alpha or 1
+        focal = -alpha * weight * torch.log(output)
+        tmp_loss = torch.sum(target_one_hot * focal, dim=1)
+
+        # Reduction
+        if self.reduction == "none":
+            loss = tmp_loss
+        elif self.reduction == "mean":
+            loss = torch.mean(tmp_loss)
+        elif reduction == "sum":
+            self.loss = torch.sum(tmp_loss)
+        else:
+            raise NotImplementedError("Invalid reduction mode.")
+        return loss
+
+
+@Losses.register
+class DiceLoss(object):
+    """ Define a multy classes Dice Loss.
+
+    Dice = (2 |X| intersec |Y|) / (|X| + |Y|)
+
+    Note that PyTorch optimizers minimize a loss. In this case, we would like
+    to maximize the dice loss so we return 1 - Dice.
+    """
+    def __init__(self, with_logit=True):
+        """ Class instanciation.
 
         Parameters
         ----------
-        output: Variable (NxCxHxW)
-            unnormalized scores for each class (the model output) where C is
-            the number of classes.
-        target: LongTensor (NxCxHxW)
-            the class indices.
+        with_logit: bool, default True
+            apply the softmax logit function to the result.
         """
-        eps = 1  # 0.0001
-        n_classes = output.size(1) * self.nb_batch
+        self.with_logit = with_logit
+        self.eps = 1e-6
 
-        output = func.softmax(output, dim=1)
-        target = torch.argmax(target, dim=1).type(torch.LongTensor)
-        # output = output.exp()
+    def __call__(self, output, target):
+        """ Compute the loss.
 
-        encoded_target = output.detach() * 0
-        if self.ignore_index is not None:
-            mask = target == self.ignore_index
-            target = target.clone()
-            target[mask] = 0
-            encoded_target.scatter_(1, target.unsqueeze(1), 1)
-            mask = mask.unsqueeze(1).expand_as(encoded_target)
-            encoded_target[mask] = 0
-        else:
-            encoded_target.scatter_(1, target.unsqueeze(1), 1)
+        Parameters
+        ----------
+        output: Tensor (N,C,*)
+            predicted labels where C is the number of classes.
+        target: Tensor (N,*)
+            true labels where each value is 0≤targets[i]≤C−1.
+        """
+        if len(output.shape) < 2:
+            raise ValueError("Invalid labels shape {0}.".format(output.shape))
+        if output.shape[0] != target.shape[0]:
+            raise ValueError("Expected pred & true labels same batch size.")
+        if output.shape[2:] != target.shape[1:]:
+            raise ValueError("Expected pred & true labels same data size.")
+        if output.device != target.device:
+            raise ValueError("Pred & true labels must be in the same device.")
 
-        intersection = output * encoded_target
-        numerator = 2 * intersection.sum(0).sum(1).sum(1) + eps
-        denominator = output + encoded_target
-        if self.ignore_index is not None:
-            denominator[mask] = 0
-        denominator = denominator.sum(0).sum(1).sum(1) + eps
-        loss_per_channel = self.weight * (1 - (numerator / denominator))
-        logger.info(loss_per_channel)
+        n_batch, n_classes = output.shape[:2]
+        device = output.device
+        if self.with_logit:
+            output = func.softmax(output, dim=1)
 
-        return loss_per_channel.sum() / n_classes
+        # Create the labels one hot encoded tensor
+        one_hot = torch.zeros(n_batch, n_classes, *target.shape[1:],
+                              device=device, dtype=output.dtype)
+        target_one_hot = one_hot.scatter_(
+            1, target.unsqueeze(1), 1.)
+
+        # Compute the dice score
+        dims = tuple(range(1, len(target.shape) + 1))
+        intersection = torch.sum(output * target_one_hot, dims)
+        cardinality = torch.sum(output + target_one_hot, dims)
+        dice_score = 2. * intersection / (cardinality + self.eps)
+
+        return torch.mean(1. - dice_score)
 
 
 @Losses.register
