@@ -558,8 +558,8 @@ class NvNetCombinedLoss(object):
         self.num_classes = num_classes
         self.k1 = k1
         self.k2 = k2
-        self.ce_loss = nn.CrossEntropyLoss()
-        self.l2_loss = nn.MSELoss()
+        self.ce_loss = nn.CrossEntropyLoss(reduction="mean")
+        self.l2_loss = nn.MSELoss(reduction="mean")
         self.kl_loss = CustomKLLoss()
 
     def __call__(self, output, target):
@@ -586,7 +586,7 @@ class NvNetCombinedLoss(object):
             vae_pred = output[:, self.num_classes:]
             vae_truth = target[:, self.num_classes:]
             self.debug("vae_pred", vae_pred)
-            self.debug("seg_truth", seg_truth)
+            self.debug("vae_truth", vae_truth)
         seg_pred = output[:, :self.num_classes]
         seg_truth = target[:, :self.num_classes]
         self.debug("seg_pred", seg_pred)
