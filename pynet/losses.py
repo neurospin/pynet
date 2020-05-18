@@ -27,7 +27,7 @@ logger = logging.getLogger("pynet")
 class FocalLoss(object):
     """ Define a Focal Loss.
 
-    Loss(pt) = −αt(1−pt)γlog(pt)
+    Loss(pt) = −αt mt (1−pt)γ log(pt)
 
     where pt is the model's estimated probability for each class.
 
@@ -41,16 +41,19 @@ class FocalLoss(object):
     100×lower loss compared with cross entropy and with pt≈0.968 it would have
     1000×lower loss.
     Then we use an α-balanced variant of the focal loss for addressing class
-    imbalance with a weighting factor α∈[0,1]. In practice α may be set by
+    imbalance with a weighting factor α ∈ [0,1]. In practice α may be set by
     inverse class frequency.
 
     Reference: https://arxiv.org/abs/1708.02002
     """
-    def __init__(self, gamma=2, alpha=None, reduction="mean", with_logit=True):
+    def __init__(self, n_classes, gamma=2, alpha=None, reduction="mean",
+                 with_logit=True):
         """ Class instanciation.
 
         Parameters
         ----------
+        n_classes: int
+            the number of classes.
         gamma: float, default 2
             the focusing parameter >=0.
         alpha: float or list of float, default None
@@ -67,22 +70,30 @@ class FocalLoss(object):
         self.alpha = alpha
         self.reduction = reduction
         self.with_logit = with_logit
-        self.eps = 1e-6
-        self.layer_outputs = None
+        self.eps = 1e-9
+        alpha = alpha or 1
+        if not isinstance(alpha, list):
+            alpha = [alpha] * n_classes
+        if len(alpha) != n_classes:
+            raise ValueError("Invalid alphas size.")
+        logger.debug("  alpha: {0}".format(alpha))
+        self.alpha = torch.FloatTensor(alpha).view(-1, 1)
+        # self.alpha = self.alpha / self.alpha.sum()
+        self.debug("alpha", self.alpha)
 
     def __call__(self, output, target):
         """ Compute the loss.
-
-        An update of the alpha parameter can be released with the layer outputs
-        that is expected to be a dict.
 
         Parameters
         ----------
         output: Tensor (N,C,*)
             predicted labels where C is the number of classes.
         target: Tensor (N,*)
-            true labels where each value is 0≤targets[i]≤C−1.
+            true labels where each value is 0≤target[i]≤C−1.
         """
+        logger.debug("Focal loss...")
+        self.debug("output", output)
+        self.debug("target", target)
         if len(output.shape) < 2:
             raise ValueError("Invalid labels shape {0}.".format(output.shape))
         if output.shape[0] != target.shape[0]:
@@ -94,12 +105,93 @@ class FocalLoss(object):
 
         n_batch, n_classes = output.shape[:2]
         device = output.device
-        if (isinstance(self.layer_outputs, dict) and
-                "alpha" in self.layer_outputs):
-            self.alpha = self.layer_outputs["alpha"]
+        dim = output.dim()
+        logger.debug("  n_batches: {0}".format(n_batch))
+        logger.debug("  n_classes: {0}".format(n_classes))
+        logger.debug("  dim: {0}".format(dim))
         if self.with_logit:
             output = func.softmax(output, dim=1)
-        output = output + self.eps
+        logit = output + self.eps
+        self.debug("logit", logit)
+
+        # Reshape data
+        # N,C,d1,d2 -> N,C,m (m=d1*d2*...)
+        if dim > 2:
+            logit = logit.view(n_batch, n_classes, -1)
+            self.debug("logit", logit)
+            logit = logit.permute(0, 2, 1).contiguous()
+            self.debug("logit", logit)
+            logit = logit.view(-1, n_classes)
+            self.debug("logit", logit)
+        target = torch.squeeze(target, dim=1)
+        target = target.view(-1, 1)
+        self.debug("target", target)
+
+        # Create the labels one hot encoded tensor
+        idx = target.data
+        one_hot = torch.zeros(target.size(0), n_classes,
+                              device=device, dtype=output.dtype)
+        target_one_hot = one_hot.scatter_(1, idx, 1.) + self.eps
+
+        # Compute the focal loss
+        if self.alpha.device != device:
+            self.alpha = self.alpha.to(device)
+        pt = torch.sum(target_one_hot * logit, dim=1)
+        self.debug("pt", pt)
+        logpt = torch.log(pt)
+        weight = torch.pow(1 - pt, self.gamma)
+        self.debug("weight", weight)
+        alpha = self.alpha[idx]
+        alpha = torch.squeeze(alpha)
+        self.debug("alpha", alpha)
+        loss = -1 * alpha * weight * logpt
+        self.debug("loss", loss)
+
+        # Reduction
+        if self.reduction == "none":
+            pass
+        elif self.reduction == "mean":
+            loss = torch.mean(loss) / self.alpha[target].mean()
+        elif self.reduction == "sum":
+            loss = torch.sum(loss)
+        else:
+            raise NotImplementedError("Invalid reduction mode.")
+        logger.debug("  loss: {0}".format(loss))
+
+        return loss
+
+    def _forward_without_resizing(self, output, target):
+        """ Compute the loss.
+
+        Parameters
+        ----------
+        output: Tensor (N,C,*)
+            predicted labels where C is the number of classes.
+        target: Tensor (N,*)
+            true labels where each value is 0≤target[i]≤C−1.
+        """
+        logger.debug("Focal loss...")
+        self.debug("output", output)
+        self.debug("target", target)
+        if len(output.shape) < 2:
+            raise ValueError("Invalid labels shape {0}.".format(output.shape))
+        if output.shape[0] != target.shape[0]:
+            raise ValueError("Expected pred & true labels same batch size.")
+        if output.shape[2:] != target.shape[1:]:
+            raise ValueError("Expected pred & true labels same data size.")
+        if output.device != target.device:
+            raise ValueError("Pred & true labels must be in the same device.")
+
+        n_batch, n_classes = output.shape[:2]
+        device = output.device
+        dim = output.dim()
+        logger.debug("  n_batches: {0}".format(n_batch))
+        logger.debug("  n_classes: {0}".format(n_classes))
+        logger.debug("  dim: {0}".format(dim))
+        if self.with_logit:
+            output = func.softmax(output, dim=1)
+        logit = output + self.eps
+        self.debug("logit", logit)
 
         # Create the labels one hot encoded tensor
         one_hot = torch.zeros(n_batch, n_classes, *target.shape[1:],
@@ -108,47 +200,190 @@ class FocalLoss(object):
             1, target.unsqueeze(1), 1.) + self.eps
 
         # Compute the focal loss
-        weight = torch.pow(1 - output, self.gamma)
-        self.alpha = self.alpha or 1.
-        if not isinstance(self.alpha, list):
-            self.alpha = [self.alpha] * n_classes
-        if len(self.alpha) != n_classes:
-            raise ValueError("Invalid alphas.")
-        focal = weight * torch.log(output)
-        for idx, alpha in enumerate(self.alpha):
-            focal[:, idx] = -alpha * focal[:, idx]
-        tmp_loss = torch.sum(target_one_hot * focal, dim=1)
+        if self.alpha.device != device:
+            self.alpha = self.alpha.to(device)
+        weight = torch.pow(1 - logit, self.gamma)
+        self.debug("weight", weight)
+        shape = [1, n_classes] + [1] * len(target.shape[1:])
+        alpha = self.alpha.view(*shape)
+        alpha = alpha.expand_as(weight)
+        self.debug("alpha", alpha)
+        focal = -1 * alpha * weight * torch.log(logit)
+        self.debug("focal", focal)
+        loss = torch.sum(target_one_hot * focal, dim=1)
+        self.debug("loss", loss)
 
         # Reduction
         if self.reduction == "none":
-            loss = tmp_loss
+            pass
         elif self.reduction == "mean":
-            loss = torch.mean(tmp_loss)
-        elif reduction == "sum":
-            self.loss = torch.sum(tmp_loss)
+            loss = torch.mean(loss) / self.alpha[target].mean()
+        elif self.reduction == "sum":
+            loss = torch.sum(loss)
         else:
             raise NotImplementedError("Invalid reduction mode.")
+        logger.debug("  loss: {0}".format(loss))
+
         return loss
+
+    def debug(self, name, tensor):
+        """ Print debug message.
+
+        Parameters
+        ----------
+        name: str
+            the tensor name in the displayed message.
+        tensor: Tensor
+            a pytorch tensor.
+        """
+        logger.debug("  {3}: {0} - {1} - {2}".format(
+            tensor.shape, tensor.get_device(), tensor.dtype, name))
 
 
 @Losses.register
-class DiceLoss(object):
-    """ Define a multy classes Dice Loss.
+class MaskLoss(object):
+    """ Define a Masked Loss.
 
-    Dice = (2 X intersec Y) / (X + Y)
+    Loss(pt) = −αt mt log(pt)
+
+    where pt is the model's estimated probability for each class.
+    """
+    def __init__(self, n_classes, beta=0.2, alpha=None, reduction="mean",
+                 with_logit=True):
+        """ Class instanciation.
+
+        Parameters
+        ----------
+        n_classes: int
+            the number of classes.
+        beta: float, default 0.2
+            the minimum value in the mask.
+        alpha: float or list of float, default None
+            if set use alpha-balanced variant of the focal loss.
+        reduction: str, default 'mean'
+            specifies the reduction to apply to the output: 'none' - no
+            reduction will be applied, 'mean' - the sum of the output
+            will be divided by the number of elements in the output, 'sum'
+            - the output will be summed.
+        with_logit: bool, default True
+            apply the log softmax logit function to the result.
+        """
+        self.beta = beta
+        self.alpha = alpha
+        self.reduction = reduction
+        self.with_logit = with_logit
+        self.eps = 1e-9
+        alpha = alpha or 1
+        if not isinstance(alpha, list):
+            alpha = [alpha] * n_classes
+        if len(alpha) != n_classes:
+            raise ValueError("Invalid alphas size.")
+        logger.debug("  alpha: {0}".format(alpha))
+        self.alpha = torch.FloatTensor(alpha)
+        self.debug("alpha", self.alpha)
+
+    def __call__(self, output, target, mask):
+        """ Compute the loss.
+
+        Parameters
+        ----------
+        output: Tensor (N,C,*)
+            predicted labels where C is the number of classes.
+        target: Tensor (N,*)
+            true labels where each value is 0≤ target[i] ≤C−1.
+        mask: Tensor (N,*)
+            the binary mask used to mask the loss.
+        """
+        logger.debug("Maked loss...")
+        self.debug("output", output)
+        self.debug("target", target)
+        self.debug("mask", mask)
+        if len(output.shape) < 2:
+            raise ValueError("Invalid labels shape {0}.".format(output.shape))
+        if output.shape[0] != target.shape[0]:
+            raise ValueError("Expected pred & true labels same batch size.")
+        if output.shape[2:] != target.shape[1:]:
+            raise ValueError("Expected pred & true labels same data size.")
+        if output.device != target.device:
+            raise ValueError("Pred & true labels must be in the same device.")
+        if mask is not None and output.shape[0] != mask.shape[0]:
+            raise ValueError("Expected pred & mask same batch size.")
+        if mask is not None and output.shape[2:] != mask.shape[1:]:
+            raise ValueError("Expected pred & mask same data size.")
+        if mask is not None and output.device != mask.device:
+            raise ValueError("Pred & mask must be in the same device.")
+
+        n_batch, n_classes = output.shape[:2]
+        device = output.device
+        logger.debug("  n_batches: {0}".format(n_batch))
+        logger.debug("  n_classes: {0}".format(n_classes))
+
+        if self.alpha.device != device:
+            self.alpha = self.alpha.to(device)
+        if self.with_logit:
+            output = func.log_softmax(output, dim=1)
+        logit = output + self.eps
+        self.debug("logit", logit)
+
+        # Compute the focal loss
+        mask[mask <= self.beta] = self.beta
+        loss = func.nll_loss(logit, target, weight=self.alpha,
+                             reduction="none")
+        loss = loss * mask
+        self.debug("loss", loss)
+
+        # Reduction
+        if self.reduction == "none":
+            pass
+        elif self.reduction == "mean":
+            loss = torch.mean(loss) / self.alpha[target].mean()
+        elif self.reduction == "sum":
+            loss = torch.sum(loss)
+        else:
+            raise NotImplementedError("Invalid reduction mode.")
+        logger.debug("  loss: {0}".format(loss))
+
+        return loss
+
+    def debug(self, name, tensor):
+        """ Print debug message.
+
+        Parameters
+        ----------
+        name: str
+            the tensor name in the displayed message.
+        tensor: Tensor
+            a pytorch tensor.
+        """
+        logger.debug("  {3}: {0} - {1} - {2}".format(
+            tensor.shape, tensor.get_device(), tensor.dtype, name))
+
+
+@Losses.register
+class SoftDiceLoss(object):
+    """ Define a multi class Dice Loss.
+
+    Dice = (2 intersec Y) / (X + Y)
 
     Note that PyTorch optimizers minimize a loss. In this case, we would like
     to maximize the dice loss so we return 1 - Dice.
     """
-    def __init__(self, with_logit=True):
+    def __init__(self, with_logit=True, reduction="mean"):
         """ Class instanciation.
 
         Parameters
         ----------
         with_logit: bool, default True
             apply the softmax logit function to the result.
+        reduction: str, default 'mean'
+            specifies the reduction to apply to the output: 'none' - no
+            reduction will be applied, 'mean' - the sum of the output
+            will be divided by the number of elements in the output, 'sum'
+            - the output will be summed.
         """
         self.with_logit = with_logit
+        self.reduction = reduction
+        self.smooth = 1e-6
         self.eps = 1e-6
 
     def __call__(self, output, target):
@@ -161,6 +396,9 @@ class DiceLoss(object):
         target: Tensor (N,*)
             true labels where each value is 0≤targets[i]≤C−1.
         """
+        logger.debug("Dice loss...")
+        self.debug("output", output)
+        self.debug("target", target)
         if len(output.shape) < 2:
             raise ValueError("Invalid labels shape {0}.".format(output.shape))
         if output.shape[0] != target.shape[0]:
@@ -173,37 +411,122 @@ class DiceLoss(object):
         n_batch, n_classes = output.shape[:2]
         device = output.device
         if self.with_logit:
-            output = func.softmax(output, dim=1)
+            prob = func.softmax(output, dim=1)
+        else:
+            prob = output
+        self.debug("logit", prob)
+
+        # Create the labels one hot encoded tensor
+        prob = prob.view(n_batch, -1)
+        dims = list(range(len(target.shape)))
+        dims.insert(1, len(target.shape))
+        dims = tuple(dims)
+        logger.debug("permute {0}".format(dims))
+        target_one_hot = func.one_hot(target, num_classes=n_classes)
+        self.debug("target_one_hot", target_one_hot)
+        target_one_hot = target_one_hot.permute(dims)
+        target_one_hot = target_one_hot.contiguous().view(n_batch, -1)
+        if target_one_hot.device != device:
+            target_one_hot = target_one_hot.to(device)
+        self.debug("target_one_hot", target_one_hot)
+
+        # Compute the dice score
+        intersection = prob * target_one_hot
+        self.debug("intersection", intersection)
+        dice_score = (2 * intersection.sum(dim=1) + self.smooth) / (
+            target_one_hot.sum(dim=1) + prob.sum(dim=1) + self.smooth)
+        loss = 1. - dice_score
+        self.debug("loss", loss)
+
+        # Reduction
+        if self.reduction == "none":
+            pass
+        elif self.reduction == "mean":
+            loss = torch.mean(loss)
+        elif self.reduction == "sum":
+            loss = torch.sum(loss)
+        else:
+            raise NotImplementedError("Invalid reduction mode.")
+        logger.debug("  loss: {0}".format(loss))
+
+        return loss
+
+    def _forward_without_resizing(self, output, target):
+        """ Compute the loss.
+
+        Parameters
+        ----------
+        output: Tensor (N,C,*)
+            predicted labels where C is the number of classes.
+        target: Tensor (N,*)
+            true labels where each value is 0≤targets[i]≤C−1.
+        """
+        logger.debug("Dice loss...")
+        self.debug("output", output)
+        self.debug("target", target)
+        if len(output.shape) < 2:
+            raise ValueError("Invalid labels shape {0}.".format(output.shape))
+        if output.shape[0] != target.shape[0]:
+            raise ValueError("Expected pred & true labels same batch size.")
+        if output.shape[2:] != target.shape[1:]:
+            raise ValueError("Expected pred & true labels same data size.")
+        if output.device != target.device:
+            raise ValueError("Pred & true labels must be in the same device.")
+
+        n_batch, n_classes = output.shape[:2]
+        device = output.device
+        if self.with_logit:
+            prob = func.softmax(output, dim=1)
+        else:
+            prob = output
+        print(prob)
+        self.debug("logit", prob)
 
         # Create the labels one hot encoded tensor
         one_hot = torch.zeros(n_batch, n_classes, *target.shape[1:],
                               device=device, dtype=output.dtype)
-        target_one_hot = one_hot.scatter_(
-            1, target.unsqueeze(1), 1.)
+        target_one_hot = one_hot.scatter_(1, target.unsqueeze(1), 1.)
+        print(target_one_hot)
+        self.debug("one hot", target_one_hot)
 
         # Compute the dice score
         dims = tuple(range(1, len(target.shape) + 1))
-        intersection = torch.sum(output * target_one_hot, dims)
-        cardinality = torch.sum(output + target_one_hot, dims)
+        intersection = torch.sum(prob * target_one_hot, dims)
+        print(intersection)
+        self.debug("intersection", intersection)
+        cardinality = torch.sum(prob + target_one_hot, dims)
+        print(cardinality)
+        self.debug("cardinality", cardinality)
         dice_score = 2. * intersection / (cardinality + self.eps)
+        print(dice_score)
+        loss = 1. - dice_score
+        self.debug("loss", loss)
 
-        return torch.mean(1. - dice_score)
+        # Reduction
+        if self.reduction == "none":
+            pass
+        elif self.reduction == "mean":
+            loss = torch.mean(loss)
+        elif self.reduction == "sum":
+            loss = torch.sum(loss)
+        else:
+            raise NotImplementedError("Invalid reduction mode.")
+        logger.debug("  loss: {0}".format(loss))
 
+        return loss
 
-@Losses.register
-class SoftDiceLoss(object):
-    """ Soft Dice Loss.
-    """
-    def __init__(self, *args, **kwargs):
-        super(SoftDiceLoss, self).__init__()
+    def debug(self, name, tensor):
+        """ Print debug message.
 
-    def __call__(self, y_pred, y_true, eps=1e-8):
-        intersection = torch.sum(torch.mul(y_pred, y_true))
-        union = (torch.sum(torch.mul(y_pred, y_pred)) +
-                 torch.sum(torch.mul(y_true, y_true)) + eps)
-        dice = 2 * intersection / union
-        dice_loss = 1 - dice
-        return dice_loss
+        Parameters
+        ----------
+        name: str
+            the tensor name in the displayed message.
+        tensor: Tensor
+            a pytorch tensor.
+        """
+        logger.debug("  {3}: {0} - {1} - {2}".format(
+            tensor.shape, tensor.get_device(), tensor.dtype, name))
 
 
 @Losses.register
@@ -235,33 +558,69 @@ class NvNetCombinedLoss(object):
         self.num_classes = num_classes
         self.k1 = k1
         self.k2 = k2
-        self.dice_loss = SoftDiceLoss()
+        self.ce_loss = nn.CrossEntropyLoss()
         self.l2_loss = nn.MSELoss()
         self.kl_loss = CustomKLLoss()
 
-    def __call__(self, outputs, y_true):
-        y_pred = outputs
-        y_mid = self.layer_outputs
-        est_mean, est_std = (y_mid[:, :128], y_mid[:, 128:])
-        seg_pred = y_pred[:, :self.num_classes]
-        seg_truth = y_true[:, :self.num_classes]
-        vae_pred = y_pred[:, self.num_classes:]
-        vae_truth = y_true[:, self.num_classes:]
-        dice_loss = None
-        for idx in range(self.num_classes):
-            if dice_loss is None:
-                dice_loss = self.dice_loss(
-                    seg_pred[:, idx], seg_truth[:, idx])
-            else:
-                dice_loss += self.dice_loss(
-                    seg_pred[:, idx], seg_truth[:, idx])
-        l2_loss = self.l2_loss(vae_pred, vae_truth)
-        kl_div = self.kl_loss(est_mean, est_std)
-        combined_loss = dice_loss + self.k1 * l2_loss + self.k2 * kl_div
+    def __call__(self, output, target):
+        logger.debug("NvNet Combined Loss...")
+        self.debug("output", output)
+        self.debug("target", target)
+        if self.layer_outputs is not None:
+            y_mid = self.layer_outputs
+            self.debug("y_mid", y_mid)
+        if len(output.shape) < 2:
+            raise ValueError("Invalid labels shape {0}.".format(output.shape))
+        if output.shape != target.shape:
+            raise ValueError("Expected pred & true of same size.")
+        if output.device != target.device:
+            raise ValueError("Pred & true labels must be in the same device.")
+        if self.layer_outputs is not None and y_mid.shape[-1] != 256:
+            raise ValueError("128 means & stds expected.")
+
+        device = output.device
+        if self.layer_outputs is not None:
+            est_mean, est_std = (y_mid[:, :128], y_mid[:, 128:])
+            self.debug("est_mean", est_mean)
+            self.debug("est_std", est_std)
+            vae_pred = output[:, self.num_classes:]
+            vae_truth = target[:, self.num_classes:]
+            self.debug("vae_pred", vae_pred)
+            self.debug("seg_truth", seg_truth)
+        seg_pred = output[:, :self.num_classes]
+        seg_truth = target[:, :self.num_classes]
+        self.debug("seg_pred", seg_pred)
+        self.debug("seg_truth", seg_truth)
+        seg_truth = torch.argmax(seg_truth, dim=1).type(torch.LongTensor)
+        if seg_truth.device != device:
+            seg_truth = seg_truth.to(device)
+        self.debug("seg_truth", seg_truth)
+
+        ce_loss = self.ce_loss(seg_pred, seg_truth)
+        if self.layer_outputs is not None:
+            l2_loss = self.l2_loss(vae_pred, vae_truth)
+            kl_div = self.kl_loss(est_mean, est_std)
+            combined_loss = ce_loss + self.k1 * l2_loss + self.k2 * kl_div
+        else:
+            l2_loss, kl_div = (None, None)
+            combined_loss = ce_loss
         logger.debug(
-            "dice_loss:%.4f, L2_loss:%.4f, KL_div:%.4f, combined_loss:"
-            "%.4f" % (dice_loss, l2_loss, kl_div, combined_loss))
+            "ce_loss: {0}, L2_loss: {1}, KL_div: {2}, combined_loss: "
+            "{3}".format(ce_loss, l2_loss, kl_div, combined_loss))
         return combined_loss
+
+    def debug(self, name, tensor):
+        """ Print debug message.
+
+        Parameters
+        ----------
+        name: str
+            the tensor name in the displayed message.
+        tensor: Tensor
+            a pytorch tensor.
+        """
+        logger.debug("  {3}: {0} - {1} - {2}".format(
+            tensor.shape, tensor.get_device(), tensor.dtype, name))
 
 
 @Losses.register
