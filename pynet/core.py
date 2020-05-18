@@ -43,7 +43,7 @@ class Base(Observable):
     """
     def __init__(self, optimizer_name="Adam", learning_rate=1e-3,
                  loss_name="NLLLoss", metrics=None, use_cuda=False,
-                 pretrained=None, **kwargs):
+                 pretrained=None, resume=False, **kwargs):
         """ Class instantiation.
 
         Observers will be notified, allowed signals are:
@@ -67,6 +67,10 @@ class Base(Observable):
             wether to use GPU or CPU.
         pretrained: path, default None
             path to the pretrained model or weights.
+        resume: bool, default False
+            if set to true, the code will restore the weights of the model
+            but also restore the optimizer's state, as well as the
+            hyperparameters used, and the scheduler.
         kwargs: dict
             specify directly a custom 'model', 'optimizer' or 'loss'. Can also
             be used to set specific optimizer parameters.
@@ -111,17 +115,23 @@ class Base(Observable):
             self.metrics[obj_or_name] = Metrics.get_registry()[obj_or_name]
         if use_cuda and not torch.cuda.is_available():
             raise ValueError("No GPU found: unset 'use_cuda' parameter.")
+        self.checkpoint = None
         if pretrained is not None:
-            checkpoint = torch.load(pretrained)
-            if hasattr(checkpoint, "state_dict"):
-                self.model.load_state_dict(checkpoint.state_dict())
-            elif isinstance(checkpoint, dict):
-                if "model" in checkpoint:
-                    self.model.load_state_dict(checkpoint["model"])
-                if "optimizer" in checkpoint:
-                    self.optimizer.load_state_dict(checkpoint["optimizer"])
+            self.checkpoint = torch.load(pretrained)
+            if hasattr(self.checkpoint, "state_dict"):
+                self.model.load_state_dict(self.checkpoint.state_dict())
+            elif isinstance(self.checkpoint, dict):
+                if "model" in self.checkpoint:
+                    self.model.load_state_dict(self.checkpoint["model"])
+                if resume:
+                    if "optimizer" in self.checkpoint:
+                        self.optimizer.load_state_dict(
+                            self.checkpoint["optimizer"])
+                    if "scheduler" in self.checkpoint:
+                        self.scheduler.load_state_dict(
+                            self.checkpoint["scheduler"])
             else:
-                self.model.load_state_dict(checkpoint)
+                self.model.load_state_dict(self.checkpoint)
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.model = self.model.to(self.device)
 
@@ -165,7 +175,7 @@ class Base(Observable):
             folds = [fold_index]
         for fold in folds:
             logger.debug("Running fold {0}...".format(fold))
-            reset_weights(self.model)
+            reset_weights(self.model, self.checkpoint)
             loaders = manager.get_dataloader(
                 train=True,
                 validation=with_validation,
@@ -192,7 +202,8 @@ class Base(Observable):
                         epoch=epoch,
                         fold=fold,
                         outdir=checkpointdir,
-                        optimizer=self.optimizer)
+                        optimizer=self.optimizer,
+                        scheduler=scheduler)
                     train_history.save(
                         outdir=checkpointdir,
                         epoch=epoch,
@@ -347,8 +358,8 @@ class Base(Observable):
                             item.cpu().detach().numpy())
                 X.append(dataitem.inputs.cpu().detach().numpy())
             X = np.concatenate(X, axis=0)
-            for key, values in targets.items():
-                y_true.append(np.concatenate(values, axis=0))
+            for key, _values in targets.items():
+                y_true.append(np.concatenate(_values, axis=0))
             if len(y_true) == 1:
                 y_true = y_true[0]
         return y, X, y_true, loss, values
@@ -430,6 +441,7 @@ class Base(Observable):
                         "as an option specific layer outputs in a dict.")
                 if targets is not None:
                     logger.debug("  update loss.")
+                    logger.debug("  layer outputs: {0}".format(layer_outputs))
                     if hasattr(self.loss, "layer_outputs"):
                         self.loss.layer_outputs = layer_outputs
                     batch_loss = self.loss(outputs, targets)

@@ -111,9 +111,9 @@ class DeepLearningInterface(Base, metaclass=DeepLearningMetaRegister):
     __family__ = None
     __net__ = None
 
-    def __init__(self, net_params=None, pretrained=None, optimizer_name="Adam",
-                 learning_rate=1e-3, loss_name="NLLLoss", metrics=None,
-                 use_cuda=False, **kwargs):
+    def __init__(self, net_params=None, pretrained=None, resume=False,
+                 optimizer_name="Adam", learning_rate=1e-3,
+                 loss_name="NLLLoss", metrics=None, use_cuda=False, **kwargs):
         """ Class initilization.
 
         Parameters
@@ -122,6 +122,10 @@ class DeepLearningInterface(Base, metaclass=DeepLearningMetaRegister):
             all the parameters that will be used during the network creation.
         pretrained: path, default None
             path to the pretrained model or weights.
+        resume: bool, default False
+            if set to true, the code will restore the weights of the model
+            but also restore the optimizer's state, as well as the
+            hyperparameters used, and the scheduler.
         optimizer_name: str, default 'Adam'
             the name of the optimizer: see 'torch.optim' for a description
             of available optimizer.
@@ -153,6 +157,7 @@ class DeepLearningInterface(Base, metaclass=DeepLearningMetaRegister):
             metrics=metrics,
             use_cuda=use_cuda,
             pretrained=pretrained,
+            resume=resume,
             **kwargs)
 
 
