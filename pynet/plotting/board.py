@@ -17,6 +17,7 @@ import json
 import logging
 import numpy as np
 import visdom
+import torch
 from subprocess import Popen, PIPE
 
 
@@ -119,5 +120,8 @@ def update_board(signal):
     for key in signal.keys:
         if key in ("epoch", "fold"):
             continue
-        data[key] = getattr(signal, key)
+        value = getattr(signal, key)
+        if isinstance(value, torch.Tensor):
+            value = value.cpu().detach().numpy().tolist()
+        data[key] = value
     board.update_plots(data)
