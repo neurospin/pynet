@@ -48,7 +48,7 @@ def multiclass_dice(y_pred, y):
         y_pred = y_pred[0]
     y_pred = func.softmax(y_pred, dim=1)
     dice = 0.
-    n_classes = y.shape[1]
+    n_classes = y_pred.shape[1]
     for cnt in range(n_classes):
         dice += _dice(y_pred[:, cnt], y[:, cnt])
     return dice / n_classes
