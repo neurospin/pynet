@@ -176,7 +176,8 @@ def test_model(model, shape):
     return out
 
 
-def checkpoint(model, epoch, fold, outdir, optimizer=None, **kwargs):
+def checkpoint(model, epoch, fold, outdir, optimizer=None, scheduler=None,
+               **kwargs):
     """ Save the weights of a given model.
 
     Parameters
@@ -190,8 +191,10 @@ def checkpoint(model, epoch, fold, outdir, optimizer=None, **kwargs):
     outdir: str
         the destination directory where a 'model_<fold>_epoch_<epoch>.pth'
         file will be generated.
-    optimizer: Optimizer
+    optimizer: Optimizer, default None
         the network optimizer (save the hyperparameters, etc.).
+    scheduler: Scheduler, default None
+        the network scheduler.
     kwargs: dict
         others parameters to save.
     """
@@ -199,6 +202,8 @@ def checkpoint(model, epoch, fold, outdir, optimizer=None, **kwargs):
         outdir, "model_{0}_epoch_{1}.pth".format(fold, epoch))
     if optimizer is not None:
         kwargs.update(optimizer=optimizer.state_dict())
+    if scheduler is not None:
+        kwargs.update(scheduler=scheduler.state_dict())
     torch.save({
         "fold": fold,
         "epoch": epoch,
@@ -309,15 +314,25 @@ def freeze_layers(model, layer_names):
             param.requires_grad = False
 
 
-def reset_weights(model):
+def reset_weights(model, checkpoint=None):
     """ Reset all the weights of a model.
 
     Parameters
     ----------
     model: Net
         the network model.
+    checkpoint: dict
+        the saved model weights
     """
     def weight_reset(m):
         if hasattr(m, "reset_parameters"):
             m.reset_parameters()
-    model.apply(weight_reset)
+    if checkpoint is None:
+        model.apply(weight_reset)
+    else:
+        if hasattr(checkpoint, "state_dict"):
+            model.load_state_dict(checkpoint.state_dict())
+        elif isinstance(checkpoint, dict) and "model" in checkpoint:
+            model.load_state_dict(checkpoint["model"])
+        else:
+            model.load_state_dict(checkpoint)
