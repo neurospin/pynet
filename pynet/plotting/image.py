@@ -24,7 +24,7 @@ logger = logging.getLogger("pynet")
 
 
 def plot_data(data, slice_axis=2, nb_samples=5, channel=0, labels=None,
-              random=True, rgb=False):
+              random=True, rgb=False, title=None):
     """ Plot an image associated data.
 
     Currently support 2D or 3D dataset of the form (samples, channels, dim).
@@ -45,6 +45,8 @@ def plot_data(data, slice_axis=2, nb_samples=5, channel=0, labels=None,
         select randomly 'nb_samples' data, otherwise the 'nb_samples' firsts.
     rgb: bool, default False
         if set expect three RGB channels.
+    title: str, default None
+        the figure title.
     """
     # Check input parameters
     if data.ndim not in range(4, 6):
@@ -79,7 +81,8 @@ def plot_data(data, slice_axis=2, nb_samples=5, channel=0, labels=None,
         if len(valid_indices) < nb_samples:
             nb_samples = len(valid_indices)
         indices = range(nb_samples)
-    plt.figure(figsize=(15, 7), dpi=200)
+    fig = plt.figure(figsize=(15, 7), dpi=200)
+    fig.title = title
     for cnt1, ind in enumerate(indices):
         ind = valid_indices[ind]
         for cnt2 in range(nb_channels):

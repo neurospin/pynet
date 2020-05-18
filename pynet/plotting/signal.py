@@ -25,13 +25,15 @@ def _trim_axs(axs, size):
     return axs[:size]
 
 
-def plot_history(history):
+def plot_history(history, title=None):
     """ Plot an history.
 
     Parameters
     ----------
     history: pynet History
         the history to be displayed.
+    title: str, default None
+        the figure title.
     """
     nb_plots = len(history.metrics)
     cols = 3
@@ -39,6 +41,7 @@ def plot_history(history):
     if rest > 0:
         rows += 1
     fig, axs = plt.subplots(rows, cols)
+    fig.title = title
     axs = _trim_axs(axs, nb_plots)
     for ax, case in zip(axs, history.metrics):
         ax.set_title(case)
