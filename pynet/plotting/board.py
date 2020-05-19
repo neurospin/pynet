@@ -30,7 +30,8 @@ class Board(object):
 
     It can be used to gather interesting plottings during a training.
     """
-    def __init__(self, port=8097, host="http://localhost", env="main"):
+    def __init__(self, port=8097, host="http://localhost", env="main",
+                 display_pred=False, prepare_pred=None):
         """ Initilaize the class.
 
         Parameters
@@ -41,10 +42,17 @@ class Board(object):
             the host on which visdom is launched.
         env: str, default 'main'
             the environment to be used.
+        display_pred: bool, default False
+            if set render the predicted images.
+        prepare_pred: callable, defaultt None
+            a function that transforms the predictions into a Nx1xXxY or
+            Nx3xXxY array, with N the number of images.
         """
         self.port = port
         self.host = host
         self.env = env
+        self.display_pred = display_pred
+        self.prepare_pred = prepare_pred
         self.plots = {}
         logger.debug("Create viewer on host {0} port {1}.".format(host, port))
         self.viewer = visdom.Visdom(
@@ -87,19 +95,38 @@ class Board(object):
         current_data = json.loads(self.viewer.get_window_data())
         logger.debug("Board current context:\n{0}".format(current_data))
         for key, val in data.items():
-            if key in current_data:
-                current_y = current_data[key]["content"]["data"][0]["y"]
+            if key == "val_pred":
+                if not self.display_pred:
+                    continue
+                images = np.asarray(val)
+                if self.prepare_pred is not None:
+                    images = self.prepare_pred(val)
+                if images.ndim != 4:
+                    raise ValueError(
+                        "You must define a function that transforms the "
+                        "predictions into a Nx1xXxY or Nx3xXxY array, with N "
+                        "the number of images.")
+                print(images.shape)
+                self.viewer.images(
+                    images,
+                    opts={
+                        "title": key,
+                        "caption": "y_pred"},
+                    win=key)
             else:
-                current_y = []
-            current_y += [val]
-            self.viewer.line(
-                X=np.asarray(range(len(current_y))),
-                Y=np.asarray(current_y),
-                opts={
-                    "title": key,
-                    "xlabel": "iterations",
-                    "ylabel": key},
-                win=key)
+                if key in current_data:
+                    current_y = current_data[key]["content"]["data"][0]["y"]
+                else:
+                    current_y = []
+                current_y += [val]
+                self.viewer.line(
+                    X=np.asarray(range(len(current_y))),
+                    Y=np.asarray(current_y),
+                    opts={
+                        "title": key,
+                        "xlabel": "iterations",
+                        "ylabel": key},
+                    win=key)
 
 
 def update_board(signal):
