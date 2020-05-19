@@ -210,11 +210,12 @@ class Base(Observable):
                         fold=fold)
                 if with_validation:
                     logger.debug("  validation.")
-                    _, loss, values = self.test(loaders.validation)
+                    y_pred, loss, values = self.test(loaders.validation)
                     observers_kwargs["val_loss"] = loss
                     observers_kwargs.update(dict(
                         ("val_{0}".format(key), val)
                         for key, val in values.items()))
+                    observers_kwargs["val_pred"] = y_pred
                     logger.debug("  update validation history.")
                     valid_history.log((fold, epoch), loss=loss, **values)
                     valid_history.summary()
