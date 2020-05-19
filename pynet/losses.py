@@ -533,9 +533,6 @@ class SoftDiceLoss(object):
 class CustomKLLoss(object):
     """ KL Loss.
     """
-    def __init__(self, *args, **kwargs):
-        super(CustomKLLoss, self).__init__()
-
     def __call__(self, mean, std):
         return (torch.mean(torch.mul(mean, mean)) +
                 torch.mean(torch.mul(std, std)) -
@@ -546,7 +543,7 @@ class CustomKLLoss(object):
 class NvNetCombinedLoss(object):
     """ Combined Loss.
 
-    Diceloss + k1 * L2loss + k2 * KLloss
+    Cross Entropy loss + k1 * L2 loss + k2 * KL loss
     Since the output of the segmentation decoder has N channels (prediction
     for each tumor subregion), we simply add the N dice loss functions.
     A hyper-parameter weight of k1=0.1, k2=0.1 was found empirically in the
