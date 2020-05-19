@@ -106,7 +106,6 @@ class Board(object):
                         "You must define a function that transforms the "
                         "predictions into a Nx1xXxY or Nx3xXxY array, with N "
                         "the number of images.")
-                print(images.shape)
                 self.viewer.images(
                     images,
                     opts={
