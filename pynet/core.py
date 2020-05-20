@@ -79,6 +79,7 @@ class Base(Observable):
             signals=["before_epoch", "after_epoch", "regularizer"])
         self.optimizer = kwargs.get("optimizer")
         self.loss = kwargs.get("loss")
+        self.resume = resume
         for name in ("optimizer", "loss"):
             if name in kwargs:
                 kwargs.pop(name)
@@ -123,13 +124,9 @@ class Base(Observable):
             elif isinstance(self.checkpoint, dict):
                 if "model" in self.checkpoint:
                     self.model.load_state_dict(self.checkpoint["model"])
-                if resume:
-                    if "optimizer" in self.checkpoint:
-                        self.optimizer.load_state_dict(
-                            self.checkpoint["optimizer"])
-                    if "scheduler" in self.checkpoint:
-                        self.scheduler.load_state_dict(
-                            self.checkpoint["scheduler"])
+                if self.resume and "optimizer" in self.checkpoint:
+                    self.optimizer.load_state_dict(
+                        self.checkpoint["optimizer"])
             else:
                 self.model.load_state_dict(self.checkpoint)
         self.device = torch.device("cuda" if use_cuda else "cpu")
@@ -161,6 +158,8 @@ class Base(Observable):
         train_history, valid_history: History
             the train/validation history.
         """
+        if self.resume and "scheduler" in self.checkpoint:
+            scheduler.load_state_dict(self.checkpoint["scheduler"])
         if checkpointdir is not None and not os.path.isdir(checkpointdir):
             os.mkdir(checkpointdir)
         train_history = History(name="train")
