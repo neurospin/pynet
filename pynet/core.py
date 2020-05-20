@@ -346,7 +346,7 @@ class Base(Observable):
             loaders.test, with_logit=with_logit, logit_function=logit_function,
             predict=predict, concat_layer_outputs=concat_layer_outputs)
         if loss == 0:
-            loss, values, y_true = (None, None, None)
+            loss, values, y_true, X = (None, None, None, None)
         else:
             y_true = []
             X = []
