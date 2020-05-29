@@ -648,14 +648,25 @@ class MSELoss(object):
         if self.concat:
             nb_channels = arr_j.shape[1] // 2
             arr_j = arr_j[:, nb_channels:]
-        logger.debug("  I: {0} - {1} - {2}".format(
-            arr_i.shape, arr_i.get_device(), arr_i.dtype))
-        logger.debug("  J: {0} - {1} - {2}".format(
-            arr_j.shape, arr_j.get_device(), arr_j.dtype))
+        self.debug("I", arr_i)
+        self.debug("J", arr_j)
         loss = torch.mean((arr_i - arr_j) ** 2)
         logger.debug("  loss: {0}".format(loss))
         logger.debug("Done.")
         return loss
+
+    def debug(self, name, tensor):
+        """ Print debug message.
+
+        Parameters
+        ----------
+        name: str
+            the tensor name in the displayed message.
+        tensor: Tensor
+            a pytorch tensor.
+        """
+        logger.debug("  {3}: {0} - {1} - {2}".format(
+            tensor.shape, tensor.get_device(), tensor.dtype, name))
 
 
 @Losses.register
@@ -687,10 +698,8 @@ class PCCLoss(object):
             nb_channels = arr_j.shape[1] // 2
             arr_j = arr_j[:, nb_channels:]
         logger.debug("  channels: {0}".format(nb_channels))
-        logger.debug("  I: {0} - {1} - {2}".format(
-            arr_i.shape, arr_i.get_device(), arr_i.dtype))
-        logger.debug("  J: {0} - {1} - {2}".format(
-            arr_j.shape, arr_j.get_device(), arr_j.dtype))
+        self.debug("I", arr_i)
+        self.debug("J", arr_j)
         centered_arr_i = arr_i - torch.mean(arr_i)
         centered_arr_j = arr_j - torch.mean(arr_j)
         pearson_loss = torch.sum(
@@ -701,6 +710,19 @@ class PCCLoss(object):
         logger.debug("  loss: {0}".format(loss))
         logger.info("Done.")
         return loss
+
+    def debug(self, name, tensor):
+        """ Print debug message.
+
+        Parameters
+        ----------
+        name: str
+            the tensor name in the displayed message.
+        tensor: Tensor
+            a pytorch tensor.
+        """
+        logger.debug("  {3}: {0} - {1} - {2}".format(
+            tensor.shape, tensor.get_device(), tensor.dtype, name))
 
 
 @Losses.register

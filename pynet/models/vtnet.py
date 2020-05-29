@@ -312,11 +312,13 @@ class ADDNet(nn.Module):
             setattr(self, "layer{0}".format(idx), ops)
             in_channels = out_channels
             out_channels *= 2
-        self.linear1 = torch.nn.Linear(in_channels * self.dense_features, 9)
-        self.linear2 = torch.nn.Linear(in_channels * self.dense_features, 3)
+        self.linear1 = torch.nn.Linear(in_channels * self.dense_features, 9,
+                                       bias=False)
+        self.linear2 = torch.nn.Linear(in_channels * self.dense_features, 3,
+                                       bias=False)
 
         # Finally warp the moving image.
-        self.spatial_transform = SpatialTransformer(input_shape)
+        # self.spatial_transform = SpatialTransformer(input_shape)
 
         # Init weights
         @torch.no_grad()
@@ -356,33 +358,6 @@ class ADDNet(nn.Module):
             all_shapes.append(shape.astype(int).tolist())
         return all_shapes
 
-    def _affine_flow(self, mat_w, vec_b, shape):
-        """ Compute flow field from affine matrix.
-
-        displacement(x) = place(x) - x = (Ax + b) - x = Wx + b
-        """
-        vec_b = vec_b.view(-1, 3, 1, 1, 1)
-        grid = []
-        vec_w = []
-        logger.debug("  W: {0}".format(mat_w.shape))
-        logger.debug("  b: {0}".format(vec_b.shape))
-        for idx, size in enumerate(shape):
-            reshape_size = [1] * 5
-            reshape_size[idx + 2] = -1
-            logger.debug("  reshape_i: {0}".format(reshape_size))
-            vec = torch.arange(
-                -(size - 1) / 2.0, size / 2.0, 1.0, dtype=torch.float32)
-            grid.append(vec.view(tuple(reshape_size)))
-            vec_wi = mat_w[:, :, idx]
-            vec_w.append(vec_wi.view(-1, 3, 1, 1, 1))
-            logger.debug("  grid_i: {0}".format(grid[-1].shape))
-            logger.debug("  vec_i: {0} - {1}".format(
-                vec_wi.shape, vec_w[-1].shape))
-        flow = grid[0] * vec_w[0] + grid[1] * vec_w[1] + grid[2] * vec_w[2]
-        flow += vec_b
-        logger.debug("  flow: {0}".format(flow.shape))
-        return flow
-
     def forward(self, x):
         """ Forward method.
 
@@ -398,37 +373,32 @@ class ADDNet(nn.Module):
         nb_channels = x.shape[1] // 2
         device = x.get_device()
         logger.debug("  nb_channels: {0}".format(nb_channels))
-        logger.debug("  input: {0}".format(x.shape))
+        self.debug("input", x)
         moving = x[:, :nb_channels]
-        logger.debug("  moving: {0} - {1} - {2}".format(
-            moving.shape, moving.get_device(), moving.dtype))
+        self.debug("moving", moving)
 
         for idx in range(1, 7):
             logger.debug("Applying layer{0}...".format(idx))
-            logger.debug(" input: {0} - {1} - {2}".format(
-                x.shape, x.get_device(), x.dtype))
+            self.debug("input", x)
             layer = getattr(self, "layer{0}".format(idx))
             logger.debug("  filter: {0}".format(layer))
             x = layer(x)
-            logger.debug("  output: {0} - {1} - {2}".format(
-                x.shape, x.get_device(), x.dtype))
+            self.debug("output", x)
         logger.debug("Flatening...")
-        logger.debug("  input: {0} - {1} - {2}".format(
-            x.shape, x.get_device(), x.dtype))
-        logger.debug(" dense features: {0}".format(self.dense_features))
+        self.debug("input", x)
+        logger.debug("  dense features: {0}".format(self.dense_features))
         x = x.view(-1, 512 * self.dense_features)
-        logger.debug("  output: {0} - {1} - {2}".format(
-            x.shape, x.get_device(), x.dtype))
+        self.debug("output", x)
         logger.debug("Getting W...")
         vec_w = self.linear1(x)
-        logger.debug("  W: {0} - {1} - {2}".format(
-            vec_w.shape, vec_w.get_device(), vec_w.dtype))
+        self.debug("W", vec_w)
         logger.debug("Getting b...")
         vec_b = self.linear2(x)
-        logger.debug("  b: {0} - {1} - {2}".format(
-            vec_b.shape, vec_b.get_device(), vec_b.dtype))
+        self.debug("b", vec_b)
 
         logger.debug("Getting A...")
+        # the flow is displacement(x) = place(x) - x = (Ax + b) - x
+        # the model learns W = A - I.
         mat_id = torch.eye(3)
         if device != -1:
             mat_id = mat_id.to(device)
@@ -436,22 +406,100 @@ class ADDNet(nn.Module):
         mat_w = vec_w.view(-1, 3, 3) * self.flow_multiplier
         vec_b = vec_b * self.flow_multiplier
         mat_a = mat_w + mat_id
-        logger.debug("  A: {0} - {1} - {2}".format(
-            mat_a.shape, mat_a.get_device(), mat_a.dtype))
+        self.debug("A", mat_a)
 
         logger.debug("Getting flow...")
-        flow = self._affine_flow(mat_w, vec_b, self.input_shape)
+        self.debug("W", mat_w)
+        self.debug("b", vec_b)
+        vec_b = vec_b.view(-1, 3, 1)
+        theta = torch.cat((mat_w, vec_b), dim=2)
+        self.debug("theta", theta)
+        size = [mat_w.size(0), 1] + list(self.input_shape)
+        logger.debug("  size: {0}".format(size))
+        flow = func.affine_grid(theta, size, align_corners=False)
+        self.debug("flow", flow)
 
         logger.debug("Applying warp...")
-        logger.debug("  moving: {0} - {1} - {2}".format(
-            moving.shape, moving.get_device(), moving.dtype))
-        warp = self.spatial_transform(moving, flow)
-        logger.debug("  warp: {0} - {1} - {2}".format(
-            warp.shape, warp.get_device(), warp.dtype))
+        self.debug("moving", moving)
+        warp = func.grid_sample(moving, flow, align_corners=False)
+        self.debug("warp", warp)
 
         logger.debug("Done.")
 
         return warp, {"flow": flow, "A": mat_a, "b": vec_b, "W": mat_w}
+
+    def debug(self, name, tensor):
+        """ Print debug message.
+
+        Parameters
+        ----------
+        name: str
+            the tensor name in the displayed message.
+        tensor: Tensor
+            a pytorch tensor.
+        """
+        logger.debug("  {3}: {0} - {1} - {2}".format(
+            tensor.shape, tensor.get_device(), tensor.dtype, name))
+
+
+def to_homography(batch_affine):
+    """ Convert batch of affine matrices from (N,3,4) to (N,4,4).
+    """
+    affine = func.pad(batch_affine, [0, 0, 0, 1], "constant", value=0.)
+    affine[..., -1, -1] += 1.0
+    return affine
+
+
+def normal_transform_pixel(shape):
+    """ Compute the normalization matrix from image size in pixels to [-1, 1].
+    """
+    tr_mat = torch.tensor([[1.0, 0.0, 0.0, -1.0],
+                           [0.0, 1.0, 0.0, -1.0],
+                           [0.0, 0.0, 1.0, -1.0],
+                           [0.0, 0.0, 0.0, 1.0]])
+    for idx in range(len(shape)):
+        tr_mat[idx, idx] = tr_mat[idx, idx] * 2.0 / (shape[idx] - 1.0)
+    tr_mat = tr_mat.unsqueeze(0)
+    return tr_mat
+
+
+def normalize_homography(affine, shape_src, shape_dst):
+    """ Normalize a given homography in pixels to [-1, 1].
+
+    Reference: https://discuss.pytorch.org/t/
+               affine-transformation-matrix-paramters-conversion/19522/13
+
+    Parameters
+    ----------
+    affine: torch.Tensor (N, 4, 4)
+        homography/ies from source to destiantion to be normalized.
+    shape_src: tuple (3,)
+        size of the source image.
+    shape_dst: tuple (3,)
+        size of the destination image.
+
+    Returns
+    -------
+    affine: torch.Tensor (N, 4, 4)
+        the normalized homography/ies.
+    """
+    if not torch.is_tensor(affine):
+        raise TypeError("Input affine type is not a torch.Tensor.")
+
+    if not (len(affine.shape) == 3 or affine.shape[-2:] == (4, 4)):
+        raise ValueError("Input affine must be a Nx4x4.")
+
+    # Parameters
+    device = affine.device
+    dtype = affine.dtype
+    # Compute the transformation pixel/norm for src/dst
+    src_norm_trf_src_pix = normal_transform_pixel(shape_src).to(device, dtype)
+    src_pix_trf_src_norm = torch.inverse(src_norm_trf_src_pix)
+    dst_norm_trf_dst_pix = normal_transform_pixel(shape_dst).to(device, dtype)
+    # Compute chain transformations
+    dst_norm_trans_src_norm = (
+        dst_norm_trf_dst_pix @ (affine @ src_pix_trf_src_norm))
+    return dst_norm_trans_src_norm
 
 
 @Regularizers.register
@@ -470,7 +518,7 @@ class ADDNetRegularizer(object):
     Let C=A'A, a positive semi-definite matrix should be close to I.
     For this, we require C has eigen values close to 1 by minimizing
     k1 + 1/k1 + k2 + 1/k2 + k3 + 1/k3. To prevent NaN, minimize
-    k1+eps + (1+eps)^2/(k1+eps) + ...
+    k1 + eps + (1+eps)^2 / (k1+eps) + ...
     """
     def __init__(self, k1=0.1, k2=0.1, eps=1e-5):
         self.k1 = k1
@@ -483,10 +531,10 @@ class ADDNetRegularizer(object):
         logger.debug("ADDNetRegularizer...")
 
         mat_a = signal.layer_outputs["A"]
-        logger.debug("  A: {0}".format(mat_a.shape))
+        self.debug("A", mat_a)
         device = mat_a.get_device()
         det = mat_a.det()
-        logger.debug("  determinant: {0}".format(det.shape))
+        self.debug("determinant", det)
         self.det_loss = torch.norm(det - 1., 2)
         logger.debug("  determinant loss: {0}".format(self.det_loss))
 
@@ -494,41 +542,52 @@ class ADDNetRegularizer(object):
         if device != -1:
             mat_eps = mat_eps.to(device)
         mat_eps *= self.eps
-        mat_a = mat_a.view(3, 3)
-        mat_c = torch.matmul(torch.t(mat_a), mat_a) + mat_eps
-        mat_c = mat_c.view(1, 3, 3)
-        logger.debug("  C: {0}".format(mat_c.shape))
+        mat_eps = mat_eps.view(1, 3, 3)
+        self.debug("eps", mat_eps)
+        mat_c = torch.bmm(mat_a.permute(0, 2, 1), mat_a) + mat_eps
+        self.debug("C", mat_c)
 
         def elem_sym_polys_of_eigen_values(mat):
             mat = [[mat[:, idx_i, idx_j]
                    for idx_j in range(3)] for idx_i in range(3)]
-            sigma1 = torch.tensor([mat[0][0], mat[1][1], mat[2][2]])
-            sigma2 = torch.tensor([
-                mat[0][0] * mat[1][1],
-                mat[1][1] * mat[2][2],
-                mat[2][2] * mat[0][0]
-            ]) - torch.tensor([
-                mat[0][1] * mat[1][0],
-                mat[1][2] * mat[2][1],
-                mat[2][0] * mat[0][2]
-            ])
-            sigma3 = torch.tensor([
-                mat[0][0] * mat[1][1] * mat[2][2],
-                mat[0][1] * mat[1][2] * mat[2][0],
-                mat[0][2] * mat[1][0] * mat[2][1]
-            ]) - torch.tensor([
-                mat[0][0] * mat[1][2] * mat[2][1],
-                mat[0][1] * mat[1][0] * mat[2][2],
-                mat[0][2] * mat[1][1] * mat[2][0]
-            ])
+            sigma1 = (mat[0][0] + mat[1][1] + mat[2][2])
+            sigma2 = (mat[0][0] * mat[1][1] +
+                      mat[1][1] * mat[2][2] +
+                      mat[2][2] * mat[0][0]) - (
+                      mat[0][1] * mat[1][0] +
+                      mat[1][2] * mat[2][1] +
+                      mat[2][0] * mat[0][2])
+            sigma3 = (mat[0][0] * mat[1][1] * mat[2][2] +
+                      mat[0][1] * mat[1][2] * mat[2][0] +
+                      mat[0][2] * mat[1][0] * mat[2][1]) - (
+                      mat[0][0] * mat[1][2] * mat[2][1] +
+                      mat[0][1] * mat[1][0] * mat[2][2] +
+                      mat[0][2] * mat[1][1] * mat[2][0])
             return sigma1, sigma2, sigma3
 
         s1, s2, s3 = elem_sym_polys_of_eigen_values(mat_c)
+        self.debug("s1", s1)
+        self.debug("s2", s2)
+        self.debug("s3", s3)
         eps = self.eps
         ortho_loss = s1 + (1 + eps) * (1 + eps) * s2 / s3 - 3 * 2 * (1 + eps)
+        self.debug("orthogonal", ortho_loss)
         self.ortho_loss = self.k2 * torch.sum(ortho_loss)
         logger.debug("  orthogonal loss: {0}".format(self.ortho_loss))
 
         logger.debug("Done.")
 
         return self.k1 * self.det_loss + self.k2 * self.ortho_loss
+
+    def debug(self, name, tensor):
+        """ Print debug message.
+
+        Parameters
+        ----------
+        name: str
+            the tensor name in the displayed message.
+        tensor: Tensor
+            a pytorch tensor.
+        """
+        logger.debug("  {3}: {0} - {1} - {2}".format(
+            tensor.shape, tensor.get_device(), tensor.dtype, name))

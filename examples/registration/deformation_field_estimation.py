@@ -16,6 +16,7 @@ import sys
 if "CI_MODE" in os.environ:
     sys.exit()
 import logging
+import numpy as np
 from pynet import NetParameters
 from pynet.datasets import DataManager, fetch_registration
 from pynet.utils import setup_logging
@@ -26,7 +27,8 @@ from pynet.models.vtnet import ADDNetRegularizer
 from torch.optim import lr_scheduler
 from pynet.plotting import plot_history
 from pynet.history import History
-from pynet.losses import MSELoss, NCCLoss, RCNetLoss
+from pynet.losses import MSELoss, NCCLoss, RCNetLoss, PCCLoss
+from pynet.plotting import Board, update_board
 import matplotlib.pyplot as plt
 
 setup_logging(level="debug")
@@ -38,13 +40,14 @@ data = fetch_registration(
 manager = DataManager(
     input_path=data.input_path,
     metadata_path=data.metadata_path,
-    number_of_folds=10,
-    batch_size=1,
+    number_of_folds=2,
+    batch_size=8,
     sampler="random",
-    # stratify_label="centers",
+    stratify_label="studies",
+    projection_labels={"studies": ["abide"]},
     test_size=0.1,
     add_input=True,
-    sample_size=1)
+    sample_size=0.5)
 
 #############################################################################
 # Training
@@ -57,7 +60,7 @@ manager = DataManager(
 # transform. We will see in the next section how to combine them in an
 # efficient way.
 
-base_network = "rcnet"
+base_network = "addnet"
 
 if base_network == "rcnet":
     rcnet_params = NetParameters(
@@ -72,8 +75,8 @@ if base_network == "rcnet":
         learning_rate=1e-4,
         loss=RCNetLoss(),
         use_cuda=False)
-    # regularizer = ADDNetRegularizer(k1=0.1, k2=0.1)
-    # net.add_observer("regularizer", regularizer)
+    regularizer = ADDNetRegularizer(k1=0.1, k2=0.1)
+    net.add_observer("regularizer", regularizer)
 elif base_network == "addnet":
     addnet_params = NetParameters(
         input_shape=(128, 128, 128),
@@ -85,8 +88,8 @@ elif base_network == "addnet":
         addnet_params,
         optimizer_name="Adam",
         learning_rate=1e-4,
-        loss=MSELoss(concat=True),
-        use_cuda=False)
+        loss=PCCLoss(concat=True),
+        use_cuda=True)
     regularizer = ADDNetRegularizer(k1=0.1, k2=0.1)
     net.add_observer("regularizer", regularizer)
 elif base_network == "vtnet":
@@ -121,12 +124,34 @@ else:
     flow_regularizer = FlowRegularizer(k1=0.01)
     net.add_observer("regularizer", flow_regularizer)
 print(net.model)
+def prepare_pred(y_pred):
+    moving = y_pred[0, :, :, :, 64]
+    train_dataset = manager["train"][0]
+    corresponding_index = train_dataset.indices[0]
+    reference = train_dataset.inputs[corresponding_index, 1:, :, : , 64]
+    orginal = train_dataset.inputs[corresponding_index, :1, :, : , 64]
+    moving = np.expand_dims(moving, axis=1)
+    reference = np.expand_dims(reference, axis=1)
+    orginal = np.expand_dims(orginal, axis=1)
+    moving = (moving / moving.max())
+    moving = moving * 255
+    reference = (reference / reference.max())
+    reference = reference * 255
+    orginal = (orginal / reference.max())
+    orginal = orginal * 255
+    return np.concatenate((moving, orginal, reference), axis=0)
+net.board = Board(port=8097, host="http://localhost",
+                  env=base_network, display_pred=True,
+                  prepare_pred=prepare_pred)
+net.add_observer("after_epoch", update_board)
 
 scheduler = lr_scheduler.ReduceLROnPlateau(
     optimizer=net.optimizer,
     mode="min",
     factor=0.5,
-    patience=5)
+    patience=3,
+    verbose=True,
+    min_lr=1e-12)
 train_history, valid_history = net.training(
     manager=manager,
     nb_epochs=(1 if "CI_MODE" in os.environ else 150000),

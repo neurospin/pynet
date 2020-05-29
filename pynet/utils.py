@@ -315,7 +315,8 @@ def freeze_layers(model, layer_names):
 
 
 def reset_weights(model, checkpoint=None):
-    """ Reset all the weights of a model.
+    """ Reset all the weights of a model. If a checkpoint is given, restore
+    the checkpoint weights.
 
     Parameters
     ----------
