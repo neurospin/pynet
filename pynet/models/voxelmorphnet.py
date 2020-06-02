@@ -121,7 +121,7 @@ class SpatialTransformer(nn.Module):
         Parameters
         ----------
         size: uplet
-            the size of input to the spatial transformer block.
+            the size of input of the spatial transformer block.
         mode: str, default 'bilinear'
             method of interpolation for the grid sampler.
         """
@@ -158,8 +158,10 @@ class SpatialTransformer(nn.Module):
             new_locs = new_locs.permute(0, 2, 3, 4, 1)
             new_locs = new_locs[..., [2, 1, 0]]
         logger.debug("Field: {0}".format(new_locs.shape))
+        warp = func.grid_sample(moving, new_locs, mode=self.mode,
+                                align_corners=False)
 
-        return func.grid_sample(moving, new_locs, mode=self.mode)
+        return warp, new_locs
 
 
 class UNetCore(nn.Module):
@@ -310,9 +312,13 @@ class ConvBlock(nn.Module):
 
 @Regularizers.register
 class FlowRegularizer(object):
-    """ VoxelMorphNet Flow Regularization.
+    """ Total Variation Loss (Smooth Term).
+
+    For a dense flow field, we regularize it with the following loss that
+    discourages discontinuity.
 
     k1 * FlowLoss
+
     FlowLoss: a gradient loss on the flow field.
     Recommend for k1 are 1.0 for ncc, or 0.01 for mse.
     """
@@ -323,21 +329,34 @@ class FlowRegularizer(object):
         logger.debug("Compute flow regularization...")
         flow = signal.layer_outputs["flow"]
         logger.debug("  lambda: {0}".format(self.k1))
-        logger.debug("  flow: {0} - {1} - {2}".format(
-            flow.shape, flow.get_device(), flow.dtype))
+        self.debug("flow", flow)
         flow_loss = self._gradient_loss(flow, penalty="l2")
+        logger.debug("  flow loss: {0}".format(flow_loss))
         logger.debug("Done.")
         return self.k1 * flow_loss
 
     def _gradient_loss(self, flow, penalty="l2"):
         """ Gradient Loss.
         """
-        dy = torch.abs(flow[:, :, 1:, :, :] - flow[:, :, :-1, :, :])
-        dx = torch.abs(flow[:, :, :, 1:, :] - flow[:, :, :, :-1, :])
+        dx = torch.abs(flow[:, :, 1:, :, :] - flow[:, :, :-1, :, :])
+        dy = torch.abs(flow[:, :, :, 1:, :] - flow[:, :, :, :-1, :])
         dz = torch.abs(flow[:, :, :, :, 1:] - flow[:, :, :, :, :-1])
         if (penalty == "l2"):
-            dy = dy * dy
             dx = dx * dx
+            dy = dy * dy
             dz = dz * dz
         displacement = torch.mean(dx) + torch.mean(dy) + torch.mean(dz)
         return displacement / 3.0
+
+    def debug(self, name, tensor):
+        """ Print debug message.
+
+        Parameters
+        ----------
+        name: str
+            the tensor name in the displayed message.
+        tensor: Tensor
+            a pytorch tensor.
+        """
+        logger.debug("  {3}: {0} - {1} - {2}".format(
+            tensor.shape, tensor.get_device(), tensor.dtype, name))

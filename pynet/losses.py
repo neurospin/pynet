@@ -708,7 +708,7 @@ class PCCLoss(object):
                 torch.sqrt(torch.sum(centered_arr_j ** 2) + 1e-6))
         loss = 1. - pearson_loss
         logger.debug("  loss: {0}".format(loss))
-        logger.info("Done.")
+        logger.debug("Done.")
         return loss
 
     def debug(self, name, tensor):

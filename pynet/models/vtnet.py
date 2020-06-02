@@ -37,7 +37,7 @@ class VTNet(nn.Module):
 
     Volume Tweening Network(VTN) consists of several cascaded registration
     subnetworks, after each of which the moving image is warped. The
-    unsupervisedtraining of network parameters is guided by the dissimilarity
+    unsupervised training of network parameters is guided by the dissimilarity
     between the fixed image and each of the warped images, with the
     regularization losses on the flows predicted by the networks.
 
@@ -83,8 +83,8 @@ class VTNet(nn.Module):
         # spatial resolution. As suggested in U-Net, skip connections between
         # the  convolutional layers and the deconvolutional layers are added
         # to help refining dense prediction. The network will output the dense
-        # flow field, a volume feature map with 3 channels (x,y,z
-        # displacements)of the same size as the input.
+        # flow field, a volume feature map with 3 channels (X, Y, Z
+        # displacements) of the same size as the input.
         out_channels = nb_channels
         for idx in range(1, 3):
             ops = self._conv(
@@ -194,59 +194,65 @@ class VTNet(nn.Module):
         nb_channels = x.shape[1] // 2
         device = x.get_device()
         logger.debug("  nb_channels: {0}".format(nb_channels))
-        logger.debug("  input: {0}".format(x.shape))
+        self.debug("input", x)
         moving = x[:, :nb_channels]
-        logger.debug("  moving: {0} - {1} - {2}".format(
-            moving.shape, moving.get_device(), moving.dtype))
+        self.debug("moving", moving)
 
         skipx = []
         for idx in range(1, 7):
             logger.debug("Applying down{0}...".format(idx))
-            logger.debug(" input: {0} - {1} - {2}".format(
-                x.shape, x.get_device(), x.dtype))
+            self.debug("input", x)
             layer = getattr(self, "down{0}".format(idx))
             logger.debug("  filter: {0}".format(layer))
             x = layer(x)
             skipx.append(x)
-            logger.debug("  output: {0} - {1} - {2}".format(
-                x.shape, x.get_device(), x.dtype))
+            self.debug("output", x)
             logger.debug("Done.")
 
         for idx in range(5, 0, -1):
             logger.debug("Applying up{0}...".format(idx))
-            logger.debug(" input: {0} - {1} - {2}".format(
-                x.shape, x.get_device(), x.dtype))
+            self.debug("input", x)
             layer = getattr(self, "up{0}".format(idx))
             pred_layer = getattr(self, "pred{0}".format(idx + 1))
             logger.debug("  filter: {0}".format(layer))
             logger.debug("  pred filter: {0}".format(pred_layer))
             flow_pred = pred_layer(x)
-            logger.debug("  flow prediction: {0}".format(flow_pred.shape))
+            self.debug("flow prediction", flow_pred)
             x = layer(x)
-            logger.debug("  layer output: {0}".format(x.shape))
-            logger.debug("  skip connexion: {0}".format(skipx[idx - 1].shape))
+            self.debug("layer output", x)
+            self.debug("skip connexion", skipx[idx - 1])
             x = torch.cat((skipx[idx - 1], x, flow_pred), dim=1)
-            logger.debug("  output: {0} - {1} - {2}".format(
-                x.shape, x.get_device(), x.dtype))
+            self.debug("output", x)
             logger.debug("Done.")
 
         logger.debug("Estimating flow field...")
+        logger.debug("  pred filter: {0}".format(self.pred1))
         flow = self.pred1(x)
-        logger.debug("  flow: {0} - {1} - {2}".format(
-            flow.shape, flow.get_device(), flow.dtype))
+        self.debug("flow", flow)
         logger.debug("Done.")
 
         logger.debug("Applying warp...")
-        logger.debug("  moving: {0} - {1} - {2}".format(
-            moving.shape, moving.get_device(), moving.dtype))
-        warp = self.spatial_transform(moving, flow)
-        logger.debug("  warp: {0} - {1} - {2}".format(
-            warp.shape, warp.get_device(), warp.dtype))
+        self.debug("moving", moving)
+        warp, _flow = self.spatial_transform(moving, flow)
+        self.debug("warp", warp)
         logger.debug("Done.")
 
         logger.debug("Done.")
 
-        return warp, {"flow": flow * 20 * self.flow_multiplier}
+        return warp, {"flow": _flow * self.flow_multiplier}
+
+    def debug(self, name, tensor):
+        """ Print debug message.
+
+        Parameters
+        ----------
+        name: str
+            the tensor name in the displayed message.
+        tensor: Tensor
+            a pytorch tensor.
+        """
+        logger.debug("  {3}: {0} - {1} - {2}".format(
+            tensor.shape, tensor.get_device(), tensor.dtype, name))
 
 
 @Networks.register
@@ -409,12 +415,15 @@ class ADDNet(nn.Module):
         self.debug("A", mat_a)
 
         logger.debug("Getting flow...")
-        self.debug("W", mat_w)
         self.debug("b", vec_b)
         vec_b = vec_b.view(-1, 3, 1)
-        theta = torch.cat((mat_w, vec_b), dim=2)
+        theta = torch.cat((mat_a, vec_b), dim=2)
+        theta = to_homography(theta)
+        norm_theta = normalize_homography(
+            theta, shape_src=self.input_shape, shape_dst=self.input_shape)
+        theta = norm_theta[:, :3, :]
         self.debug("theta", theta)
-        size = [mat_w.size(0), 1] + list(self.input_shape)
+        size = [mat_a.size(0), 1] + list(self.input_shape)
         logger.debug("  size: {0}".format(size))
         flow = func.affine_grid(theta, size, align_corners=False)
         self.debug("flow", flow)
