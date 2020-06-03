@@ -20,6 +20,7 @@ from collections import namedtuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
+from torch.autograd import Variable
 from pynet.observable import SignalObject
 from pynet.losses import PCCLoss
 from .vtnet import ADDNetRegularizer
@@ -42,19 +43,19 @@ class RCNet(nn.Module):
     """ RCnet.
 
     The recursive cascaded networks is a general architecture that enables
-    learning deep cascades, for deformable image registration.
-    The proposed architecture is simple in design and can be built on any base
+    learning deep cascades and can be used for deformable image registration.
+    The cascade architecture is simple in design and can be built on any base
     network. The moving image is warped successively by each cascade and
     finally aligned to the fixed image; this procedure is recursive in a way
     that every cascade learns to perform a progressive deformation for the
     current warped image. The entire system is end-to-end and jointly trained
-    in an unsupervised manner. Shared-weight techniques are developed in
-    addition to the recursive architecture. Shared-weight cascading in
-    training is not used since it consumes extra GPU memory as large
-    as non-shared-weight cascades during gradient backpropagation.
+    in an unsupervised manner.
+    Shared-weight techniques are developed in addition to the recursive
+    architecture. Shared-weight cascading in training is not used since it
+    consumes extra GPU memory.
 
-    We use the Dense Deformable Network (ADDNet) in combination with the
-    Volume Tweening Network (VTN).
+    We use the Dense Deformable Network (ADDNet) to estimate the affine
+    transform in combination with a deformation field network estimator.
 
     This network achieves state-of-the-art performance on both liver CT and
     brain MRI datasets for 3D medical image registration.
@@ -146,6 +147,11 @@ class RCNet(nn.Module):
         x: Tensor
             concatenated moving and fixed images (batch, 2 * channels, X, Y, Z)
         """
+        logger.debug("RCNET...")
+        device = x.device
+        for stem in self.stems:
+            if next(stem.network.parameters()).device != device:
+                stem.network.to(device)
         stem_results = []
         nb_channels = x.shape[1] // 2
         moving = x[:, :nb_channels]
@@ -162,15 +168,38 @@ class RCNet(nn.Module):
             stem_result["stem_params"] = stem.params
             stem_result["agg_flow"] = (
                 stem_results[-1]["agg_flow"] + stem_result["flow"])
-            stem_result["warped"] = self.spatial_transform(
+            stem_result["warped"], _ = self.spatial_transform(
                 moving, stem_result["agg_flow"])
             stem_results.append(stem_result)
 
         flow = stem_results[-1]["agg_flow"]
         warp = stem_results[-1]["warped"]
-        # jacobian_det = self.jacobian_det(flow)
+        jacobian_det = 0  # self.jacobian_det(flow)
 
-        return warp, {"flow": flow, "stem_results": stem_results}
+        return warp, {"flow": flow, "stem_results": stem_results,
+                      "jacobian_det": jacobian_det}
+
+    def jacobian_det(self, flow):
+        """ Compute the Jacobian determinant of displacement field.
+        """
+        # Compute Jacobian row by row.
+        jac = [
+            flow[:, :, 1:, :-1, :-1] - flow[:, :, :-1, :-1, :-1] +
+            Variable(torch.tensor(
+                [1, 0, 0], dtype=torch.float32), requires_grad=False),
+            flow[:, :, :-1, 1:, :-1] - flow[:, :, :-1, :-1, :-1] +
+            Variable(torch.tensor(
+                [0, 1, 0], dtype=torch.float32), requires_grad=False),
+            flow[:, :, :-1, :-1, 1:] - flow[:, :, :-1, :-1, :-1] +
+            Variable(torch.tensor(
+                [0, 0, 1], dtype=torch.float32), requires_grad=False)
+        ]
+        jac = torch.stack(jac, dim=1)
+
+        # Take the determinant of the Jacobian
+        var = torch.std(torch.det(jac), dim=(2, 3, 4))
+
+        return torch.sqrt(var)
 
 
 @Regularizers.register
