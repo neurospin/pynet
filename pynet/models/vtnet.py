@@ -129,7 +129,7 @@ class VTNet(nn.Module):
             if isinstance(module, nn.Conv3d):
                 logger.debug("Init weights of {0}...".format(module))
                 torch.nn.init.xavier_uniform_(module.weight)
-                torch.nn.init.constant(module.bias, 0)
+                torch.nn.init.constant_(module.bias, 0)
         self.apply(weights_init)
 
     def _conv(self, in_channels, out_channels, kernel_size, stride=1,
@@ -233,13 +233,13 @@ class VTNet(nn.Module):
 
         logger.debug("Applying warp...")
         self.debug("moving", moving)
-        warp, _flow = self.spatial_transform(moving, flow)
+        warp, _ = self.spatial_transform(moving, flow)
         self.debug("warp", warp)
         logger.debug("Done.")
 
         logger.debug("Done.")
 
-        return warp, {"flow": _flow * self.flow_multiplier}
+        return warp, {"flow": flow * self.flow_multiplier}
 
     def debug(self, name, tensor):
         """ Print debug message.
@@ -324,7 +324,7 @@ class ADDNet(nn.Module):
                                        bias=False)
 
         # Finally warp the moving image.
-        # self.spatial_transform = SpatialTransformer(input_shape)
+        self.spatial_transform = SpatialTransformer(input_shape)
 
         # Init weights
         @torch.no_grad()
@@ -332,7 +332,7 @@ class ADDNet(nn.Module):
             if isinstance(module, nn.Conv3d):
                 logger.debug("Init weights of {0}...".format(module))
                 torch.nn.init.xavier_uniform_(module.weight)
-                torch.nn.init.constant(module.bias, 0)
+                torch.nn.init.constant_(module.bias, 0)
         self.apply(weights_init)
 
     def _conv(self, in_channels, out_channels, kernel_size, stride=1,
@@ -363,6 +363,51 @@ class ADDNet(nn.Module):
             shape = np.ceil(shape / scale_factor)
             all_shapes.append(shape.astype(int).tolist())
         return all_shapes
+
+    def affine_flow(self, affine, size, without_identity=False):
+        """ Generates a 2d flow field given an affine matrix.
+
+        Parameters
+        ----------
+        affine: Tensor (N, 4, 4)
+            an affine transform.
+        size tuple
+            the target output image size.
+        without_identity: bool, defaul False
+            set to true if the identity matrix has already been substrated to
+            the affine matrix.
+
+        Returns
+        -------
+        flow: Tensor
+            the generated affine flow field.
+        """
+        if not isinstance(size, list):
+            size = list(size)
+        device = affine.device
+        if not without_identity:
+            mat_id = torch.eye(4)
+            mat_id = mat_id.view(1, 4, 4)
+            if device != -1:
+                mat_id = mat_id.to(device)
+            affine = affine - mat_id
+        n_batch = affine.size(0)
+        vectors = [torch.arange(0, val) for val in size]
+        grids = torch.meshgrid(vectors)
+        grid = torch.stack(grids)
+        grid = grid.type(torch.FloatTensor)
+        ones = torch.ones([1] + size, dtype=grid.dtype)
+        homography_grid = torch.cat([grid, ones], dim=0)
+        homography_grid = homography_grid.view(1, 4, 1, -1).permute(3, 0, 1, 2)
+        if device != -1:
+            homography_grid = homography_grid.to(device)
+        self.debug("grid", homography_grid)
+        affine = affine.view(1, n_batch, 4, 4)
+        self.debug("affine", affine)
+        flow = torch.matmul(affine, homography_grid)
+        flow = flow.permute(3, 1, 2, 0)
+        flow = flow.view([n_batch, 4] + size)
+        return flow[:, :3]
 
     def forward(self, x):
         """ Forward method.
@@ -417,20 +462,25 @@ class ADDNet(nn.Module):
         logger.debug("Getting flow...")
         self.debug("b", vec_b)
         vec_b = vec_b.view(-1, 3, 1)
-        theta = torch.cat((mat_a, vec_b), dim=2)
-        theta = to_homography(theta)
-        norm_theta = normalize_homography(
-            theta, shape_src=self.input_shape, shape_dst=self.input_shape)
-        theta = norm_theta[:, :3, :]
-        self.debug("theta", theta)
-        size = [mat_a.size(0), 1] + list(self.input_shape)
-        logger.debug("  size: {0}".format(size))
-        flow = func.affine_grid(theta, size, align_corners=False)
+        # affine = torch.cat((mat_a, vec_b), dim=2)
+        # theta = to_homography(affine)
+        # norm_theta = normalize_homography(
+        #    theta, shape_src=self.input_shape, shape_dst=self.input_shape)
+        # theta = norm_theta[:, :3, :]
+        # self.debug("theta", theta)
+        # size = [mat_a.size(0), 1] + list(self.input_shape)
+        # logger.debug("  size: {0}".format(size))
+        # flow = func.affine_grid(theta, size, align_corners=False)
+        affine = to_homography(torch.cat((mat_w, vec_b), dim=2))
+        self.debug("affine", affine)
+        flow = self.affine_flow(
+            affine, self.input_shape, without_identity=True)
         self.debug("flow", flow)
 
         logger.debug("Applying warp...")
         self.debug("moving", moving)
-        warp = func.grid_sample(moving, flow, align_corners=False)
+        # warp = func.grid_sample(moving, flow, align_corners=False)
+        warp, _ = self.spatial_transform(moving, flow)
         self.debug("warp", warp)
 
         logger.debug("Done.")
@@ -452,7 +502,7 @@ class ADDNet(nn.Module):
 
 
 def to_homography(batch_affine):
-    """ Convert batch of affine matrices from (N,3,4) to (N,4,4).
+    """ Convert batch of affine matrices of size (N, 3, 4) to (N, 4, 4).
     """
     affine = func.pad(batch_affine, [0, 0, 0, 1], "constant", value=0.)
     affine[..., -1, -1] += 1.0
