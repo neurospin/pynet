@@ -133,7 +133,7 @@ class Base(Observable):
         self.model = self.model.to(self.device)
 
     def training(self, manager, nb_epochs, checkpointdir=None, fold_index=None,
-                 scheduler=None, with_validation=True):
+                 scheduler=None, with_validation=True, save_after_epochs=5):
         """ Train the model.
 
         Parameters
@@ -152,6 +152,9 @@ class Base(Observable):
             a scheduler used to reduce the learning rate.
         with_validation: bool, default True
             if set use the validation dataset.
+        save_after_epochs: int, default 5
+            determines when the model is saved and represents the number of
+            epochs before saving.
 
         Returns
         -------
@@ -194,7 +197,8 @@ class Base(Observable):
                 logger.debug("  update train history.")
                 train_history.log((fold, epoch), loss=loss, **values)
                 train_history.summary()
-                if checkpointdir is not None:
+                if (checkpointdir is not None and
+                        epoch % save_after_epochs == 0):
                     logger.debug("  create checkpoint.")
                     checkpoint(
                         model=self.model,
@@ -218,7 +222,8 @@ class Base(Observable):
                     logger.debug("  update validation history.")
                     valid_history.log((fold, epoch), loss=loss, **values)
                     valid_history.summary()
-                    if checkpointdir is not None:
+                    if (checkpointdir is not None and
+                            epoch % save_after_epochs == 0):
                         logger.debug("  create checkpoint.")
                         valid_history.save(
                             outdir=checkpointdir,
