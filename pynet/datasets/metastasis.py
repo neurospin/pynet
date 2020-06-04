@@ -98,7 +98,7 @@ def fetch_metastasis(datasetdir):
                     _arr = masks[:, :, :, i]
                     data.append(_crop(_arr == 1))
                 data = np.asarray(data)
-                output_dataset.append(data)          
+                output_dataset.append(data)
                 bar.update(cnt)
 
             input_dataset = np.asarray(input_dataset)
