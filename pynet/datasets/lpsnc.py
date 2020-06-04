@@ -49,7 +49,7 @@ def fetch_lpsnc(datasetdir, modality=0):
     if modality not in MODALITIES and modality != 0:
         raise ValueError(
                 "Expect modality==0 for all modalities "
-                +"or modality in ('T2w', 'T1w', 'ce-GADOLINIUM_T1w', 'FLAIR')")
+                + "or modality in ('T2w', 'T1w', 'ce-GADOLINIUM_T1w', 'FLAIR')")
     logger.info("Loading lpsnc dataset.")
 
     def _crop(arr):
@@ -105,12 +105,14 @@ def fetch_lpsnc(datasetdir, modality=0):
         return merged_data
 
     mapping_path = os.path.join(datasetdir, "data.json")
-    zero_path = os.path.join(datasetdir, "zero.nii.gz")  # path for empty image of correct dimensions
+    zero_path = os.path.join(datasetdir, "zero.nii.gz")
+    # path for empty image of correct dimensions
     zero = nib.load(zero_path).get_data()
     if not os.path.isfile(mapping_path):
         raise ValueError(
-            "Are you in the right folder? Your folder= '{0}' ".format(datasetdir)
-            +"You may need special access for LPSNC dataset")
+            "Are you in the right folder? "
+            + "Your folder= '{0}' ".format(datasetdir)
+            + "You may need special access for LPSNC dataset")
     desc_path = os.path.join(datasetdir, "pynet_lpsnc_"+str(modality)+".tsv")
     input_path = os.path.join(datasetdir,
                               "pynet_lpsnc_inputs_"+str(modality)+".npy")
@@ -178,7 +180,7 @@ def fetch_lpsnc(datasetdir, modality=0):
                             dataout.append(_arr == v+1)
                         allmasks = arrs[0]+arrs[1]+arrs[2]
                         if (len(np.unique(allmasks)) > 0):
-                            dataout.insert(0, allmasks == 0)      
+                            dataout.insert(0, allmasks == 0)   
                             dataout = np.asarray(dataout)
                             output_dataset.append(dataout)
                             datain = []
@@ -186,7 +188,7 @@ def fetch_lpsnc(datasetdir, modality=0):
                             datain.append(
                                     _norm(_crop(nib.load(path).get_data())))
                             datain = np.asarray(datain)
-                            input_dataset.append(datain) 
+                            input_dataset.append(datain)
                             arr1.append(subdata[["sub", "ses"]].values[0])
 
                 bar.update(cnt)
