@@ -39,9 +39,9 @@ if "PYTHONPATH" in env:
 else:
     env["PYTHONPATH"] = installdir
 cmd = ["sphinxdoc", "-v 2", "-p",  installdir, "-n", "pynet", "-o", "..",
-       "-m", "-i", "python-network"] + MOCK_MODULES + ["matplotlib",
-       "matplotlib.pyplot", "-r", "object", "object", "object", "object",
-       "object", "-k", "Module", "VGG", "ResNet", "DenseNet", "Inception3"]
+       "-m"] + MOCK_MODULES + ["matplotlib", "matplotlib.pyplot", "-r",
+       "object", "object", "object", "object", "object", "-k", "Module",
+       "VGG", "ResNet", "DenseNet", "Inception3", "-i", "python-network"]
 subprocess.check_call(cmd, env=env)
 sys.path.insert(0, installdir)
 
