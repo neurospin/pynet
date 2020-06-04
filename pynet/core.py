@@ -133,7 +133,7 @@ class Base(Observable):
         self.model = self.model.to(self.device)
 
     def training(self, manager, nb_epochs, checkpointdir=None, fold_index=None,
-                 scheduler=None, with_validation=True, save_after_epochs=5):
+                 scheduler=None, with_validation=True, save_after_epochs=1):
         """ Train the model.
 
         Parameters
@@ -152,7 +152,7 @@ class Base(Observable):
             a scheduler used to reduce the learning rate.
         with_validation: bool, default True
             if set use the validation dataset.
-        save_after_epochs: int, default 5
+        save_after_epochs: int, default 1
             determines when the model is saved and represents the number of
             epochs before saving.
 
