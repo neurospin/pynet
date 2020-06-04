@@ -29,10 +29,9 @@ MODALITIES = ('T2w', 'T1w', 'ce-GADOLINIUM_T1w', 'FLAIR')
 Item = namedtuple("Item", ["input_path", "output_path", "metadata_path"])
 logger = logging.getLogger("pynet")
 
-#datasetdir="/neurospin/radiomics/workspace_LPSNC/LPSNC_data"
-
+# datasetdir="/neurospin/radiomics/workspace_LPSNC/LPSNC_data"
 @Fetchers.register
-def fetch_lpsnc(datasetdir,modality=0):
+def fetch_lpsnc(datasetdir, modality=0):
     """ Fetch/prepare the lpsnc dataset for pynet.
 
     Parameters
@@ -46,21 +45,25 @@ def fetch_lpsnc(datasetdir,modality=0):
         a named tuple containing 'input_path', 'output_path', and
         'metadata_path'.
     """
-    if modality not in MODALITIES and modality!=0:
-        raise ValueError("Expect modality==0 for all or modality in ('T2w', 'T1w', 'ce-GADOLINIUM_T1w', 'FLAIR')")
+    if modality not in MODALITIES and modality != 0:
+        raise ValueError(
+                "Expect modality==0 for all modalities or modality in ('T2w', 'T1w', 'ce-GADOLINIUM_T1w', 'FLAIR')")
     logger.info("Loading lpsnc dataset.")
+
     def _crop(arr):
-        #return arr[45: 195, 30: 220, 10: 145]
+        # return arr[45: 195, 30: 220, 10: 145]
         return arr
+
     def _norm(arr):
-        arr=np.nan_to_num(arr)
+        arr = np.nan_to_num(arr)
         logical_mask = (arr != 0)
         mean = arr[logical_mask].mean()
         std = arr[logical_mask].std()
         return ((arr - mean) / std).astype(np.single)
-    def merge_rois(roifiles,v=1):
+
+    def merge_rois(roifiles, v=1):
         """ Merge the input ROIs.
-    
+
         Parameters
         ----------
         roifiles: list of str
@@ -69,7 +72,7 @@ def fetch_lpsnc(datasetdir,modality=0):
             the destination folder.
         fmaskname: str
             the filename of the mask to be saved.
-    
+
         Returns
         -------
         merged_file: str
@@ -79,7 +82,6 @@ def fetch_lpsnc(datasetdir,modality=0):
         if len(roifiles) == 0:
             raise ValueError("Expect at least one ROI.")
 
-    
         # Merge ROIS
         im = nib.load(roifiles[0])
         ref_affine = im.affine
@@ -97,22 +99,20 @@ def fetch_lpsnc(datasetdir,modality=0):
                     raise ValueError("Expect 3d-ROIS.")
                 merged_data += data
         merged_data[merged_data > 0] = v
-    
-
-    
         return merged_data
 
-
-
     mapping_path = os.path.join(datasetdir, "data.json")
-    zero_path=os.path.join(datasetdir, "zero.nii.gz")
-    zero=nib.load(zero_path).get_data()
+    zero_path = os.path.join(datasetdir, "zero.nii.gz")# path for empty image of correct dimensions
+    zero = nib.load(zero_path).get_data()
     if not os.path.isfile(mapping_path):
         raise ValueError(
-            "Are you in the right folder?  Your folder= '{0}' . You may need special access for LPSNC dataset ".format(datasetdir))
+            """Are you in the right folder?  Your folder= '{0}'.
+            You may need special access for LPSNC dataset """.format(datasetdir))
     desc_path = os.path.join(datasetdir, "pynet_lpsnc_"+str(modality)+".tsv")
-    input_path = os.path.join(datasetdir, "pynet_lpsnc_inputs_"+str(modality)+".npy")
-    output_path = os.path.join(datasetdir, "pynet_lpsnc_outputs_"+str(modality)+".npy")
+    input_path = os.path.join(datasetdir,
+                              "pynet_lpsnc_inputs_"+str(modality)+".npy")
+    output_path = os.path.join(datasetdir,
+                               "pynet_lpsnc_outputs_"+str(modality)+".npy")
     if not os.path.isfile(desc_path):
         df = pd.read_json(mapping_path)
 
@@ -120,83 +120,78 @@ def fetch_lpsnc(datasetdir,modality=0):
         input_dataset = []
         output_dataset = []
         nb_subjects = len(arr)
-        arr1=[]
+        arr1 = []
         with progressbar.ProgressBar(max_value=nb_subjects,
                                      redirect_stdout=True) as bar:
             for cnt, (sub, ses) in enumerate(arr):
                 logger.debug("Processing {0}...".format(sub))
 
-                
-                subdata=df.loc[df["sub"]==sub]
-                if (modality==0):
-                    dataout=[]
-                    arrs=[]
+                subdata = df.loc[df["sub"] == sub]
+                if (modality == 0):
+                    dataout = []
+                    arrs = []
                     paths = subdata["lesionfiles"].values[0]
 
-                    for (v,c) in enumerate(['edema','enh','necrosis']):
-                        cat=paths[c]
+                    for (v, c) in enumerate(['edema', 'enh', 'necrosis']):
+                        cat = paths[c]
 
-                        if len(cat)>0:
-                            _arr=_crop(merge_rois(cat,v+1))
+                        if len(cat) > 0:
+                            _arr = _crop(merge_rois(cat, v+1))
                         else:
-                            _arr=_crop(zero)
-                        dataout.append(_arr==v+1)
+                            _arr = _crop(zero)
+                        dataout.append(_arr == v+1)
                         arrs.append(_arr)
-                    allmasks=arrs[0]+arrs[1]+arrs[2]
-                    if (len(np.unique(allmasks))>0):
-                        dataout.insert(0,allmasks==0)
+                    allmasks = arrs[0]+arrs[1]+arrs[2]
+                    if (len(np.unique(allmasks)) > 0):
+                        dataout.insert(0, allmasks == 0)
                         dataout = np.asarray(dataout)
-                                           
-                        output_dataset.append(dataout) 
-                        datain=[]
+                        output_dataset.append(dataout)
+                        datain = []
                         for mod in MODALITIES:
                             if mod in subdata["mod"].values[0]:
                                 path = subdata["Files"].values[0][mod]
-                                datain.append(_norm(_crop(nib.load(path).get_data())))
-                                
+                                datain.append(
+                                        _norm(_crop(nib.load(path).get_data())))
+
                             else:
                                 datain.append(_crop(zero))
-                        arr1.append(subdata[["sub", "ses"]].values[0])       
+                        arr1.append(subdata[["sub", "ses"]].values[0])   
                         datain = np.asarray(datain)
-                        input_dataset.append(datain) 
-                       
+                        input_dataset.append(datain)      
 
                 else:
                     if modality in subdata["mod"].values[0]:
-                        dataout=[]
-                        arrs=[]
+                        dataout = []
+                        arrs = []
                         paths = subdata["lesionfiles"].values[0]
-                        for (v,c) in enumerate(['edema','enh','necrosis']):
-                            cat=paths[c]
-                            if len(cat)>0:
-                                _arr=_crop(merge_rois(cat,v+1))
+                        for (v, c) in enumerate(['edema', 'enh', 'necrosis']):
+                            cat = paths[c]
+                            if len(cat) > 0:
+                                _arr = _crop(merge_rois(cat, v+1))
                             else:
-                                _arr=_crop(zero)
+                                _arr = _crop(zero)
                             arrs.append(_arr)
-                            dataout.append(_arr==v+1)
-                        allmasks=arrs[0]+arrs[1]+arrs[2]
-                        if (len(np.unique(allmasks))>0):
-                            dataout.insert(0,allmasks==0)                        
+                            dataout.append(_arr == v+1)
+                        allmasks = arrs[0]+arrs[1]+arrs[2]
+                        if (len(np.unique(allmasks)) > 0):
+                            dataout.insert(0, allmasks == 0)               
                             dataout = np.asarray(dataout)
-                            
                             output_dataset.append(dataout)
-                            datain=[]
+                            datain = []
                             path = subdata["Files"].values[0][modality]
-                            datain.append(_norm(_crop(nib.load(path).get_data())))
+                            datain.append(
+                                    _norm(_crop(nib.load(path).get_data())))
                             datain = np.asarray(datain)
-                            input_dataset.append(datain)             
+                            input_dataset.append(datain)     
                             arr1.append(subdata[["sub", "ses"]].values[0])
 
-                
                 bar.update(cnt)
-                
-            input_dataset = np.asarray(input_dataset)
-            output_dataset=np.asarray(output_dataset)
-            
 
+            input_dataset = np.asarray(input_dataset)
+            output_dataset = np.asarray(output_dataset)
 
             dataset_desc = pd.DataFrame(
-            arr1, columns=["sub", "ses"])
+                    arr1, columns=["sub", "ses"])
 
             np.save(input_path, input_dataset)
             np.save(output_path, output_dataset)
