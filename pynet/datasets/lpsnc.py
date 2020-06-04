@@ -49,7 +49,7 @@ def fetch_lpsnc(datasetdir, modality=0):
     if modality not in MODALITIES and modality != 0:
         raise ValueError(
                 "Expect modality==0 for all modalities "
-                + "or modality in ('T2w', 'T1w', 'ce-GADOLINIUM_T1w', 'FLAIR')")
+                + "or modality in ('T2w','T1w','ce-GADOLINIUM_T1w','FLAIR')")
     logger.info("Loading lpsnc dataset.")
 
     def _crop(arr):
@@ -180,7 +180,7 @@ def fetch_lpsnc(datasetdir, modality=0):
                             dataout.append(_arr == v+1)
                         allmasks = arrs[0]+arrs[1]+arrs[2]
                         if (len(np.unique(allmasks)) > 0):
-                            dataout.insert(0, allmasks == 0)   
+                            dataout.insert(0, allmasks == 0)
                             dataout = np.asarray(dataout)
                             output_dataset.append(dataout)
                             datain = []

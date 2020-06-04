@@ -64,8 +64,9 @@ def fetch_metastasis(datasetdir):
 
     if not os.path.isfile(mapping_path):
         raise ValueError(
-            "Are you in the right folder? Your folder= '{0}' ".format(datasetdir)
-            +"You may need special access for Metastasis dataset")
+            "Are you in the right folder? "
+            + "Your folder= '{0}' ".format(datasetdir)
+            + "You may need special access for Metastasis dataset")
     desc_path = os.path.join(datasetdir, "pynet_metastasis.tsv")
     input_path = os.path.join(datasetdir, "pynet_metastasis.npy")
     output_path = os.path.join(datasetdir, "pynet_metastasis.npy")
@@ -97,7 +98,7 @@ def fetch_metastasis(datasetdir):
                     _arr = masks[:, :, :, i]
                     data.append(_crop(_arr == 1))
                 data = np.asarray(data)
-                output_dataset.append(data)                 
+                output_dataset.append(data)          
                 bar.update(cnt)
 
             input_dataset = np.asarray(input_dataset)
