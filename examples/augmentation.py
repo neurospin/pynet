@@ -1,0 +1,84 @@
+"""
+pynet data augmentation overview
+================================
+
+Credit: A Grigis
+
+pynet contains a set of tools to efficiently augment 3D medical images that
+is crutial for deep learning applications. It includes random affine/non linear
+transformations, simulation of intensity artifacts due to MRI magnetic field
+inhomogeneity or k-space motion artifacts, and others.
+
+Load the data
+-------------
+
+We load the Brats dataset and select the first MRI brain image.
+"""
+
+import time
+import numpy as np
+from pynet.datasets import DataManager, fetch_brats
+from pynet.preprocessing import rescale
+
+datasetdir = "/neurospin/nsap/processed/deepbrain/tumor/data/brats"
+data = fetch_brats(datasetdir=datasetdir)
+X = np.load(data.input_path, mmap_mode="r")
+image = rescale(X[0, 0], dynamic=(0, 255))
+
+"""
+Define deformations
+-------------------
+
+We now declare MRI brain deformation functions. The deformation can be combined
+with the Transformer class.
+"""
+
+from pynet.augmentation import add_blur
+from pynet.augmentation import add_noise
+from pynet.augmentation import add_ghosting
+from pynet.augmentation import add_spike
+from pynet.augmentation import add_biasfield
+from pynet.augmentation import add_motion
+from pynet.augmentation import flip
+from pynet.augmentation import affine
+from pynet.augmentation import deformation
+from pynet.augmentation import Transformer
+
+compose_transforms = Transformer()
+compose_transforms.register(flip, probability=0.5, axis=0)
+compose_transforms.register(add_blur, probability=1, std=4)
+transforms = {
+    "add_blur": (add_blur, {"std": 4}),
+    "add_noise": (add_noise, {"mean": 0, "std": 50}),
+    "flip": (flip, {"axis": 0}),
+    "affine": (affine, {"rotation": 5, "translation": 0, "zoom": 0.05}),
+    "add_ghosting": (add_ghosting, {"n_ghosts": (4, 10), "axis": 2,
+                                   "intensity": (0.5, 1)}),
+    "add_spike": (add_spike, {"n_spikes": 1, "intensity": (0.1, 1)}),
+    "add_biasfield": (add_biasfield, {"coefficients": 0.5}),
+    "deformation": (deformation, {"max_displacement": 4, "alpha": 3}),
+    #"add_motion": (add_motion, {"rotation": 0, "translation": 0,
+    #                            "n_transforms": 2, "perturbation": 0.3}),
+    "compose_transforms": (compose_transforms, {}),
+}
+
+"""
+Test transformations
+--------------------
+
+We now apply the transformations on the loaded image. Results are
+directly displayed in your browser at http://localhost:8097.
+"""
+
+from pynet.plotting import Board
+
+board = Board(port=8097, host="http://localhost", env="data-augmentation")
+for cnt in range(20):
+    print("Iteration: ", cnt)
+    for key, (fct, kwargs) in transforms.items():
+        images = np.asarray([image, np.clip(fct(image, **kwargs), 0, 255)])
+        images = images[..., images.shape[-1] // 2]
+        images = np.expand_dims(images, axis=1)
+        board.viewer.images(
+            images, opts={"title": key, "caption": key}, win=key)
+    time.sleep(1)
