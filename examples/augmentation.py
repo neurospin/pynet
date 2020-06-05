@@ -33,6 +33,11 @@ We now declare MRI brain deformation functions. The deformation can be combined
 with the Transformer class.
 """
 
+import os
+import sys
+if "CI_MODE" in os.environ:
+    sys.exit()
+
 from pynet.augmentation import add_blur
 from pynet.augmentation import add_noise
 from pynet.augmentation import add_ghosting
