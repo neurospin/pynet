@@ -112,7 +112,6 @@ def add_ghosting(arr, axis, n_ghosts=10, intensity=1):
             row *= (1 - intensity_random)
         slice_arr *= 0
         slice_arr += np.abs(np.fft.ifftn(np.fft.ifftshift(spectrum)))
-    print(values.shape)
     return values
 
 
