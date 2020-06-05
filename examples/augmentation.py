@@ -15,6 +15,11 @@ Load the data
 We load the Brats dataset and select the first MRI brain image.
 """
 
+import os
+import sys
+if "CI_MODE" in os.environ:
+    sys.exit()
+
 import time
 import numpy as np
 from pynet.datasets import DataManager, fetch_brats
@@ -32,11 +37,6 @@ Define deformations
 We now declare MRI brain deformation functions. The deformation can be combined
 with the Transformer class.
 """
-
-import os
-import sys
-if "CI_MODE" in os.environ:
-    sys.exit()
 
 from pynet.augmentation import add_blur
 from pynet.augmentation import add_noise
