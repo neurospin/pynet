@@ -5,13 +5,10 @@
 # the CEA-CNRS-INRIA. Refer to the LICENSE file or to
 # http://www.cecill.info/licences/Licence_CeCILL-B_V1-en.html
 # for details.
-# @Author: Zhou Kai
-# @GitHub: https://github.com/athon2
-# @Date: 2018-11-30 09:53:44
 ##########################################################################
 
 """
-Module that provides functions to prepare the lpsnc dataset.
+Module that provides functions to prepare the metastasis dataset.
 """
 
 # Imports
@@ -29,11 +26,10 @@ MODALITIES = ('t1', 'flair')
 Item = namedtuple("Item", ["input_path", "output_path", "metadata_path"])
 logger = logging.getLogger("pynet")
 
-# datasetdir="/neurospin/radiomics_pub/workspace/metastasis_dl/data"
-
 
 @Fetchers.register
-def fetch_metastasis(datasetdir):
+def fetch_metastasis(
+        datasetdir="/neurospin/radiomics_pub/workspace/metastasis_dl/data"):
     """ Fetch/prepare the metastatis dataset for pynet.
 
     Parameters
@@ -65,7 +61,6 @@ def fetch_metastasis(datasetdir):
     if not os.path.isfile(mapping_path):
         raise ValueError(
             "Are you in the right folder? "
-            + "Your folder= '{0}' ".format(datasetdir)
             + "You may need special access for Metastasis dataset")
     desc_path = os.path.join(datasetdir, "pynet_metastasis.tsv")
     input_path = os.path.join(datasetdir, "pynet_metastasis.npy")

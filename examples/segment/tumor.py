@@ -107,8 +107,8 @@ nvnet_params = NetParameters(
     activation="relu",
     normalization="group_normalization",
     mode="trilinear",
-    with_vae=True,
-    debug=False)
+    with_vae=True)
+
 if os.path.isfile(trained_model):
     nvnet = NvNetSegmenter(
         nvnet_params,
