@@ -43,29 +43,54 @@ def add_blur(arr, std):
     return gaussian_filter(arr, std_random)
 
 
-def add_noise(arr, mean, std):
-    """ Add random Gaussian noise.
+def add_noise(arr, snr=None, sigma=None, noise_type="gaussian"):
+    """ Add random Gaussian or Rician noise.
+
+    The noise level can be specified directly by setting the standard
+    deviation or the desired signal-to-noise ratio for the Gaussian
+    distribution. In the case of Rician noise sigma is the standard deviation
+    of the two Gaussian distributions forming the real and imaginary
+    components of the Rician noise distribution.
+
+    In anatomical scans, CNR values for GW/WM ranged from 5 to 20 (1.5T and
+    3T) for SNR around 40-100 (http://www.pallier.org/pdfs/snr-in-mri.pdf).
 
     Parameters
     ----------
     arr: array
         the input data.
-    mean: float or 2-uplet
-        the mean for the Gaussian distribution.
-    std: float or 2-uplet
-        the standard deviation for the Gaussian distribution.
+    snr: float or 2-uplet, default None
+        the desired signal-to noise ratio used to infer the standard deviation
+        for the noise distribution.
+    sigma: float or 2-uplet, default None
+        the standard deviation for the noise distribution.
+    noise_type: str, default 'gaussian'
+        the distribution of added noise - can be either 'gaussian' for
+        Gaussian distributed noise, or 'rician' for Rice-distributed noise.
 
     Returns
     -------
     transformed: array
         the transformed input data.
     """
-    std = interval(std, lower=0)
-    std_random = np.random.uniform(low=std[0], high=std[1], size=1)[0]
-    mean = interval(mean, lower=0)
-    mean_random = np.random.uniform(low=mean[0], high=mean[1], size=1)[0]
-    noise = np.random.normal(mean_random, std_random, arr.shape)
-    return arr + noise
+    if snr is None and sigma is None:
+        raise ValueError("You must define one of he desired signal-to noise "
+                         "ratio or the standard deviation for the noise "
+                         "distribution.")
+    if snr is not None:
+        s0 = np.max(arr)
+        sigma = s0 / snr
+    sigma = interval(sigma, lower=0)
+    sigma_random = np.random.uniform(low=sigma[0], high=sigma[1], size=1)[0]
+    noise1 = np.random.normal(0, sigma_random, arr.shape)
+    if noise_type == "gaussian":
+        transformed = arr + noise1
+    elif noise_type == "rician":
+        noise2 = np.random.normal(0, sigma_random, arr.shape)
+        transformed = np.sqrt((arr + noise1)**2 + noise2**2)
+    else:
+        raise ValueError("Unsupported noise type.")
+    return transformed
 
 
 def add_ghosting(arr, axis, n_ghosts=10, intensity=1):
@@ -188,7 +213,7 @@ def add_biasfield(arr, coefficients=0.5, order=3):
 
 
 def add_motion(arr, rotation=10, translation=10, n_transforms=2,
-               perturbation=0.3):
+               perturbation=0.3, axis=None):
     """ Add random MRI motion artifact on the last axis.
 
     Reference: Shaw et al., 2019, MRI k-Space Motion Artefact Augmentation:
@@ -210,6 +235,9 @@ def add_motion(arr, rotation=10, translation=10, n_transforms=2,
     perturbation: float, default 0.3
         control the intervals between movements. If perturbation is 0, time
         intervals between movements are constant.
+    axis: int, default None
+        the k-space filling axis. If not specified, randomize the k-space
+        filling axis.
 
     Returns
     -------
@@ -218,6 +246,8 @@ def add_motion(arr, rotation=10, translation=10, n_transforms=2,
     """
     rotation = interval(rotation)
     translation = interval(translation)
+    if axis is None:
+        axis = np.random.randint(low=0, high=arr.ndim, size=1)[0]
     step = 1. / (n_transforms + 1)
     times = np.arange(0, 1, step)[1:]
     shape = arr.shape
@@ -248,12 +278,14 @@ def add_motion(arr, rotation=10, translation=10, n_transforms=2,
         index = n_spectra - 1
     spectra[0], spectra[index] = spectra[index], spectra[0]
     result_spectrum = np.empty_like(spectra[0])
-    last_index = result_spectrum.shape[2]
-    indices = (last_index * times).astype(int).tolist()
-    indices.append(last_index)
+    slc = [slice(None)] * arr.ndim
+    slice_size = result_spectrum.shape[axis]
+    indices = (slice_size * times).astype(int).tolist()
+    indices.append(slice_size)
     start = 0
     for spectrum, end in zip(spectra, indices):
-        result_spectrum[..., start: end] = spectrum[..., start: end]
+        slc[axis] = slice(start, end)
+        result_spectrum[tuple(slc)] = spectrum[tuple(slc)]
         start = end
     result_image = np.abs(np.fft.ifftn(np.fft.ifftshift(result_spectrum)))
     return result_image
