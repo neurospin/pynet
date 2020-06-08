@@ -177,7 +177,7 @@ def gaussian_random_field(shape, alpha=3.0, normalize=True, seed=None):
     # Draws a complex gaussian random noise with normal (circular) distribution
     if seed is not None:
         np.random.seed(seed)
-    noise = np.random.normal(size=shape)
+    noise = np.random.normal(size=shape) + 0j
     if seed is not None:
         np.random.seed(seed + 1)
     noise += 1j * np.random.normal(size=shape)
