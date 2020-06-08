@@ -365,7 +365,7 @@ class ADDNet(nn.Module):
         return all_shapes
 
     def affine_flow(self, affine, size, without_identity=False):
-        """ Generates a 2d flow field given an affine matrix.
+        """ Generates a flow field given an affine matrix.
 
         Parameters
         ----------
