@@ -332,6 +332,7 @@ class FlowRegularizer(object):
         self.debug("flow", flow)
         flow_loss = self._gradient_loss(flow, penalty="l2")
         logger.debug("  flow loss: {0}".format(flow_loss))
+        logger.debug("  flow loss: {0} - {1}".format(flow.min(), flow.max()))
         logger.debug("Done.")
         return self.k1 * flow_loss
 
