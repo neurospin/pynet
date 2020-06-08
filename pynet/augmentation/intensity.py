@@ -23,27 +23,30 @@ from .transform import affine_flow
 from .utils import interval
 
 
-def add_blur(arr, std):
+def add_blur(arr, sigma, seed=None):
     """ Add random blur using a Gaussian filter.
 
     Parameters
     ----------
     arr: array
         the input data.
-    std: float or 2-uplet
+    sigma: float or 2-uplet
         the standard deviation for Gaussian kernel.
+    seed: int, default None
+        seed to control random number generator.
 
     Returns
     -------
     transformed: array
         the transformed input data.
     """
-    std = interval(std, lower=0)
-    std_random = np.random.uniform(low=std[0], high=std[1], size=1)[0]
-    return gaussian_filter(arr, std_random)
+    sigma = interval(sigma, lower=0)
+    np.random.seed(seed)
+    sigma_random = np.random.uniform(low=sigma[0], high=sigma[1], size=1)[0]
+    return gaussian_filter(arr, sigma_random)
 
 
-def add_noise(arr, snr=None, sigma=None, noise_type="gaussian"):
+def add_noise(arr, snr=None, sigma=None, noise_type="gaussian", seed=None):
     """ Add random Gaussian or Rician noise.
 
     The noise level can be specified directly by setting the standard
@@ -67,6 +70,8 @@ def add_noise(arr, snr=None, sigma=None, noise_type="gaussian"):
     noise_type: str, default 'gaussian'
         the distribution of added noise - can be either 'gaussian' for
         Gaussian distributed noise, or 'rician' for Rice-distributed noise.
+    seed: int, default None
+        seed to control random number generator.
 
     Returns
     -------
@@ -81,11 +86,17 @@ def add_noise(arr, snr=None, sigma=None, noise_type="gaussian"):
         s0 = np.max(arr)
         sigma = s0 / snr
     sigma = interval(sigma, lower=0)
+    if seed is not None:
+        np.random.seed(seed)
     sigma_random = np.random.uniform(low=sigma[0], high=sigma[1], size=1)[0]
+    if seed is not None:
+        np.random.seed(seed + 1)
     noise1 = np.random.normal(0, sigma_random, arr.shape)
     if noise_type == "gaussian":
         transformed = arr + noise1
     elif noise_type == "rician":
+        if seed is not None:
+            np.random.seed(seed + 2)
         noise2 = np.random.normal(0, sigma_random, arr.shape)
         transformed = np.sqrt((arr + noise1)**2 + noise2**2)
     else:
@@ -93,7 +104,7 @@ def add_noise(arr, snr=None, sigma=None, noise_type="gaussian"):
     return transformed
 
 
-def add_ghosting(arr, axis, n_ghosts=10, intensity=1):
+def add_ghosting(arr, axis, n_ghosts=10, intensity=1, seed=None):
     """ Add random MRI ghosting artifact.
 
     Parameters
@@ -108,6 +119,8 @@ def add_ghosting(arr, axis, n_ghosts=10, intensity=1):
     intensity: float or list of float, default 1
         a number between 0 and 1 representing the artifact strength. Larger
         values generate more distorted images.
+    seed: int, default None
+        seed to control random number generator.
 
     Returns
     -------
@@ -117,8 +130,10 @@ def add_ghosting(arr, axis, n_ghosts=10, intensity=1):
     # Leave first 5% of frequencies untouched.
     n_ghosts = interval(n_ghosts, lower=0)
     intensity = interval(intensity, lower=0)
+    np.random.seed(seed)
     n_ghosts_random = np.random.randint(
         low=n_ghosts[0], high=n_ghosts[1], size=1)[0]
+    np.random.seed(seed)
     intensity_random = np.random.uniform(
         low=intensity[0], high=intensity[1], size=1)[0]
     percentage_to_avoid = 0.05
@@ -140,7 +155,7 @@ def add_ghosting(arr, axis, n_ghosts=10, intensity=1):
     return values
 
 
-def add_spike(arr, n_spikes=1, intensity=(0.1, 1)):
+def add_spike(arr, n_spikes=1, intensity=(0.1, 1), seed=None):
     """ Add random MRI spike artifacts.
 
     Parameters
@@ -153,6 +168,8 @@ def add_spike(arr, n_spikes=1, intensity=(0.1, 1)):
     intensity: float or 2-uplet, default (0.1, 1)
         Ratio between the spike intensity and the maximum of the spectrum.
         Larger values generate more distorted images.
+    seed: int, default None
+        seed to control random number generator.
 
     Returns
     -------
@@ -160,7 +177,9 @@ def add_spike(arr, n_spikes=1, intensity=(0.1, 1)):
         the transformed input data.
     """
     intensity = interval(intensity, lower=0)
+    np.random.seed(seed)
     spikes_positions = np.random.rand(n_spikes)
+    np.random.seed(seed)
     intensity_factor = np.random.uniform(
         low=intensity[0], high=intensity[1], size=1)[0]
     spectrum = np.fft.fftshift(np.fft.fftn(arr)).ravel()
@@ -172,7 +191,7 @@ def add_spike(arr, n_spikes=1, intensity=(0.1, 1)):
     return result.astype(np.float32)
 
 
-def add_biasfield(arr, coefficients=0.5, order=3):
+def add_biasfield(arr, coefficients=0.5, order=3, seed=None):
     """ Add random MRI bias field artifact.
 
     Parameters
@@ -183,6 +202,8 @@ def add_biasfield(arr, coefficients=0.5, order=3):
         the magnitude of polynomial coefficients.
     order: int, default 3
         the order of the basis polynomial functions.
+    seed: int, default None
+        seed to control random number generator.
 
     Returns
     -------
@@ -198,11 +219,13 @@ def add_biasfield(arr, coefficients=0.5, order=3):
     y_mesh /= y_mesh.max()
     z_mesh /= z_mesh.max()
     cnt = 0
+    np.random.seed(seed)
+    random_coefficients = np.random.uniform(
+        low=coefficients[0], high=coefficients[1], size=(order + 1)**3)
     for x_order in range(order + 1):
         for y_order in range(order + 1 - x_order):
             for z_order in range(order + 1 - (x_order + y_order)):
-                random_coefficient = np.random.uniform(
-                    low=coefficients[0], high=coefficients[1], size=1)[0]
+                random_coefficient = random_coefficients[cnt]
                 new_map = (
                     random_coefficient * x_mesh ** x_order * y_mesh ** y_order
                     * z_mesh ** z_order)
@@ -213,7 +236,7 @@ def add_biasfield(arr, coefficients=0.5, order=3):
 
 
 def add_motion(arr, rotation=10, translation=10, n_transforms=2,
-               perturbation=0.3, axis=None):
+               perturbation=0.3, axis=None, seed=None):
     """ Add random MRI motion artifact on the last axis.
 
     Reference: Shaw et al., 2019, MRI k-Space Motion Artefact Augmentation:
@@ -238,6 +261,8 @@ def add_motion(arr, rotation=10, translation=10, n_transforms=2,
     axis: int, default None
         the k-space filling axis. If not specified, randomize the k-space
         filling axis.
+    seed: int, default None
+        seed to control random number generator.
 
     Returns
     -------
@@ -247,6 +272,7 @@ def add_motion(arr, rotation=10, translation=10, n_transforms=2,
     rotation = interval(rotation)
     translation = interval(translation)
     if axis is None:
+        np.random.seed(seed)
         axis = np.random.randint(low=0, high=arr.ndim, size=1)[0]
     step = 1. / (n_transforms + 1)
     times = np.arange(0, 1, step)[1:]
@@ -257,8 +283,12 @@ def add_motion(arr, rotation=10, translation=10, n_transforms=2,
     times += noise
     arrays = [arr]
     for cnt in range(n_transforms):
+        if seed is not None:
+            np.random.seed(seed + cnt)
         random_rotations = np.random.uniform(
             low=rotation[0], high=rotation[1], size=arr.ndim)
+        if seed is not None:
+            np.random.seed(seed + cnt)
         random_translations = np.random.uniform(
             low=translation[0], high=translation[1], size=arr.ndim)
         random_rotations = Rotation.from_euler(

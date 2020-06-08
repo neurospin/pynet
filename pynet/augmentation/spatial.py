@@ -22,7 +22,7 @@ from .transform import affine_flow
 from .utils import interval
 
 
-def affine(arr, rotation=10, translation=10, zoom=0.2):
+def affine(arr, rotation=10, translation=10, zoom=0.2, seed=None):
     """ Random affine transformation.
 
     Parameters
@@ -37,6 +37,8 @@ def affine(arr, rotation=10, translation=10, zoom=0.2):
         values generate more distorted images.
     zoom: float, default 0.2
         the zooming magnitude. Larger values generate more distorted images.
+    seed: int, default None
+        seed to control random number generator.
 
     Returns
     -------
@@ -45,10 +47,13 @@ def affine(arr, rotation=10, translation=10, zoom=0.2):
     """
     rotation = interval(rotation)
     translation = interval(translation)
+    np.random.seed(seed)
     random_rotations = np.random.uniform(
         low=rotation[0], high=rotation[1], size=arr.ndim)
+    np.random.seed(seed)
     random_translations = np.random.uniform(
         low=translation[0], high=translation[1], size=arr.ndim)
+    np.random.seed(seed)
     random_zooms = np.random.uniform(
         low=(1 - zoom), high=(1 + zoom), size=arr.ndim)
     random_rotations = Rotation.from_euler(
@@ -62,7 +67,7 @@ def affine(arr, rotation=10, translation=10, zoom=0.2):
     return transformed.reshape(shape)
 
 
-def flip(arr, axis):
+def flip(arr, axis, seed=None):
     """ Apply a random mirror flip.
 
     Parameters
@@ -71,6 +76,8 @@ def flip(arr, axis):
         the input data.
     axis: int
         apply flip on the specified axis.
+    seed: int, default None
+        seed to control random number generator.
 
     Returns
     -------
@@ -80,7 +87,7 @@ def flip(arr, axis):
     return np.flip(arr, axis=axis)
 
 
-def deformation(arr, max_displacement=4, alpha=3):
+def deformation(arr, max_displacement=4, alpha=3, seed=None):
     """ Apply dense random elastic deformation.
 
     Reference: Khanal B, Ayache N, Pennec X., Simulating Longitudinal
@@ -97,19 +104,29 @@ def deformation(arr, max_displacement=4, alpha=3):
     alpha: float, default 3
         the power of the power-law momentum distribution. Larger values
         genrate smoother fields.
+    seed: int, default None
+        seed to control random number generator.
 
     Returns
     -------
     transformed: array
         the transformed input data.
     """
-    flow_x = gaussian_random_field(arr.shape[:2], alpha=alpha, normalize=True)
+    kwargs = {"seed": seed}
+    flow_x = gaussian_random_field(
+        arr.shape[:2], alpha=alpha, normalize=True, **kwargs)
     flow_x /= flow_x.max()
     flow_x = np.asarray([flow_x] * arr.shape[-1]).transpose(1, 2, 0)
-    flow_y = gaussian_random_field(arr.shape[:2], alpha=alpha, normalize=True)
+    if seed is not None:
+        kwargs = {"seed": seed + 2}
+    flow_y = gaussian_random_field(
+        arr.shape[:2], alpha=alpha, normalize=True, **kwargs)
     flow_y /= flow_y.max()
     flow_y = np.asarray([flow_y] * arr.shape[-1]).transpose(1, 2, 0)
-    flow_z = gaussian_random_field(arr.shape[:2], alpha=alpha, normalize=True)
+    if seed is not None:
+        kwargs = {"seed": seed + 4}
+    flow_z = gaussian_random_field(
+        arr.shape[:2], alpha=alpha, normalize=True, **kwargs)
     flow_z /= flow_z.max()
     flow_z = np.asarray([flow_z] * arr.shape[-1]).transpose(1, 2, 0)
     flow = np.asarray([flow_x, flow_y, flow_z])

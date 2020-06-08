@@ -145,7 +145,7 @@ def fftind(shape):
     return k_ind
 
 
-def gaussian_random_field(shape, alpha=3.0, normalize=True):
+def gaussian_random_field(shape, alpha=3.0, normalize=True, seed=None):
     """ Generates 3D gaussian random maps.
     The probability distribution of each variable follows a Normal
     distribution.
@@ -159,6 +159,8 @@ def gaussian_random_field(shape, alpha=3.0, normalize=True):
     normalize: bool, default True
         normalizes the Gaussian field to have an average of 0.0 and a standard
         deviation of 1.0.
+    seed: int, default None
+        seed to control random number generator.
 
     Returns
     -------
@@ -173,7 +175,12 @@ def gaussian_random_field(shape, alpha=3.0, normalize=True):
     amplitude[0, 0] = 0
 
     # Draws a complex gaussian random noise with normal (circular) distribution
-    noise = np.random.normal(size=shape) + 1j * np.random.normal(size=shape)
+    if seed is not None:
+        np.random.seed(seed)
+    noise = np.random.normal(size=shape)
+    if seed is not None:
+        np.random.seed(seed + 1)
+    noise += 1j * np.random.normal(size=shape)
 
     # To real space
     gfield = np.fft.ifft2(noise * amplitude).real
