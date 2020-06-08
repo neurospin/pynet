@@ -30,14 +30,17 @@ from .intensity import add_motion
 class Transformer(object):
     """ Class that can be used to register an sequence of transsformations
     """
-    Transform = namedtuple("Transform", ["transform", "params", "probability"])
+    Transform = namedtuple("Transform", ["transform", "params", "probability",
+                                         "apply_to"])
 
     def __init__(self):
         """ Initialize the class.
         """
         self.transforms = []
+        self.seed = None
+        self.dtype = "all"
 
-    def register(self, transform, probability=1, **kwargs):
+    def register(self, transform, probability=1, apply_to=None, **kwargs):
         """ Register a new transformation.
 
         Parameters
@@ -46,11 +49,17 @@ class Transformer(object):
             the transformation function.
         probability: float, default 1
             the transform is applied with the specified probability.
+        apply_to: list of str, default None
+            the registered transsform will be only applied on specified
+            data - 'all', 'input' or 'output'.
         kwargs
             the transformation function parameters.
         """
+        if apply_to is None:
+            apply_to = ["all"]
         trf = self.Transform(
-            transform=transform, params=kwargs, probability=probability)
+            transform=transform, params=kwargs, probability=probability,
+            apply_to=apply_to)
         self.transforms.append(trf)
 
     def __call__(self, arr):
@@ -66,7 +75,13 @@ class Transformer(object):
         transformed: array
             the transformed input data.
         """
+        transformed = arr.copy()
         for trf in self.transforms:
+            if self.dtype not in trf.apply_to:
+                continue
+            np.random.seed(self.seed)
             if np.random.rand() < trf.probability:
-                arr = trf.transform(arr, **trf.params)
-        return arr
+                for channel_id in range(transformed.shape[0]):
+                    transformed[channel_id] = trf.transform(
+                        transformed[channel_id], seed=self.seed, **trf.params)
+        return transformed

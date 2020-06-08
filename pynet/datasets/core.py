@@ -14,6 +14,7 @@ Module that provides core functions to load and split a dataset.
 # Imports
 from collections import namedtuple, OrderedDict, Counter
 import progressbar
+import random
 import logging
 import numpy as np
 import pandas as pd
@@ -539,9 +540,6 @@ class ArrayDataset(Dataset):
             logger.debug("Number patches: {0}".format(self.nb_patches_by_img))
             (self.input_cached, self.output_cached, self.label_cached,
              self.image_idx_cached) = (None, None, None, None)
-        if self.add_input and self.outputs is None:
-            self.outputs = self.inputs
-            self.add_input = False
 
     def __getitem__(self, item):
         """ Return the requested item.
@@ -584,17 +582,22 @@ class ArrayDataset(Dataset):
         if self.labels is not None:
             _labels = self.labels[indices]
         if self.outputs is not None:
-            if self.add_input:
-                _outputs = np.concatenate(
-                    (self.outputs[indices], _inputs), axis=concat_axis)
-            else:
-                _outputs = self.outputs[indices]
+            _outputs = self.outputs[indices]
 
         # Apply the transformations to the data
+        seed = random.getrandbits(30)
         for tf in self.input_transforms:
+            if hasattr(tf, "seed"):
+                tf.seed = seed
+            if hasattr(tf, "dtype"):
+                tf.dtype = "input"
             _inputs = tf(_inputs)
         if _outputs is not None:
             for tf in self.output_transforms:
+                if hasattr(tf, "seed"):
+                    tf.seed = seed
+                if hasattr(tf, "dtype"):
+                    tf.dtype = "output"
                 _outputs = tf(_outputs)
         if _labels is not None and self.label_mapping is not None:
             _labels = [label_mapping[item] for item in _labels]
@@ -616,6 +619,14 @@ class ArrayDataset(Dataset):
             self.label_cached = _labels
             _inputs = self.input_cached[idx]
             _outputs = self.output_cached[idx]
+
+        # Add input
+        if self.add_input:
+            if _outputs is None:
+                _outputs = _inputs
+            else:
+                _outputs = np.concatenate(
+                    (_outputs, _inputs), axis=concat_axis)
 
         return DataItem(inputs=_inputs, outputs=_outputs, labels=_labels)
 
