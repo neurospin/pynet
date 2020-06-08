@@ -22,6 +22,7 @@ if "CI_MODE" in os.environ:
 
 import time
 import numpy as np
+import random
 from pynet.datasets import DataManager, fetch_brats
 from pynet.preprocessing import rescale
 
@@ -30,13 +31,12 @@ data = fetch_brats(datasetdir=datasetdir)
 X = np.load(data.input_path, mmap_mode="r")
 image = rescale(X[0, 0], dynamic=(0, 255))
 
-"""
-Define deformations
--------------------
-
-We now declare MRI brain deformation functions. The deformation can be combined
-with the Transformer class.
-"""
+#############################################################################
+# Define deformations
+# -------------------
+#
+# We now declare MRI brain deformation functions. The deformation can be
+# combined with the Transformer class.
 
 from pynet.augmentation import add_blur
 from pynet.augmentation import add_noise
@@ -50,30 +50,31 @@ from pynet.augmentation import deformation
 from pynet.augmentation import Transformer
 
 compose_transforms = Transformer()
-compose_transforms.register(flip, probability=0.5, axis=0)
-compose_transforms.register(add_blur, probability=1, std=4)
+compose_transforms.register(
+    flip, probability=0.5, axis=0, apply_to=["all"])
+compose_transforms.register(
+    add_blur, probability=1, sigma=4, apply_to=["all"])
 transforms = {
-    "add_blur": (add_blur, {"std": 4}),
-    "add_noise": (add_noise, {"mean": 0, "std": 50}),
-    "flip": (flip, {"axis": 0}),
-    "affine": (affine, {"rotation": 5, "translation": 0, "zoom": 0.05}),
-    "add_ghosting": (add_ghosting, {"n_ghosts": (4, 10), "axis": 2,
-                                   "intensity": (0.5, 1)}),
-    "add_spike": (add_spike, {"n_spikes": 1, "intensity": (0.1, 1)}),
-    "add_biasfield": (add_biasfield, {"coefficients": 0.5}),
-    "deformation": (deformation, {"max_displacement": 4, "alpha": 3}),
-    #"add_motion": (add_motion, {"rotation": 0, "translation": 0,
+    #"add_blur": (add_blur, {"sigma": 4}),
+    #"add_noise": (add_noise, {"snr": 5., "noise_type": "rician"}),
+    #"flip": (flip, {"axis": 0}),
+    #"affine": (affine, {"rotation": 5, "translation": 0, "zoom": 0.05}),
+    #"add_ghosting": (add_ghosting, {"n_ghosts": (4, 10), "axis": 2,
+    #                               "intensity": (0.5, 1)}),
+    #"add_spike": (add_spike, {"n_spikes": 1, "intensity": (0.1, 1)}),
+    #"add_biasfield": (add_biasfield, {"coefficients": 0.5}),
+    #"deformation": (deformation, {"max_displacement": 4, "alpha": 3}),
+    #"add_motion": (add_motion, {"rotation": 10, "translation": 10,
     #                            "n_transforms": 2, "perturbation": 0.3}),
     "compose_transforms": (compose_transforms, {}),
 }
 
-"""
-Test transformations
---------------------
-
-We now apply the transformations on the loaded image. Results are
-directly displayed in your browser at http://localhost:8097.
-"""
+#############################################################################
+# Test transformations
+# --------------------
+#
+# We now apply the transformations on the loaded image. Results are
+# directly displayed in your browser at http://localhost:8097.
 
 from pynet.plotting import Board
 
@@ -87,3 +88,48 @@ for cnt in range(20):
         board.viewer.images(
             images, opts={"title": key, "caption": key}, win=key)
     time.sleep(1)
+
+
+#############################################################################
+# Data augmentation
+# -----------------
+#
+# We now illustrate how we can use the Transformer in combinaison with
+# the DataManager to perform data augmentation during training. Results are
+# directly displayed in your browser at http://localhost:8097.
+
+board = Board(port=8097, host="http://localhost", env="data-augmentation")
+compose_transforms = Transformer()
+compose_transforms.register(
+    flip, probability=0.5, axis=0, apply_to=["input", "output"])
+compose_transforms.register(
+    add_blur, probability=1, sigma=4, apply_to=["input"])
+manager = DataManager(
+    input_path=data.input_path,
+    metadata_path=data.metadata_path,
+    output_path=data.output_path,
+    number_of_folds=2,
+    batch_size=2,
+    test_size=0.1,
+    sample_size=0.1,
+    sampler=None,
+    add_input=True,
+    data_augmentation_transforms=[compose_transforms])
+loaders = manager.get_dataloader(
+    train=True,
+    validation=False,
+    fold_index=0)
+for dataitem in loaders.train:
+    print("-" * 50)
+    print(dataitem.inputs.shape, dataitem.outputs.shape, dataitem.labels)
+    images = [dataitem.inputs[0, 0].numpy(), dataitem.inputs[0, 1].numpy(),
+              dataitem.outputs[0, 0].numpy(), dataitem.outputs[0, 1].numpy(),
+              dataitem.outputs[0, 4].numpy(), dataitem.outputs[0, 5].numpy()]
+    images = np.asarray(images)
+    images = np.expand_dims(images, axis=1)
+    images = images[..., images.shape[-1] // 2]
+    images = rescale(images, dynamic=(0, 255))
+    board.viewer.images(
+        images, opts={"title": "transformer", "caption": "transformer"},
+        win="transformer")
+    time.sleep(2)
