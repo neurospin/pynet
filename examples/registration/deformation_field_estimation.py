@@ -47,7 +47,7 @@ manager = DataManager(
     projection_labels={"studies": ["abide"]},
     test_size=0.1,
     add_input=True,
-    sample_size=0.5)
+    sample_size=0.1)
 
 #############################################################################
 # Training
@@ -60,7 +60,7 @@ manager = DataManager(
 # transform. We will see in the next section how to combine them in an
 # efficient way.
 
-base_network = "addnet"
+base_network = "rcnet"  # "vtnet"  # "addnet"
 
 if base_network == "rcnet":
     rcnet_params = NetParameters(
@@ -74,9 +74,7 @@ if base_network == "rcnet":
         optimizer_name="Adam",
         learning_rate=1e-4,
         loss=RCNetLoss(),
-        use_cuda=False)
-    regularizer = ADDNetRegularizer(k1=0.1, k2=0.1)
-    net.add_observer("regularizer", regularizer)
+        use_cuda=True)
 elif base_network == "addnet":
     addnet_params = NetParameters(
         input_shape=(128, 128, 128),
@@ -104,9 +102,9 @@ elif base_network == "vtnet":
         vtnet_params,
         optimizer_name="Adam",
         learning_rate=1e-4,
-        loss=MSELoss(concat=True),
-        use_cuda=False)
-    flow_regularizer = FlowRegularizer(k1=0.01)
+        loss=PCCLoss(concat=True),  # MSELoss(concat=True),
+        use_cuda=True)
+    flow_regularizer = FlowRegularizer(k1=1.)
     net.add_observer("regularizer", flow_regularizer)
 else:
     vmnet_params = NetParameters(
@@ -126,10 +124,10 @@ else:
 print(net.model)
 def prepare_pred(y_pred):
     moving = y_pred[0, :, :, :, 64]
-    train_dataset = manager["train"][0]
-    corresponding_index = train_dataset.indices[0]
-    reference = train_dataset.inputs[corresponding_index, 1:, :, : , 64]
-    orginal = train_dataset.inputs[corresponding_index, :1, :, : , 64]
+    validation_dataset = manager["validation"][0]
+    corresponding_index = validation_dataset.indices[0]
+    reference = validation_dataset.inputs[corresponding_index, 1:, :, : , 64]
+    orginal = validation_dataset.inputs[corresponding_index, :1, :, : , 64]
     moving = np.expand_dims(moving, axis=1)
     reference = np.expand_dims(reference, axis=1)
     orginal = np.expand_dims(orginal, axis=1)
@@ -149,13 +147,13 @@ scheduler = lr_scheduler.ReduceLROnPlateau(
     optimizer=net.optimizer,
     mode="min",
     factor=0.5,
-    patience=3,
+    patience=4,
     verbose=True,
-    min_lr=1e-12)
+    min_lr=1e-7)
 train_history, valid_history = net.training(
     manager=manager,
     nb_epochs=(1 if "CI_MODE" in os.environ else 150000),
-    checkpointdir=outdir,
+    checkpointdir=None,  # outdir,
     fold_index=0,
     scheduler=scheduler,
     with_validation=True)
