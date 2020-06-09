@@ -55,7 +55,6 @@ pprint(layers)
 
 from pynet.datasets import DataManager, fetch_brats
 from pynet.plotting import plot_data
-from pynet.transforms import RandomFlipDimensions, Offset
 
 data = fetch_brats(
     datasetdir="/neurospin/nsap/datasets/brats")
