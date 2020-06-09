@@ -44,6 +44,7 @@ from pynet.augmentation import add_ghosting
 from pynet.augmentation import add_spike
 from pynet.augmentation import add_biasfield
 from pynet.augmentation import add_motion
+from pynet.augmentation import add_offset
 from pynet.augmentation import flip
 from pynet.augmentation import affine
 from pynet.augmentation import deformation
@@ -66,6 +67,7 @@ transforms = {
     "deformation": (deformation, {"max_displacement": 4, "alpha": 3}),
     "add_motion": (add_motion, {"rotation": 10, "translation": 10,
                                 "n_transforms": 2, "perturbation": 0.3}),
+    "add_offset": (add_offset, {"factor": (0.05, 0.1)}),
     "compose_transforms": (compose_transforms, {}),
 }
 

@@ -18,7 +18,6 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 from scipy.spatial.transform import Rotation
 from scipy.ndimage import map_coordinates
-from pynet.preprocessing import rescale
 from .transform import compose
 from .transform import affine_flow
 from .utils import interval
@@ -31,8 +30,8 @@ def add_offset(arr, factor, seed=None):
     ----------
     arr: array
         the input data.
-    factor: float
-        the offset scale factor [0, 1].
+    factor: float or 2-uplet
+        the offset scale factor [0, 1] for the standard deviation and the mean.
     seed: int, default None
         seed to control random number generator.
 
@@ -41,15 +40,17 @@ def add_offset(arr, factor, seed=None):
     transformed: array
         the transformed input data.
     """
+    factor = interval(factor, lower=factor)
+    sigma = interval(factor[0], lower=0)
+    mean = interval(factor[1])
     np.random.seed(seed)
-    random_factors = np.random.random(2)
-    mean_factor = 2 * factor * random_factors[0] + (1 - factor)
-    std_factor = 2 * factor * random_factors[1] + (1 - factor)
-    logical_mask = (arr != 0)
-    mean = arr[logical_mask].mean()
-    std = arr[logical_mask].std()
-    transformed = (arr - (mean * mean_factor)) / (std * std_factor)
-    transformed = rescale(transformed, dynamic=(arr.min(), arr.max()))
+    sigma_random = np.random.uniform(low=sigma[0], high=sigma[1], size=1)[0]
+    np.random.seed(seed)
+    mean_random = np.random.uniform(low=mean[0], high=mean[1], size=1)[0]
+    np.random.seed(seed)
+    offset = np.random.normal(mean_random, sigma_random, arr.shape)
+    offset += 1
+    transformed = arr * offset
     return transformed
 
 
@@ -126,19 +127,16 @@ def add_noise(arr, snr=None, sigma=None, noise_type="gaussian", seed=None):
         s0 = np.max(arr)
         sigma = s0 / snr
     sigma = interval(sigma, lower=0)
-    if seed is not None:
-        np.random.seed(seed)
+    np.random.seed(seed)
     sigma_random = np.random.uniform(low=sigma[0], high=sigma[1], size=1)[0]
-    if seed is not None:
-        np.random.seed(seed + 1)
-    noise1 = np.random.normal(0, sigma_random, arr.shape)
+    np.random.seed(seed)
+    noise = np.random.normal(0, sigma_random, [2] + list(arr.shape))
     if noise_type == "gaussian":
-        transformed = arr + noise1
+        transformed = arr + noise[0]
     elif noise_type == "rician":
-        if seed is not None:
-            np.random.seed(seed + 2)
-        noise2 = np.random.normal(0, sigma_random, arr.shape)
-        transformed = np.sqrt((arr + noise1)**2 + noise2**2)
+        transformed = np.square(arr + noise[0])
+        transformed += np.square(noise[1])
+        transformed = np.sqrt(transformed)
     else:
         raise ValueError("Unsupported noise type.")
     return transformed
@@ -322,20 +320,18 @@ def add_motion(arr, rotation=10, translation=10, n_transforms=2,
         size=n_transforms)
     times += noise
     arrays = [arr]
+    np.random.seed(seed)
+    random_rotations = np.random.uniform(
+        low=rotation[0], high=rotation[1], size=(n_transforms, arr.ndim))
+    np.random.seed(seed)
+    random_translations = np.random.uniform(
+        low=translation[0], high=translation[1], size=(n_transforms, arr.ndim))
     for cnt in range(n_transforms):
-        if seed is not None:
-            np.random.seed(seed + cnt)
-        random_rotations = np.random.uniform(
-            low=rotation[0], high=rotation[1], size=arr.ndim)
-        if seed is not None:
-            np.random.seed(seed + cnt)
-        random_translations = np.random.uniform(
-            low=translation[0], high=translation[1], size=arr.ndim)
         random_rotations = Rotation.from_euler(
-            "xyz", random_rotations, degrees=True)
+            "xyz", random_rotations[cnt], degrees=True)
         random_rotations = random_rotations.as_dcm()
         zoom = [1, 1, 1]
-        affine = compose(random_translations, random_rotations, zoom)
+        affine = compose(random_translations[cnt], random_rotations, zoom)
         flow = affine_flow(affine, shape)
         locs = flow.reshape(len(shape), -1)
         transformed = map_coordinates(arr, locs, order=3, cval=0)
