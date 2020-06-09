@@ -33,6 +33,7 @@ from .ukb import fetch_height_biobank
 from .impac import fetch_impac
 from .connectome import fetch_connectome
 from .hcp import fetch_hcp_brain
+from .metastasis import fetch_metastasis
 
 
 def get_fetchers():

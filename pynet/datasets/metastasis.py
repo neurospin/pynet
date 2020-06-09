@@ -22,7 +22,7 @@ import progressbar
 from pynet.datasets import Fetchers
 
 # Global parameters
-MODALITIES = ('t1', 'flair')
+MODALITIES = ("t1", "flair")
 Item = namedtuple("Item", ["input_path", "output_path", "metadata_path"])
 logger = logging.getLogger("pynet")
 
@@ -57,14 +57,13 @@ def fetch_metastasis(
         return ((arr - mean) / std).astype(np.single)
 
     mapping_path = os.path.join(datasetdir, "dataset_categorial.tsv")
-
     if not os.path.isfile(mapping_path):
         raise ValueError(
             "Are you in the right folder? "
-            + "You may need special access for Metastasis dataset")
+            "You may need special access for Metastasis dataset")
     desc_path = os.path.join(datasetdir, "pynet_metastasis.tsv")
-    input_path = os.path.join(datasetdir, "pynet_metastasis.npy")
-    output_path = os.path.join(datasetdir, "pynet_metastasis.npy")
+    input_path = os.path.join(datasetdir, "pynet_metastasis_inputs.npy")
+    output_path = os.path.join(datasetdir, "pynet_metastasis_outputs.npy")
     if not os.path.isfile(desc_path):
         df = pd.read_csv(mapping_path, sep="\t")
         arr = [path.split(os.sep)[-3] for path in df["t1"]]
@@ -99,10 +98,11 @@ def fetch_metastasis(
             input_dataset = np.asarray(input_dataset)
             output_dataset = np.asarray(output_dataset)
 
-            dataset_desc = pd.DataFrame(arr)
+            dataset_desc = pd.DataFrame(arr, columns=["participant_id"])
 
             np.save(input_path, input_dataset)
             np.save(output_path, output_dataset)
             dataset_desc.to_csv(desc_path, sep="\t")
+
     return Item(input_path=input_path, output_path=output_path,
                 metadata_path=desc_path)
