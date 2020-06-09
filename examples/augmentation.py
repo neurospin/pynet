@@ -49,23 +49,23 @@ from pynet.augmentation import affine
 from pynet.augmentation import deformation
 from pynet.augmentation import Transformer
 
-compose_transforms = Transformer()
+compose_transforms = Transformer(with_channel=False)
 compose_transforms.register(
     flip, probability=0.5, axis=0, apply_to=["all"])
 compose_transforms.register(
     add_blur, probability=1, sigma=4, apply_to=["all"])
 transforms = {
-    #"add_blur": (add_blur, {"sigma": 4}),
-    #"add_noise": (add_noise, {"snr": 5., "noise_type": "rician"}),
-    #"flip": (flip, {"axis": 0}),
-    #"affine": (affine, {"rotation": 5, "translation": 0, "zoom": 0.05}),
-    #"add_ghosting": (add_ghosting, {"n_ghosts": (4, 10), "axis": 2,
-    #                               "intensity": (0.5, 1)}),
-    #"add_spike": (add_spike, {"n_spikes": 1, "intensity": (0.1, 1)}),
-    #"add_biasfield": (add_biasfield, {"coefficients": 0.5}),
-    #"deformation": (deformation, {"max_displacement": 4, "alpha": 3}),
-    #"add_motion": (add_motion, {"rotation": 10, "translation": 10,
-    #                            "n_transforms": 2, "perturbation": 0.3}),
+    "add_blur": (add_blur, {"sigma": 4}),
+    "add_noise": (add_noise, {"snr": 5., "noise_type": "rician"}),
+    "flip": (flip, {"axis": 0}),
+    "affine": (affine, {"rotation": 5, "translation": 0, "zoom": 0.05}),
+    "add_ghosting": (add_ghosting, {"n_ghosts": (4, 10), "axis": 2,
+                                   "intensity": (0.5, 1)}),
+    "add_spike": (add_spike, {"n_spikes": 1, "intensity": (0.1, 1)}),
+    "add_biasfield": (add_biasfield, {"coefficients": 0.5}),
+    "deformation": (deformation, {"max_displacement": 4, "alpha": 3}),
+    "add_motion": (add_motion, {"rotation": 10, "translation": 10,
+                                "n_transforms": 2, "perturbation": 0.3}),
     "compose_transforms": (compose_transforms, {}),
 }
 

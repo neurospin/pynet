@@ -33,12 +33,20 @@ class Transformer(object):
     Transform = namedtuple("Transform", ["transform", "params", "probability",
                                          "apply_to"])
 
-    def __init__(self):
+    def __init__(self, with_channel=True):
         """ Initialize the class.
+
+        Parameters
+        ----------
+        with_channel: bool, default True
+            the input array shape to be transformd is (C, *), where C
+            represents the channel dimension. To omit the channel dimension
+            unset this parameter.
         """
         self.transforms = []
         self.seed = None
         self.dtype = "all"
+        self.with_channel = with_channel
 
     def register(self, transform, probability=1, apply_to=None, **kwargs):
         """ Register a new transformation.
@@ -76,6 +84,8 @@ class Transformer(object):
             the transformed input data.
         """
         transformed = arr.copy()
+        if not self.with_channel:
+            transformed = np.expand_dims(transformed, axis=0)
         for trf in self.transforms:
             if self.dtype not in trf.apply_to:
                 continue
@@ -84,4 +94,6 @@ class Transformer(object):
                 for channel_id in range(transformed.shape[0]):
                     transformed[channel_id] = trf.transform(
                         transformed[channel_id], seed=self.seed, **trf.params)
+        if not self.with_channel:
+            transformed = transformed[0]
         return transformed
