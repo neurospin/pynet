@@ -23,13 +23,16 @@ from .transform import affine_flow
 from .utils import interval
 
 
-def add_blur(arr, sigma, seed=None):
+def add_blur(arr, snr=None, sigma=None, seed=None):
     """ Add random blur using a Gaussian filter.
 
     Parameters
     ----------
     arr: array
         the input data.
+    snr: float, default None
+        the desired signal-to noise ratio used to infer the standard deviation
+        for the noise distribution.
     sigma: float or 2-uplet
         the standard deviation for Gaussian kernel.
     seed: int, default None
@@ -40,6 +43,13 @@ def add_blur(arr, sigma, seed=None):
     transformed: array
         the transformed input data.
     """
+    if snr is None and sigma is None:
+        raise ValueError("You must define either the desired signal-to noise "
+                         "ratio or the standard deviation for the noise "
+                         "distribution.")
+    if snr is not None:
+        s0 = np.max(arr)
+        sigma = s0 / snr
     sigma = interval(sigma, lower=0)
     np.random.seed(seed)
     sigma_random = np.random.uniform(low=sigma[0], high=sigma[1], size=1)[0]
@@ -62,7 +72,7 @@ def add_noise(arr, snr=None, sigma=None, noise_type="gaussian", seed=None):
     ----------
     arr: array
         the input data.
-    snr: float or 2-uplet, default None
+    snr: float, default None
         the desired signal-to noise ratio used to infer the standard deviation
         for the noise distribution.
     sigma: float or 2-uplet, default None
@@ -79,7 +89,7 @@ def add_noise(arr, snr=None, sigma=None, noise_type="gaussian", seed=None):
         the transformed input data.
     """
     if snr is None and sigma is None:
-        raise ValueError("You must define one of he desired signal-to noise "
+        raise ValueError("You must define either the desired signal-to noise "
                          "ratio or the standard deviation for the noise "
                          "distribution.")
     if snr is not None:
