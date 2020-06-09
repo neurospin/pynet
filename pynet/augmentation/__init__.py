@@ -13,6 +13,7 @@ Module that privides common spatial and intensity data augmentation tools.
 
 # Import
 from collections import namedtuple
+import logging
 import numpy as np
 from .spatial import affine
 from .spatial import flip
@@ -26,6 +27,10 @@ from .intensity import add_spike
 from .intensity import add_biasfield
 from .intensity import add_motion
 from .intensity import add_offset
+
+
+# Global parameters
+logger = logging.getLogger("pynet")
 
 
 class Transformer(object):
@@ -92,9 +97,11 @@ class Transformer(object):
                 continue
             np.random.seed(self.seed)
             if np.random.rand() < trf.probability:
+                logger.debug("Applying {0}...".format(trf.transform))
                 for channel_id in range(transformed.shape[0]):
                     transformed[channel_id] = trf.transform(
                         transformed[channel_id], seed=self.seed, **trf.params)
+                logger.debug("Done.")
         if not self.with_channel:
             transformed = transformed[0]
         return transformed
