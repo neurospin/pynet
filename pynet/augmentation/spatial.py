@@ -67,15 +67,16 @@ def affine(arr, rotation=10, translation=10, zoom=0.2, seed=None):
     return transformed.reshape(shape)
 
 
-def flip(arr, axis, seed=None):
+def flip(arr, axis=None, seed=None):
     """ Apply a random mirror flip.
 
     Parameters
     ----------
     arr: array
         the input data.
-    axis: int
-        apply flip on the specified axis.
+    axis: int, default None
+        apply flip on the specified axis. If not specified, randomize the
+        flip axis.
     seed: int, default None
         seed to control random number generator.
 
@@ -84,6 +85,9 @@ def flip(arr, axis, seed=None):
     transformed: array
         the transformed input data.
     """
+    if axis is None:
+        np.random.seed(seed)
+        axis = np.random.randint(low=0, high=arr.ndim, size=1)[0]
     return np.flip(arr, axis=axis)
 
 
