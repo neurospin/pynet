@@ -25,6 +25,7 @@ from .intensity import add_ghosting
 from .intensity import add_spike
 from .intensity import add_biasfield
 from .intensity import add_motion
+from .intensity import add_offset
 
 
 class Transformer(object):

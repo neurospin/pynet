@@ -18,9 +18,39 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 from scipy.spatial.transform import Rotation
 from scipy.ndimage import map_coordinates
+from pynet.preprocessing import rescale
 from .transform import compose
 from .transform import affine_flow
 from .utils import interval
+
+
+def add_offset(arr, factor, seed=None):
+    """ Add a random intensity offset (shift and scale).
+
+    Parameters
+    ----------
+    arr: array
+        the input data.
+    factor: float
+        the offset scale factor [0, 1].
+    seed: int, default None
+        seed to control random number generator.
+
+    Returns
+    -------
+    transformed: array
+        the transformed input data.
+    """
+    np.random.seed(seed)
+    random_factors = np.random.random(2)
+    mean_factor = 2 * factor * random_factors[0] + (1 - factor)
+    std_factor = 2 * factor * random_factors[1] + (1 - factor)
+    logical_mask = (arr != 0)
+    mean = arr[logical_mask].mean()
+    std = arr[logical_mask].std()
+    transformed = (arr - (mean * mean_factor)) / (std * std_factor)
+    transformed = rescale(transformed, dynamic=(arr.min(), arr.max()))
+    return transformed
 
 
 def add_blur(arr, snr=None, sigma=None, seed=None):
