@@ -24,6 +24,7 @@ from .spatial import biasfield
 from .spatial import register
 from .spatial import padd
 from .spatial import downsample
+from .spatial import scale
 
 
 # Global parameters

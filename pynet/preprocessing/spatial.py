@@ -80,6 +80,40 @@ def downsample(arr, scale):
     return arr[tuple(slices)]
 
 
+def scale(im, scale):
+    """ Scale the MRI image.
+
+    This function is based on FSL.
+
+    Parameters
+    ----------
+    im: nibabel.Nifti1Image
+        the input image.
+    scale: int
+        the scale factor in all directions.
+
+    Returns
+    -------
+    normalized: nibabel.Nifti1Image
+        the normalized input image.
+    """
+    check_version("fsl")
+    check_command("flirt")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_file = os.path.join(tmpdir, "input.nii.gz")
+        output_file = os.path.join(tmpdir, "output.nii.gz")
+        nibabel.save(im, input_file)
+        cmd = ["flirt", "-in", input_file, "-ref", input_file, "-out",
+               output_file, "-applyisoxfm", str(scale)]
+        logger.debug(" ".join(cmd))
+        subprocess.check_call(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        normalized = nibabel.load(output_file)
+        normalized = nibabel.Nifti1Image(
+            normalized.get_data(), normalized.affine)
+    return normalized
+
+
 def reorient2std(im):
     """ Reorient the MRI image to match the approximate orientation of the
     standard template images (MNI152).
