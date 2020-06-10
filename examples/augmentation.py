@@ -22,14 +22,15 @@ if "CI_MODE" in os.environ:
 
 import time
 import numpy as np
+import nibabel
 import random
-from pynet.datasets import DataManager, fetch_brats
-from pynet.preprocessing import rescale
+from pynet.datasets import DataManager, fetch_toy, fetch_brats
+from pynet.preprocessing import rescale, downsample
 
-datasetdir = "/neurospin/nsap/processed/deepbrain/tumor/data/brats"
-data = fetch_brats(datasetdir=datasetdir)
-X = np.load(data.input_path, mmap_mode="r")
-image = rescale(X[0, 0], dynamic=(0, 255))
+datasetdir = "/tmp/toy"
+data = fetch_toy(datasetdir=datasetdir)
+image = nibabel.load(data.t1w_path)
+image = rescale(downsample(image.get_data(), scale=4), dynamic=(0, 255))
 
 #############################################################################
 # Define deformations
@@ -81,7 +82,7 @@ transforms = {
 from pynet.plotting import Board
 
 board = Board(port=8097, host="http://localhost", env="data-augmentation")
-for cnt in range(20):
+for cnt in range(10):
     print("Iteration: ", cnt)
     for key, (fct, kwargs) in transforms.items():
         images = np.asarray([image, np.clip(fct(image, **kwargs), 0, 255)])
@@ -99,6 +100,9 @@ for cnt in range(20):
 # We now illustrate how we can use the Transformer in combinaison with
 # the DataManager to perform data augmentation during training. Results are
 # directly displayed in your browser at http://localhost:8097.
+
+datasetdir = "/neurospin/nsap/processed/deepbrain/tumor/data/brats"
+data = fetch_brats(datasetdir=datasetdir)
 
 board = Board(port=8097, host="http://localhost", env="data-augmentation")
 compose_transforms = Transformer()
