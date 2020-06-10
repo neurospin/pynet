@@ -34,6 +34,7 @@ from .impac import fetch_impac
 from .connectome import fetch_connectome
 from .hcp import fetch_hcp_brain
 from .metastasis import fetch_metastasis
+from .toy import fetch_toy
 
 
 def get_fetchers():
