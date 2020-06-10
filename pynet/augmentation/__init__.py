@@ -18,8 +18,6 @@ import numpy as np
 from .spatial import affine
 from .spatial import flip
 from .spatial import deformation
-from .spatial import padd
-from .spatial import downsample
 from .intensity import add_blur
 from .intensity import add_noise
 from .intensity import add_ghosting
@@ -34,7 +32,7 @@ logger = logging.getLogger("pynet")
 
 
 class Transformer(object):
-    """ Class that can be used to register an sequence of transsformations
+    """ Class that can be used to register a sequence of transformations.
     """
     Transform = namedtuple("Transform", ["transform", "params", "probability",
                                          "apply_to"])
@@ -64,7 +62,7 @@ class Transformer(object):
         probability: float, default 1
             the transform is applied with the specified probability.
         apply_to: list of str, default None
-            the registered transsform will be only applied on specified
+            the registered transform will be only applied on specified
             data - 'all', 'input' or 'output'.
         kwargs
             the transformation function parameters.

@@ -82,7 +82,7 @@ def zscore_normalize(arr, mask=None):
     return (arr - mean) / std
 
 
-def kde_normalize(img, mask=None, modality="T1w", norm_value=1):
+def kde_normalize(arr, mask=None, modality="T1w", norm_value=1):
     """ Use kernel density estimation to find the peak of the white
     matter in the histogram of a skull-stripped image. Then normalize
     intensitites to a normalization value.

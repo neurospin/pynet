@@ -54,7 +54,7 @@ def get_last_mode(arr, remove_tail=True, remove_fraction=0.05):
         index of the last peak.
     """
     if remove_tail:
-        rare_thresh = np.percentile(data, 1 - remove_fraction)
+        rare_thresh = np.percentile(arr, 1 - remove_fraction)
         which_rare = (arr >= rare_thresh)
         values = arr[which_rare != 1]
     grid, pdf = smooth_hist(values)
