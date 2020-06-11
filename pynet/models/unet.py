@@ -116,10 +116,6 @@ class UNet(nn.Module):
         self.down = []
         self.up = []
         self.shapes = None
-        self.conv_fn = getattr(nn, "Conv{0}".format(dim))
-        self.convt_fn = getattr(nn, "ConvTranspose{0}".format(dim))
-        self.norm_fn = getattr(nn, "BatchNorm{0}".format(dim))
-        self.pool_fn = getattr(nn, "MaxPool{0}".format(dim))
         if input_shape is not None:
             self.shapes = self._downsample_shape(
                 input_shape, nb_iterations=(depth - 2))
@@ -170,7 +166,8 @@ class UNet(nn.Module):
 
     @staticmethod
     def init_weight(module, dim):
-        if isinstance(module, self.conv_fn):
+        conv_fn = getattr(nn, "Conv{0}".format(dim))
+        if isinstance(module, conv_fn):
             nn.init.xavier_normal_(module.weight)
             nn.init.constant_(module.bias, 0)
 
@@ -206,6 +203,8 @@ class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels, dim, kernel_size=3, stride=1,
                  padding=1, bias=True, batchnorm=True):
         super(DoubleConv, self).__init__()
+        self.conv_fn = getattr(nn, "Conv{0}".format(dim))
+        self.norm_fn = getattr(nn, "BatchNorm{0}".format(dim))
         if batchnorm:
             self.ops = nn.Sequential(collections.OrderedDict([
                 ("conv1", self.conv_fn(
@@ -235,8 +234,9 @@ class DoubleConv(nn.Module):
 
 
 def UpConv(in_channels, out_channels, dim, mode="transpose", shape=None):
+    convt_fn = getattr(nn, "ConvTranspose{0}".format(dim))
     if mode == "transpose":
-        return self.convt_fn(
+        return convt_fn(
             in_channels, out_channels, kernel_size=2, stride=2)
     else:
         # out_channels is always going to be the same as in_channels
@@ -251,7 +251,8 @@ def UpConv(in_channels, out_channels, dim, mode="transpose", shape=None):
 
 
 def Conv1x1x1(in_channels, out_channels, dim, groups=1):
-    return self.conv_fn(
+    conv_fn = getattr(nn, "Conv{0}".format(dim))
+    return conv_fn(
         in_channels, out_channels, kernel_size=1, groups=groups, stride=1)
 
 
@@ -263,6 +264,7 @@ class Down(nn.Module):
     def __init__(self, in_channels, out_channels, dim, pooling=True,
                  batchnorm=True):
         super(Down, self).__init__()
+        self.pool_fn = getattr(nn, "MaxPool{0}".format(dim))
         if pooling:
             self.ops = nn.Sequential(collections.OrderedDict([
                 ("maxpool", self.pool_fn(2)),
