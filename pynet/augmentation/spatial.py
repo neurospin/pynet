@@ -22,8 +22,13 @@ from .transform import affine_flow
 from .utils import interval
 
 
-def affine(arr, rotation=10, translation=10, zoom=0.2, order=3, seed=None):
+def affine(arr, rotation=10, translation=10, zoom=0.2, order=3, dist="uniform",
+           seed=None):
     """ Random affine transformation.
+
+    The affine translation & rotation parameters are drawn from a lognormal
+    distribution - small movements are assumed to occur more often and large
+    movements less frequently - or from a uniform distribution.
 
     Parameters
     ----------
@@ -39,6 +44,8 @@ def affine(arr, rotation=10, translation=10, zoom=0.2, order=3, seed=None):
         the zooming magnitude. Larger values generate more distorted images.
     order: int, default 3
         the order of the spline interpolation in the range [0, 5].
+    dist: str, default 'uniform'
+        the sampling distribution: 'uniform' or 'lognormal'.
     seed: int, default None
         seed to control random number generator.
 
@@ -49,12 +56,12 @@ def affine(arr, rotation=10, translation=10, zoom=0.2, order=3, seed=None):
     """
     rotation = interval(rotation)
     translation = interval(translation)
-    np.random.seed(seed)
-    random_rotations = np.random.uniform(
-        low=rotation[0], high=rotation[1], size=arr.ndim)
-    np.random.seed(seed)
-    random_translations = np.random.uniform(
-        low=translation[0], high=translation[1], size=arr.ndim)
+    random_rotations = random_generator(
+        rotation, arr.ndim, dist=dist, seed=seed)
+    random_translations = random_generator(
+        translation, arr.ndim, dist=dist, seed=seed)
+    random_zooms = random_generator(
+        translation, arr.ndim, dist=dist, seed=seed)
     np.random.seed(seed)
     random_zooms = np.random.uniform(
         low=(1 - zoom), high=(1 + zoom), size=arr.ndim)
@@ -145,3 +152,44 @@ def deformation(arr, max_displacement=4, alpha=3, order=3, seed=None):
     locs = locs.reshape(len(locs), -1)
     transformed = map_coordinates(arr, locs, order=order, cval=0)
     return transformed.reshape(arr.shape)
+
+
+def random_generator(interval, size, dist="uniform", seed=None):
+    """ Random varaible generator.
+
+    Parameters
+    ----------
+    interval: 2-uplet
+        the possible values of the generated random variable.
+    size: uplet
+        the number of random variables to be drawn from the sampling
+        distribution.
+    dist: str, default 'uniform'
+        the sampling distribution: 'uniform' or 'lognormal'.
+    seed: int, default None
+        seed to control random number generator.
+
+    Returns
+    -------
+    random_variables: array
+        the generated random variable.
+    """
+    if dist == "uniform":
+        np.random.seed(seed)
+        random_variables = np.random.uniform(
+            low=interval[0], high=interval[1], size=size)
+    # max height occurs at x = exp(mean - sigma**2)
+    # FWHM is found by finding the values of x at 1/2 the max height =
+    # exp((mean - sigma**2) + sqrt(2*sigma**2*ln(2))) - exp((mean - sigma**2)
+    # - sqrt(2*sigma**2*ln(2)))
+    elif dist == "lognormal":
+        np.random.seed(seed)
+        sign = np.random.randint(0, 2, size=size) * 2 - 1
+        sign = sign.astype(np.float)
+        np.random.seed(seed)
+        random_variables = np.random.lognormal(mean=0., sigma=1., size=size)
+        random_variables /= 12.5
+        random_variables *= (sign * interval[1])
+    else:
+        raise ValueError("Unsupported sampling distribution.")
+    return random_variables
