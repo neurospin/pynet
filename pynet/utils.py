@@ -12,7 +12,9 @@ A module with common functions.
 """
 
 # System import
+import shutil
 import logging
+import tempfile
 import warnings
 import os
 import re
@@ -41,6 +43,46 @@ LEVELS = {
     "critical": logging.CRITICAL
 }
 logger = logging.getLogger("pynet")
+
+
+class TemporaryDirectory(object):
+    """ Securely creates a temporary directory. The resulting object can be
+    used as a context manager. When the returned object is used as a context
+    manager, the name will be assigned to the target of the as clause in the
+    with statement, if there is one.
+    """
+    def __init__(self, dir=None, prefix=None, name=None):
+        """ Initialize the TempDir class.
+
+        Parameters
+        ----------
+        dir: str, default None
+            the location where the temporary folder is created. If specified
+            the folder is persistent.
+        prefix: str, default None
+            if set the directory name will begin with that prefix.
+        name: str, default
+            if set the directory name will have this name.
+        """
+        self.tmpdir = None
+        self.dir = dir
+        self.prefix = prefix
+        self.name = name
+        self.delete = self.dir is None
+        return
+
+    def __enter__(self):
+        if self.dir is not None and self.name is not None:
+            self.tmpdir = os.path.join(self.dir, self.name)
+            if not os.path.isdir(self.tmpdir):
+                os.mkdir(self.tmpdir)
+        else:
+            self.tmpdir = tempfile.mkdtemp(dir=self.dir, prefix=self.prefix)
+        return self.tmpdir
+
+    def __exit__(self, type, value, traceback):
+        if self.delete and self.tmpdir is not None:
+            shutil.rmtree(self.tmpdir)
 
 
 class RegisteryDecorator(object):

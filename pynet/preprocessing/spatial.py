@@ -16,10 +16,10 @@ import os
 import re
 import sys
 import logging
-import tempfile
 import subprocess
 import nibabel
 import numpy as np
+from pynet.utils import TemporaryDirectory
 
 
 # Global parameters
@@ -80,7 +80,7 @@ def downsample(arr, scale):
     return arr[tuple(slices)]
 
 
-def scale(im, scale):
+def scale(im, scale, tmpdir=None):
     """ Scale the MRI image.
 
     This function is based on FSL.
@@ -91,6 +91,8 @@ def scale(im, scale):
         the input image.
     scale: int
         the scale factor in all directions.
+    tmpdir: str, default None
+        a folder where the intermediate results are saved.
 
     Returns
     -------
@@ -99,12 +101,13 @@ def scale(im, scale):
     """
     check_version("fsl")
     check_command("flirt")
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with TemporaryDirectory(dir=tmpdir, name="scale") as tmpdir:
         input_file = os.path.join(tmpdir, "input.nii.gz")
+        trf_file = os.path.join(tmpdir, "trf.txt")
         output_file = os.path.join(tmpdir, "output.nii.gz")
         nibabel.save(im, input_file)
         cmd = ["flirt", "-in", input_file, "-ref", input_file, "-out",
-               output_file, "-applyisoxfm", str(scale)]
+               output_file, "-applyisoxfm", str(scale), "-omat", trf_file]
         logger.debug(" ".join(cmd))
         subprocess.check_call(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -114,7 +117,7 @@ def scale(im, scale):
     return normalized
 
 
-def reorient2std(im):
+def reorient2std(im, tmpdir=None):
     """ Reorient the MRI image to match the approximate orientation of the
     standard template images (MNI152).
 
@@ -124,6 +127,8 @@ def reorient2std(im):
     ----------
     im: nibabel.Nifti1Image
         the input image.
+    tmpdir: str, default None
+        a folder where the intermediate results are saved.
 
     Returns
     -------
@@ -132,7 +137,7 @@ def reorient2std(im):
     """
     check_version("fsl")
     check_command("fslreorient2std")
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with TemporaryDirectory(dir=tmpdir, name="reorient2std") as tmpdir:
         input_file = os.path.join(tmpdir, "input.nii.gz")
         output_file = os.path.join(tmpdir, "output.nii.gz")
         nibabel.save(im, input_file)
@@ -148,7 +153,7 @@ def reorient2std(im):
 
 def biasfield(im, mask=None, nb_iterations=50, convergence_threshold=0.001,
               bspline_grid=(1, 1, 1), shrink_factor=1, bspline_order=3,
-              histogram_sharpening=(0.15, 0.01, 200),):
+              histogram_sharpening=(0.15, 0.01, 200), tmpdir=None):
     """ Perform MRI bias field correction using N4 algorithm.
 
     This function is based on ITK and ANTS.
@@ -187,6 +192,8 @@ def biasfield(im, mask=None, nb_iterations=50, convergence_threshold=0.001,
         A vector of up to three values. Non-zero values correspond to Bias
         Field Full Width at Half Maximum, Wiener filter noise, and Number of
         histogram bins.
+    tmpdir: str, default None
+        a folder where the intermediate results are saved.
 
     Returns
     -------
@@ -195,7 +202,7 @@ def biasfield(im, mask=None, nb_iterations=50, convergence_threshold=0.001,
     """
     check_version("ants")
     check_command("N4BiasFieldCorrection")
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with TemporaryDirectory(dir=tmpdir, name="biasfield") as tmpdir:
         input_file = os.path.join(tmpdir, "input.nii.gz")
         mask_file = os.path.join(tmpdir, "mask.nii.gz")
         output_file = os.path.join(tmpdir, "output.nii.gz")
@@ -228,7 +235,7 @@ def biasfield(im, mask=None, nb_iterations=50, convergence_threshold=0.001,
 
 
 def register(im, target, mask=None, cost="normmi", bins=256, interp="spline",
-             dof=9):
+             dof=9, tmpdir=None):
     """ Register the MRI image to a target image using an affine transform
     with 9 dofs.
 
@@ -252,6 +259,8 @@ def register(im, target, mask=None, cost="normmi", bins=256, interp="spline",
         'nearestneighbour', 'sinc', 'spline'.
     dof: int, default 9
         Number of affine transform dofs.
+    tmpdir: str, default None
+        a folder where the intermediate results are saved.
 
     Returns
     -------
@@ -260,9 +269,10 @@ def register(im, target, mask=None, cost="normmi", bins=256, interp="spline",
     """
     check_version("fsl")
     check_command("flirt")
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with TemporaryDirectory(dir=tmpdir, name="register") as tmpdir:
         input_file = os.path.join(tmpdir, "input.nii.gz")
         target_file = os.path.join(tmpdir, "target.nii.gz")
+        trf_file = os.path.join(tmpdir, "trf.txt")
         output_file = os.path.join(tmpdir, "output.nii.gz")
         nibabel.save(im, input_file)
         nibabel.save(target, target_file)
@@ -276,6 +286,7 @@ def register(im, target, mask=None, cost="normmi", bins=256, interp="spline",
                "-interp", interp,
                "-dof", str(dof),
                "-out", output_file,
+               "-omat", trf_file,
                "-verbose", "1"]
         if cost == "bbr":
             if mask is not None:
@@ -284,6 +295,66 @@ def register(im, target, mask=None, cost="normmi", bins=256, interp="spline",
                 raise ValueError("A white matter mask image is needed by the "
                                  "bbr cost function.")
             cmd += ["-wmseg", mask_file]
+        logger.debug(" ".join(cmd))
+        subprocess.check_call(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        normalized = nibabel.load(output_file)
+        normalized = nibabel.Nifti1Image(
+            normalized.get_data(), normalized.affine)
+    return normalized
+
+
+def apply(im, target, affines, interp="spline", tmpdir=None):
+    """ Apply affine transformations to an image.
+
+    This function is based on FSL.
+
+    Parameters
+    ----------
+    im: nibabel.Nifti1Image
+        the input image.
+    target: nibabel.Nifti1Image
+        the target image.
+    affines: str or list of str
+        the affine transforms to be applied. If multiple transforms are
+        specified, they are first composed.
+    interp: str, default 'spline'
+        Choose the most appropriate interpolation method: 'trilinear',
+        'nearestneighbour', 'sinc', 'spline'.
+    tmpdir: str, default None
+        a folder where the intermediate results are saved.
+
+    Returns
+    -------
+    normalized: nibabel.Nifti1Image
+        the normalized input image.
+    """
+    check_version("fsl")
+    check_command("flirt")
+    if not isisntance(affines, list):
+        trf_file = affines
+    elif len(affines) == 0:
+        raise ValueError("No transform specified.")
+    else:
+        trf_file = os.path.join(tmpdir, "trf.txt")
+        affines = [np.loadtxt(path) for path in affines][::-1]
+        affine = affine[0]
+        for matrix in affines[1:]:
+            affine = np.dot(matrix, affine)
+        numpy.savetxt(trf_file, affine)
+    with TemporaryDirectory(dir=tmpdir, name="apply") as tmpdir:
+        input_file = os.path.join(tmpdir, "input.nii.gz")
+        target_file = os.path.join(tmpdir, "target.nii.gz")
+        output_file = os.path.join(tmpdir, "output.nii.gz")
+        nibabel.save(im, input_file)
+        nibabel.save(target, target_file)
+        cmd = ["flirt",
+               "-in", input_file,
+               "-ref", target_file,
+               "-init", trf_file,
+               "-interp", interp,
+               "-applyxfm",
+               "-out", output_file]
         logger.debug(" ".join(cmd))
         subprocess.check_call(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
