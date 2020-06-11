@@ -12,7 +12,6 @@ The U-Net is a convolutional encoder-decoder neural network.
 """
 
 # Imports
-import ast
 import logging
 import collections
 import torch
@@ -117,6 +116,10 @@ class UNet(nn.Module):
         self.down = []
         self.up = []
         self.shapes = None
+        self.conv_fn = getattr(nn, "Conv{0}".format(dim))
+        self.convt_fn = getattr(nn, "ConvTranspose{0}".format(dim))
+        self.norm_fn = getattr(nn, "BatchNorm{0}".format(dim))
+        self.pool_fn = getattr(nn, "MaxPool{0}".format(dim))
         if input_shape is not None:
             self.shapes = self._downsample_shape(
                 input_shape, nb_iterations=(depth - 2))
@@ -167,7 +170,7 @@ class UNet(nn.Module):
 
     @staticmethod
     def init_weight(module, dim):
-        if isinstance(module, eval("nn.Conv{0}".format(dim))):
+        if isinstance(module, self.conv_fn):
             nn.init.xavier_normal_(module.weight)
             nn.init.constant_(module.bias, 0)
 
@@ -205,27 +208,25 @@ class DoubleConv(nn.Module):
         super(DoubleConv, self).__init__()
         if batchnorm:
             self.ops = nn.Sequential(collections.OrderedDict([
-                ("conv1", eval(
-                    "nn.Conv{0}(in_channels, out_channels, kernel_size, "
-                    "stride=stride, padding=padding, bias=bias)".format(dim))),
-                ("norm1", eval(
-                    "nn.BatchNorm{0}(out_channels)".format(dim))),
+                ("conv1", self.conv_fn(
+                    in_channels, out_channels, kernel_size, stride=stride,
+                    padding=padding, bias=bias)),
+                ("norm1", self.norm_fn(out_channels)),
                 ("leakyrelu1", nn.LeakyReLU()),
-                ("conv2", eval(
-                    "nn.Conv{0}(out_channels, out_channels, kernel_size, "
-                    "stride=stride, padding=padding, bias=bias)".format(dim))),
-                ("norm2", eval(
-                    "nn.BatchNorm{0}(out_channels)".format(dim))),
+                ("conv2", self.conv_fn(
+                    out_channels, out_channels, kernel_size, stride=stride,
+                    padding=padding, bias=bias)),
+                ("norm2", self.norm_fn(out_channels)),
                 ("leakyrelu2", nn.LeakyReLU())]))
         else:
             self.ops = nn.Sequential(collections.OrderedDict([
-                ("conv1", eval(
-                    "nn.Conv{0}(in_channels, out_channels, kernel_size, "
-                    "stride=stride, padding=padding, bias=bias)".format(dim))),
+                ("conv1", self.conv_fn(
+                    in_channels, out_channels, kernel_size, stride=stride,
+                    padding=padding, bias=bias)),
                 ("leakyrelu1", nn.LeakyReLU()),
-                ("conv2", eval(
-                    "nn.Conv{0}(out_channels, out_channels, kernel_size, "
-                    "stride=stride, padding=padding, bias=bias)".format(dim))),
+                ("conv2", self.conv_fn(
+                    out_channels, out_channels, kernel_size, stride=stride,
+                    padding=padding, bias=bias)),
                 ("leakyrelu2", nn.LeakyReLU())]))
 
     def forward(self, x):
@@ -235,9 +236,8 @@ class DoubleConv(nn.Module):
 
 def UpConv(in_channels, out_channels, dim, mode="transpose", shape=None):
     if mode == "transpose":
-        return eval(
-            "nn.ConvTranspose{0}(in_channels, out_channels, kernel_size=2, "
-            "stride=2)".format(dim))
+        return self.convt_fn(
+            in_channels, out_channels, kernel_size=2, stride=2)
     else:
         # out_channels is always going to be the same as in_channels
         if shape is None:
@@ -251,9 +251,8 @@ def UpConv(in_channels, out_channels, dim, mode="transpose", shape=None):
 
 
 def Conv1x1x1(in_channels, out_channels, dim, groups=1):
-    return eval(
-        "nn.Conv{0}(in_channels, out_channels, kernel_size=1, groups=groups, "
-        "stride=1)".format(dim))
+    return self.conv_fn(
+        in_channels, out_channels, kernel_size=1, groups=groups, stride=1)
 
 
 class Down(nn.Module):
@@ -266,7 +265,7 @@ class Down(nn.Module):
         super(Down, self).__init__()
         if pooling:
             self.ops = nn.Sequential(collections.OrderedDict([
-                ("maxpool", eval("nn.MaxPool{0}(2)".format(dim))),
+                ("maxpool", self.pool_fn(2)),
                 ("doubleconv", DoubleConv(
                     in_channels, out_channels, dim, batchnorm=batchnorm))]))
         else:
