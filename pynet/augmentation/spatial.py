@@ -22,7 +22,7 @@ from .transform import affine_flow
 from .utils import interval
 
 
-def affine(arr, rotation=10, translation=10, zoom=0.2, seed=None):
+def affine(arr, rotation=10, translation=10, zoom=0.2, order=3, seed=None):
     """ Random affine transformation.
 
     Parameters
@@ -37,6 +37,8 @@ def affine(arr, rotation=10, translation=10, zoom=0.2, seed=None):
         values generate more distorted images.
     zoom: float, default 0.2
         the zooming magnitude. Larger values generate more distorted images.
+    order: int, default 3
+        the order of the spline interpolation in the range [0, 5].
     seed: int, default None
         seed to control random number generator.
 
@@ -63,7 +65,7 @@ def affine(arr, rotation=10, translation=10, zoom=0.2, seed=None):
     shape = arr.shape
     flow = affine_flow(affine, shape)
     locs = flow.reshape(len(shape), -1)
-    transformed = map_coordinates(arr, locs, order=3, cval=0)
+    transformed = map_coordinates(arr, locs, order=order, cval=0)
     return transformed.reshape(shape)
 
 
@@ -91,7 +93,7 @@ def flip(arr, axis=None, seed=None):
     return np.flip(arr, axis=axis)
 
 
-def deformation(arr, max_displacement=4, alpha=3, seed=None):
+def deformation(arr, max_displacement=4, alpha=3, order=3, seed=None):
     """ Apply dense random elastic deformation.
 
     Reference: Khanal B, Ayache N, Pennec X., Simulating Longitudinal
@@ -108,6 +110,8 @@ def deformation(arr, max_displacement=4, alpha=3, seed=None):
     alpha: float, default 3
         the power of the power-law momentum distribution. Larger values
         genrate smoother fields.
+    order: int, default 3
+        the order of the spline interpolation in the range [0, 5].
     seed: int, default None
         seed to control random number generator.
 
@@ -139,5 +143,5 @@ def deformation(arr, max_displacement=4, alpha=3, seed=None):
     locs = np.asarray(np.meshgrid(*ranges)).transpose(0, 2, 1, 3).astype(float)
     locs += flow
     locs = locs.reshape(len(locs), -1)
-    transformed = map_coordinates(arr, locs, order=3, cval=0)
+    transformed = map_coordinates(arr, locs, order=order, cval=0)
     return transformed.reshape(arr.shape)
