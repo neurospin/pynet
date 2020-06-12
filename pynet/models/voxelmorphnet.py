@@ -49,7 +49,7 @@ class VoxelMorphNet(nn.Module):
     """
 
     def __init__(self, vol_size, enc_nf=[16, 32, 32, 32],
-                 dec_nf=[32, 32, 32, 32, 32, 16, 16], full_size=False):
+                 dec_nf=[32, 32, 32, 32, 32, 16, 16], full_size=True):
         """ Init class.
 
         Parameters
@@ -105,7 +105,7 @@ class VoxelMorphNet(nn.Module):
         logger.debug("Flow: {0}".format(flow.shape))
         moving = x[:, :1]
         logger.debug("Moving: {0}".format(moving.shape))
-        warp = self.spatial_transform(moving, flow)
+        warp, _ = self.spatial_transform(moving, flow)
         logger.debug("Warp: {0}".format(warp.shape))
         logger.debug("Done.")
         return warp, {"flow": flow}

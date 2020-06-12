@@ -479,26 +479,21 @@ class SoftDiceLoss(object):
             prob = func.softmax(output, dim=1)
         else:
             prob = output
-        print(prob)
         self.debug("logit", prob)
 
         # Create the labels one hot encoded tensor
         one_hot = torch.zeros(n_batch, n_classes, *target.shape[1:],
                               device=device, dtype=output.dtype)
         target_one_hot = one_hot.scatter_(1, target.unsqueeze(1), 1.)
-        print(target_one_hot)
         self.debug("one hot", target_one_hot)
 
         # Compute the dice score
         dims = tuple(range(1, len(target.shape) + 1))
         intersection = torch.sum(prob * target_one_hot, dims)
-        print(intersection)
         self.debug("intersection", intersection)
         cardinality = torch.sum(prob + target_one_hot, dims)
-        print(cardinality)
         self.debug("cardinality", cardinality)
         dice_score = 2. * intersection / (cardinality + self.eps)
-        print(dice_score)
         loss = 1. - dice_score
         self.debug("loss", loss)
 
@@ -694,6 +689,7 @@ class PCCLoss(object):
             the input data.
         """
         logger.debug("Compute PCC loss...")
+        nb_channels = arr_j.shape[1]
         if self.concat:
             nb_channels = arr_j.shape[1] // 2
             arr_j = arr_j[:, nb_channels:]
@@ -762,7 +758,7 @@ class NCCLoss(object):
                              "{0}.".format(ndims))
         if self.win is None:
             self.win = [9] * ndims
-        device = arr_i.get_device()
+        device = arr_i.device
         sum_filt = torch.ones([1, 1, *self.win]).to(device)
         pad_no = math.floor(self.win[0] / 2)
         stride = tuple([1] * ndims)
