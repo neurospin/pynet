@@ -131,6 +131,30 @@ class TestModels(unittest.TestCase):
         net = self.networks["BrainNetCNN"](**params)
         y = net(self.x3[..., 0])
 
+    def test_pspnet(self):
+        """ Test the PSPNet.
+        """
+        params = {
+            "n_classes": 2,
+            "sizes": (1, 2, 3, 6),
+            "psp_size": 512,
+            "deep_features_size": 256,
+            "backend": "resnet18",
+            "drop_rate": 0
+        }
+        net = self.networks["PSPNet"](**params)
+        y = net(self.x3[..., 0])
+
+    def test_deeplabnet(self):
+        """ Test the DeepLabNet.
+        """
+        params = {
+            "n_classes": 2,
+            "drop_rate": 0
+        }
+        net = self.networks["DeepLabNet"](**params)
+        y = net(self.x3[..., 0])
+
 
 if __name__ == "__main__":
     from pynet.utils import setup_logging
