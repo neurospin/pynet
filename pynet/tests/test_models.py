@@ -56,7 +56,7 @@ class TestModels(unittest.TestCase):
             "activation": "relu",
             "normalization": "group_normalization",
             "mode": "trilinear",
-            "with_vae": True
+            "with_vae": False
         }
         net = self.networks["NvNet"](**params)
         y = net(self.x3)
