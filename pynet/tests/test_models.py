@@ -23,7 +23,7 @@ class TestModels(unittest.TestCase):
         """
         self.networks = pynet.get_tools()["networks"]
         self.x2 = torch.randn(1, 1, 127, 128)
-        self.x3 = torch.randn(1, 1, 128, 128, 128)
+        self.x3 = torch.randn(1, 1, 64, 64, 64)
 
     def tearDown(self):
         """ Run after each test.
