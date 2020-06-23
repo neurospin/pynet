@@ -20,6 +20,7 @@ from .intensity import rescale
 from .intensity import zscore_normalize
 from .intensity import kde_normalize
 from .spatial import reorient2std
+from .spatial import bet2
 from .spatial import biasfield
 from .spatial import register
 from .spatial import padd
