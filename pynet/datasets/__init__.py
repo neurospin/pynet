@@ -35,6 +35,7 @@ from .connectome import fetch_connectome
 from .hcp import fetch_hcp_brain
 from .metastasis import fetch_metastasis
 from .toy import fetch_toy
+from .tcga_lgg_tif import fetch_tcga_lgg_tif
 
 
 def get_fetchers():
