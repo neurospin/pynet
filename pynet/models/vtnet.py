@@ -393,6 +393,8 @@ class ADDNet(nn.Module):
             affine = affine - mat_id
         n_batch = affine.size(0)
         vectors = [torch.arange(0, val) for val in size]
+        for indx in range(len(size)):
+            vectors[indx] = vectors[indx] - (size[indx] - 1) // 2
         grids = torch.meshgrid(vectors)
         grid = torch.stack(grids)
         grid = grid.type(torch.FloatTensor)
