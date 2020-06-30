@@ -111,7 +111,7 @@ def scale(im, scale, tmpdir=None, interp="spline"):
         nibabel.save(im, input_file)
         cmd = ["flirt", "-in", input_file, "-ref", input_file, "-out",
                output_file, "-applyisoxfm", str(scale), "-omat", trf_file,
-               "-interp", interp,]
+               "-interp", interp]
         logger.debug(" ".join(cmd))
         subprocess.check_call(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
