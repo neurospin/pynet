@@ -80,7 +80,7 @@ def downsample(arr, scale):
     return arr[tuple(slices)]
 
 
-def scale(im, scale, tmpdir=None):
+def scale(im, scale, tmpdir=None, interp="spline"):
     """ Scale the MRI image.
 
     This function is based on FSL.
@@ -91,6 +91,9 @@ def scale(im, scale, tmpdir=None):
         the input image.
     scale: int
         the scale factor in all directions.
+    interp: str, default 'spline'
+        Choose the most appropriate interpolation method: 'trilinear',
+        'nearestneighbour', 'sinc', 'spline'.
     tmpdir: str, default None
         a folder where the intermediate results are saved.
 
@@ -107,7 +110,8 @@ def scale(im, scale, tmpdir=None):
         output_file = os.path.join(tmpdir, "output.nii.gz")
         nibabel.save(im, input_file)
         cmd = ["flirt", "-in", input_file, "-ref", input_file, "-out",
-               output_file, "-applyisoxfm", str(scale), "-omat", trf_file]
+               output_file, "-applyisoxfm", str(scale), "-omat", trf_file,
+               "-interp", interp,]
         logger.debug(" ".join(cmd))
         subprocess.check_call(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
