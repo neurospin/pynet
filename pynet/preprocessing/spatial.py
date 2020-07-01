@@ -80,7 +80,7 @@ def downsample(arr, scale):
     return arr[tuple(slices)]
 
 
-def scale(im, scale, tmpdir=None, pkg_version=0):
+def scale(im, scale, tmpdir=None, check_pkg_version=True):
     """ Scale the MRI image.
 
     This function is based on FSL.
@@ -93,15 +93,15 @@ def scale(im, scale, tmpdir=None, pkg_version=0):
         the scale factor in all directions.
     tmpdir: str, default None
         a folder where the intermediate results are saved.
-    pkg_version : int, default 0
-        put to 1 if the package is not installed with the source repository
+    check_pkg_version: boolean, default True
+        put to 1 if the package is not installed with the source repository.
 
     Returns
     -------
     normalized: nibabel.Nifti1Image
         the normalized input image.
     """
-    check_version("fsl",pkg_version)
+    check_version("fsl", check_pkg_version)
     check_command("flirt")
     with TemporaryDirectory(dir=tmpdir, name="scale") as tmpdir:
         input_file = os.path.join(tmpdir, "input.nii.gz")
@@ -111,14 +111,19 @@ def scale(im, scale, tmpdir=None, pkg_version=0):
         cmd = ["flirt", "-in", input_file, "-ref", input_file, "-out",
                output_file, "-applyisoxfm", str(scale), "-omat", trf_file]
         logger.debug(" ".join(cmd))
-        subprocess.check_call(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        output, err = p.communicate()
+        rc = p.returncode
+        if rc != 0:
+            raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
         normalized = nibabel.load(output_file)
         normalized = nibabel.Nifti1Image(
             normalized.get_data(), normalized.affine)
     return normalized
 
-def bet2(im, f=0.5, tmpdir=None, pkg_version=0):
+
+def bet2(im, frac=0.5, tmpdir=None, check_pkg_version=True):
     """ Skull stripped the MRI image.
 
     This function is based on FSL.
@@ -129,32 +134,38 @@ def bet2(im, f=0.5, tmpdir=None, pkg_version=0):
         the input image.
     tmpdir: str, default None
         a folder where the intermediate results are saved.
-    f: float, default 0.5
-        -fractional intensity threshold (0->1);smaller values give larger brain outline estimates
-    pkg_version : int, default 0
-        put to 1 if the package is not installed with the source repository
+    frac: float, default 0.5
+        fractional intensity threshold (0->1);smaller values give larger brain
+         outline estimates
+    check_pkg_version: boolean, default True
+        put to 1 if the package is not installed with the source repository.
 
     Returns
     -------
     skullstripped: nibabel.Nifti1Image
         the skull stripped input image.
     """
-    check_version("fsl",pkg_version)
+    check_version("fsl", check_pkg_version)
     check_command("bet")
     with TemporaryDirectory(dir=tmpdir, name="skullstripped") as tmpdir:
         input_file = os.path.join(tmpdir, "input.nii.gz")
         output_file = os.path.join(tmpdir, "output.nii.gz")
         nibabel.save(im, input_file)
-        cmd = ["bet", input_file, output_file, "-f", str(f)]
+        cmd = ["bet", input_file, output_file, "-f", str(frac)]
         logger.debug(" ".join(cmd))
-        subprocess.check_call(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        output, err = p.communicate()
+        rc = p.returncode
+        if rc != 0:
+            raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
         skullstripped = nibabel.load(output_file)
         skullstripped = nibabel.Nifti1Image(
             skullstripped.get_data(), skullstripped.affine)
     return skullstripped
 
-def reorient2std(im, tmpdir=None, pkg_version=0):
+
+def reorient2std(im, tmpdir=None, check_pkg_version=True):
     """ Reorient the MRI image to match the approximate orientation of the
     standard template images (MNI152).
 
@@ -166,15 +177,15 @@ def reorient2std(im, tmpdir=None, pkg_version=0):
         the input image.
     tmpdir: str, default None
         a folder where the intermediate results are saved.
-    pkg_version : int, default 0
-        put to 1 if the package is not installed with the source repository
+    check_pkg_version: boolean, default True
+        put to 1 if the package is not installed with the source repository.
 
     Returns
     -------
     normalized: nibabel.Nifti1Image
         the normalized input image.
     """
-    check_version("fsl",pkg_version)
+    check_version("fsl", check_pkg_version)
     check_command("fslreorient2std")
     with TemporaryDirectory(dir=tmpdir, name="reorient2std") as tmpdir:
         input_file = os.path.join(tmpdir, "input.nii.gz")
@@ -182,8 +193,13 @@ def reorient2std(im, tmpdir=None, pkg_version=0):
         nibabel.save(im, input_file)
         cmd = ["fslreorient2std", input_file, output_file]
         logger.debug(" ".join(cmd))
-        subprocess.check_call(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        output, err = p.communicate()
+        rc = p.returncode
+        if rc != 0:
+            raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
+
         normalized = nibabel.load(output_file)
         normalized = nibabel.Nifti1Image(
             normalized.get_data(), normalized.affine)
@@ -192,7 +208,8 @@ def reorient2std(im, tmpdir=None, pkg_version=0):
 
 def biasfield(im, mask=None, nb_iterations=50, convergence_threshold=0.001,
               bspline_grid=(1, 1, 1), shrink_factor=1, bspline_order=3,
-              histogram_sharpening=(0.15, 0.01, 200), tmpdir=None, pkg_version=0):
+              histogram_sharpening=(0.15, 0.01, 200), tmpdir=None,
+              check_pkg_version=True):
     """ Perform MRI bias field correction using N4 algorithm.
 
     This function is based on ITK and ANTS.
@@ -233,15 +250,15 @@ def biasfield(im, mask=None, nb_iterations=50, convergence_threshold=0.001,
         histogram bins.
     tmpdir: str, default None
         a folder where the intermediate results are saved.
-    pkg_version : int, default 0
-        put to 1 if the package is not installed with the source repository
+    check_pkg_version: boolean, default True
+        put to 1 if the package is not installed with the source repository.
 
     Returns
     -------
     normalized: nibabel.Nifti1Image
         the normalized input image.
     """
-    check_version("ants",pkg_version)
+    check_version("ants", check_pkg_version)
     check_command("N4BiasFieldCorrection")
     with TemporaryDirectory(dir=tmpdir, name="biasfield") as tmpdir:
         input_file = os.path.join(tmpdir, "input.nii.gz")
@@ -267,8 +284,12 @@ def biasfield(im, mask=None, nb_iterations=50, convergence_threshold=0.001,
             nibabel.save(mask, mask_file)
             cmd += ["-x", mask_file]
         logger.debug(" ".join(cmd))
-        subprocess.check_call(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        output, err = p.communicate()
+        rc = p.returncode
+        if rc != 0:
+            raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
         normalized = nibabel.load(output_file)
         normalized = nibabel.Nifti1Image(
             normalized.get_data(), normalized.affine)
@@ -276,7 +297,7 @@ def biasfield(im, mask=None, nb_iterations=50, convergence_threshold=0.001,
 
 
 def register(im, target, mask=None, cost="normmi", bins=256, interp="spline",
-             dof=9, tmpdir=None,pkg_version=0):
+             dof=9, tmpdir=None, check_pkg_version=True):
     """ Register the MRI image to a target image using an affine transform
     with 9 dofs.
 
@@ -302,15 +323,15 @@ def register(im, target, mask=None, cost="normmi", bins=256, interp="spline",
         Number of affine transform dofs.
     tmpdir: str, default None
         a folder where the intermediate results are saved.
-    pkg_version : int, default 0
-        put to 1 if the package is not installed with the source repository
+    check_pkg_version: boolean, default True
+        put to 1 if the package is not installed with the source repository.
 
     Returns
     -------
     normalized: nibabel.Nifti1Image
         the normalized input image.
     """
-    check_version("fsl",pkg_version)
+    check_version("fsl", check_pkg_version)
     check_command("flirt")
     with TemporaryDirectory(dir=tmpdir, name="register") as tmpdir:
         input_file = os.path.join(tmpdir, "input.nii.gz")
@@ -339,15 +360,20 @@ def register(im, target, mask=None, cost="normmi", bins=256, interp="spline",
                                  "bbr cost function.")
             cmd += ["-wmseg", mask_file]
         logger.debug(" ".join(cmd))
-        subprocess.check_call(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        output, err = p.communicate()
+        rc = p.returncode
+        if rc != 0:
+            raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
         normalized = nibabel.load(output_file)
         normalized = nibabel.Nifti1Image(
             normalized.get_data(), normalized.affine)
     return normalized
 
 
-def apply(im, target, affines, interp="spline", tmpdir=None,pkg_version=0):
+def apply(im, target, affines, interp="spline", tmpdir=None,
+          check_pkg_version=True):
     """ Apply affine transformations to an image.
 
     This function is based on FSL.
@@ -366,15 +392,15 @@ def apply(im, target, affines, interp="spline", tmpdir=None,pkg_version=0):
         'nearestneighbour', 'sinc', 'spline'.
     tmpdir: str, default None
         a folder where the intermediate results are saved.
-    pkg_version : int, default 0
-        put to 1 if the package is not installed with the source repository
+    check_pkg_version: boolean, default True
+        put to 1 if the package is not installed with the source repository.
 
     Returns
     -------
     normalized: nibabel.Nifti1Image
         the normalized input image.
     """
-    check_version("fsl",pkg_version)
+    check_version("fsl", check_pkg_version)
     check_command("flirt")
     if not isisntance(affines, list):
         trf_file = affines
@@ -401,8 +427,12 @@ def apply(im, target, affines, interp="spline", tmpdir=None,pkg_version=0):
                "-applyxfm",
                "-out", output_file]
         logger.debug(" ".join(cmd))
-        subprocess.check_call(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        output, err = p.communicate()
+        rc = p.returncode
+        if rc != 0:
+            raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
         normalized = nibabel.load(output_file)
         normalized = nibabel.Nifti1Image(
             normalized.get_data(), normalized.affine)
@@ -432,7 +462,7 @@ def check_command(command):
         raise ValueError("Impossible to locate command '{0}'.".format(command))
 
 
-def check_version(package_name,option):
+def check_version(package_name, check_pkg_version):
     """ Check installed version of a package.
 
     This function is based on dpkg.
@@ -450,16 +480,18 @@ def check_version(package_name,option):
     stderr = stderr.decode("utf8")
     exitcode = process.returncode
 
-    if option == 0:#local computer installation
+    if check_pkg_version:
+        # local computer installation
         if exitcode != 0:
             logger.debug("Version {0}: {1}".format(package_name, stderr))
             raise ValueError(
-                "Impossible to check package '{0}' version.".format(package_name))
+                "Impossible to check package '{0}' version."
+                .format(package_name))
             version = None
-        else :
+        else:
             versions = re.findall("Version: .*$", stdout, re.MULTILINE)
             version = "|".join(versions)
-    elif option == 1:#specific installation
-        versions = re.findall("Version: .*$", stdout, re.MULTILINE)
-        version = "|".join(versions)
+    else:
+        # specific installation
+        version = "custom install (no check)."
     logger.info("{0} - {1}".format(package_name, version))
