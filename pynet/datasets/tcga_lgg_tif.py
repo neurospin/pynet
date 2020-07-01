@@ -12,6 +12,7 @@ Module that provides functions to prepare the TCGA-LGG-tif dataset.
 """
 
 # Imports
+from collections import OrderedDict
 import os
 import logging
 from collections import namedtuple
@@ -47,7 +48,7 @@ def get_slice_id(fp):
 def get_subjects_files(datadir):
     sdata = {}
     for fp in glob.glob(
-            os.path.join(datadir, "**", "*_mask.tif", recursive=True)):
+            os.path.join(datadir, "*", "*", "*_mask.tif")):
         dirname = fp.split(os.sep)[-2]
         _, center, subject, serie = dirname.split("_")
         if subject not in sdata:
@@ -82,7 +83,7 @@ def fetch_tcga_lgg_tif(datasetdir):
             "You must first download the kaggle dataset at {} and unzip it "
             "to {}.".format(URL, datasetdir))
 
-    metadata_path = os.path.join(datasetdir, "data.csv")
+    metadata_path = os.path.join(datasetdir, "kaggle_3m", "data.csv")
     desc_path = os.path.join(datasetdir, "pynet_tgca-lgg-tif.tsv")
     input_path = os.path.join(datasetdir, "pynet_tgca-lgg-tif_inputs.npy")
     output_path = os.path.join(datasetdir, "pynet_tgca-lgg-tif_outputs.npy")
@@ -94,7 +95,7 @@ def fetch_tcga_lgg_tif(datasetdir):
         smetadata = read_metadata(metadata_path)
         input_dataset = []
         output_dataset = []
-        metadata = dict((key, []) for key in (
+        metadata = OrderedDict((key, []) for key in (
             "participant_id", "slice_id", "center", "serie"))
         with progressbar.ProgressBar(max_value=len(sdata),
                                      redirect_stdout=True) as bar:
