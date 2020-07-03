@@ -65,6 +65,13 @@ def get_subjects_files(datadir):
 def fetch_tcga_lgg_tif(datasetdir):
     """ Fetch/prepare the TCA-LGG-tif dataset for pynet.
 
+    The patient average age was 47 with an almost even split between women and
+    men (56 vs. 53, 1 unknown) in our dataset. Histologically, the tumors were
+    divided between oligodendroglioma (47), astrocytoma (33), and
+    oligoastrocytoma (29). Histology of one tumor was unknown. The data
+    included grade II (51) and grade III (58) tumors with grade of one tumor
+    unknown.
+
     Parameters
     ----------
     datasetdir: str
