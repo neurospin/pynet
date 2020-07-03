@@ -112,7 +112,7 @@ class DeepLearningInterface(Base, metaclass=DeepLearningMetaRegister):
     __net__ = None
 
     def __init__(self, net_params=None, pretrained=None, resume=False,
-                 optimizer_name="Adam", learning_rate=1e-3,
+                 add_labels=False, optimizer_name="Adam", learning_rate=1e-3,
                  loss_name="NLLLoss", metrics=None, use_cuda=False, **kwargs):
         """ Class initilization.
 
@@ -126,6 +126,9 @@ class DeepLearningInterface(Base, metaclass=DeepLearningMetaRegister):
             if set to true, the code will restore the weights of the model
             but also restore the optimizer's state, as well as the
             hyperparameters used, and the scheduler.
+        add_labels: bool, default False
+            if set and labels are specified in the data manager, add the labels
+            to the forward function parameters.
         optimizer_name: str, default 'Adam'
             the name of the optimizer: see 'torch.optim' for a description
             of available optimizer.
@@ -158,6 +161,7 @@ class DeepLearningInterface(Base, metaclass=DeepLearningMetaRegister):
             use_cuda=use_cuda,
             pretrained=pretrained,
             resume=resume,
+            add_labels=add_labels,
             **kwargs)
 
 
