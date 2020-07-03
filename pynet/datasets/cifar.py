@@ -8,7 +8,7 @@
 ##########################################################################
 
 """
-Module that provides functions to prepare the Brats dataset.
+Module that provides functions to prepare the CIFAR dataset.
 """
 
 # Imports
