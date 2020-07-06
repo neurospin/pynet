@@ -48,7 +48,7 @@ manager = DataManager(
     test_size=0,
     input_transforms=[flatten],
     add_input=True,
-    sample_size=1)
+    sample_size=0.05)
 
 
 #############################################################################

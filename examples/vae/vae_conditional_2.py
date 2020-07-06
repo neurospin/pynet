@@ -52,7 +52,7 @@ manager = DataManager(
     test_size=0,
     input_transforms=[flatten],
     add_input=True,
-    sample_size=1)
+    sample_size=0.5)
 
 
 ########################
@@ -136,11 +136,8 @@ class Encoder(nn.Module):
         # hidden is of shape [batch_size, hidden_dim]
         z_mu = self.mu(hidden)
         # z_mu is of shape [batch_size, latent_dim]
-        z_var = 1e-5 + torch.exp(self.var(hidden))
-        # the reason we exponentiate is because we need the variance to be
-        # positive. Any activation function whose range is the positive numbers
-        # could be used here.
-        # z_var is of shape [batch_size, latent_dim]
+        z_var = self.var(hidden)
+        # z_var is of shape [batch_size, latent_dim]: this is log(var)
 
         return z_mu, z_var
 
@@ -234,18 +231,23 @@ class CVAE(nn.Module):
         # sample a latent vector from the latent space - using the
         # reparameterization trick
         # sample from the distribution having latent parameters z_mu, z_var
-        eps = torch.randn_like(z_var)
-        x_sample = z_mu + torch.sqrt(z_var) * eps
-    
+        # the reason we exponentiate is because we need the variance to be
+        # positive. Any activation function whose range is the positive numbers
+        # could be used here.
+        std = torch.exp(z_var / 2)
+        eps = torch.randn_like(std)
+        x_sample = eps.mul(std).add_(z_mu)
+
         # classify the digit
         logits = self.classifier(x)
-        prob = func.softmax(logits)
+        y = func.gumbel_softmax(logits, hard=True)
 
         # decode the latent vector - concatenated to the digits
         # classification into an image
-        predicted = self.decoder(torch.cat([x_sample, prob], dim=1))
+        predicted = self.decoder(torch.cat([x_sample, y], dim=1))
 
-        return predicted, {"z_mu": z_mu, "z_var": z_var, "logits": logits}
+        return predicted, {"z_mu": z_mu, "z_var": z_var, "logits": logits,
+                           "y": y}
 
 ########################
 # Loss
@@ -297,7 +299,7 @@ class VAELoss(object):
         # encoder loss
         loss_auto_encode = (recon_loss + kl_loss) / x_sample.size(0)
 
-        return loss_auto_encode.mean()
+        return loss_auto_encode
 
 class ClassificationLoss(object):
     def __init__(self):
@@ -382,8 +384,8 @@ interface = DeepLearningInterface(
     model=model,
     optimizer_name="Adam",
     learning_rate=0.001,
-    loss=DecodeLoss(classification_weight=30.),
-    metrics=[ClassificationLoss(), VAELoss()])
+    metrics=[ClassificationLoss(), VAELoss()],
+    loss=DecodeLoss(classification_weight=10.))
 interface.board = Board(
     port=8097, host="http://localhost", env="vae", display_pred=True,
     prepare_pred=prepare_pred)
@@ -391,7 +393,7 @@ interface.add_observer("after_epoch", update_board)
 interface.add_observer("after_epoch", sampling)
 test_history, train_history = interface.training(
     manager=manager,
-    nb_epochs=10,
+    nb_epochs=20,
     checkpointdir=None,
     fold_index=0,
     with_validation=True)

@@ -128,7 +128,7 @@ class Encoder(nn.Module):
         z_mu = self.mu(hidden)
         # z_mu is of shape [batch_size, latent_dim]
         z_var = self.var(hidden)
-        # z_var is of shape [batch_size, latent_dim]
+        # z_var is of shape [batch_size, latent_dim]: this is log(var)
 
         return z_mu, z_var
 
@@ -198,6 +198,9 @@ class CVAE(nn.Module):
         # sample a latent vector from the latent space - using the
         # reparameterization trick
         # sample from the distribution having latent parameters z_mu, z_var
+        # the reason we exponentiate is because we need the variance to be
+        # positive. Any activation function whose range is the positive numbers
+        # could be used here.
         std = torch.exp(z_var / 2)
         eps = torch.randn_like(std)
         x_sample = eps.mul(std).add_(z_mu)

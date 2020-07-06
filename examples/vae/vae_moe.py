@@ -90,11 +90,11 @@ manager = DataManager(
     metadata_path=data.metadata_path,
     stratify_label="label",
     number_of_folds=10,
-    batch_size=64,
+    batch_size=100,
     test_size=0,
     input_transforms=[flatten],
     add_input=True,
-    sample_size=0.05)
+    sample_size=1)
 
 
 #############################################################################
@@ -106,39 +106,6 @@ manager = DataManager(
 #    referred to as Q(z|x).
 # 2. Given z in latent space (code representation of an image), decode it into
 #    the image it represents - referred to as f(z).
-#
-# We want to enforce some of the latent dimensions to encode the digit found
-# in an image. In the vanilla VAE case we don't care what
-# information each dimension of the latent space holds. The model can learn
-# to encode whatever information it finds valuable for its task. Since we're
-# familiar with the dataset, we know the digit type should be important.
-# We want to help the model by providing it with this information. Moreover,
-# we'll use this information to generate images conditioned on the digit type,
-# as we will see later.
-# 
-# Given the digit type, we'll encode it using one hot encoding, that is, a
-# vector of size 10. These 10 numbers will be concatenated into the latent 
-# vector, so when decoding that vector into an image, the model will make use
-# of the digit information.
-#
-# There are two ways to provide the model with a one hot encoding vector:
-# 1. Add it as an input to the model.
-# 2. Add it as a label so the model will have to predict it by itself: add
-#    another sub-network that predicts a vector of size 10 where the loss is
-#    the cross entropy with the expected one hot vector.
-#
-# We'll go with the first option first.
-
-def idx2onehot(idx, n):
-    """ Given a class label, we will convert it into one-hot encoding.
-    """
-    assert idx.ndim == 1
-    assert torch.max(idx).item() < n
-    idx = idx.view(-1, 1)
-    onehot = torch.zeros(idx.size(0), n)
-    onehot.scatter_(1, idx.data, 1)
-
-    return onehot
 
 class Encoder(nn.Module):
     """ This the encoder part of VAE.
@@ -229,8 +196,7 @@ class VAE(nn.Module):
         eps = torch.randn_like(std)
         x_sample = eps.mul(std).add_(z_mu)
 
-        # decode the latent vector - concatenated to the digits
-        # classification into an image
+        # decode the latent vector
         predicted = self.decoder(x_sample)
 
         return predicted, {"z_mu": z_mu, "z_var": z_var}
@@ -267,7 +233,7 @@ class Manager(nn.Module):
             the manager experts.
         """
         super(Manager, self).__init__()
-        self._experts = experts
+        self._experts = nn.ModuleList(experts)
         self._experts_results = []
         self.linear1 = nn.Linear(input_dim, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, len(experts))
@@ -293,20 +259,24 @@ class ManagerLoss(object):
         super(ManagerLoss, self).__init__()
         self.layer_outputs = None
         self.balancing_weight = balancing_weight
+        self.criterion = VAELoss()
 
     def __call__(self, probs, x):
         if self.layer_outputs is None:
             raise ValueError("The model needs to return the latent space "
                              "distribution parameters z_mu, z_var.")
         losses = []
-        criterion = VAELoss()
         for result in self.layer_outputs["experts_results"]:
-            criterion.layer_outputs = result[1]
-            losses.append(criterion(result[0], x).view(-1, 1))
+            self.criterion.layer_outputs = result[1]
+            loss = self.criterion(result[0], x) / x.size(0)
+            losses.append(loss.view(-1, 1))
         losses = torch.cat(losses, dim=1)
-        expected_expert_loss = torch.sum(losses * probs, dim=1).mean()
+        expected_expert_loss = torch.sum(losses * probs, dim=1)
+        expected_expert_loss = torch.mean(expected_expert_loss, dim=0)
         experts_importance = torch.sum(probs, dim=0)
-        balancing_loss = experts_importance.std(dim=0)
+        balancing_loss = torch.pow(experts_importance.std(dim=0), 2)
+        print(expected_expert_loss, balancing_loss)
+        print(probs[0])
         loss = expected_expert_loss + self.balancing_weight * balancing_loss
 
         return loss
@@ -357,7 +327,7 @@ interface.add_observer("after_epoch", update_board)
 interface.add_observer("after_epoch", sampling)
 test_history, train_history = interface.training(
     manager=manager,
-    nb_epochs=10,
+    nb_epochs=30,
     checkpointdir=None,
     fold_index=0,
     with_validation=True)
