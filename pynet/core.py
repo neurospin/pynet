@@ -43,7 +43,7 @@ class Base(Observable):
     """
     def __init__(self, optimizer_name="Adam", learning_rate=1e-3,
                  loss_name="NLLLoss", metrics=None, use_cuda=False,
-                 pretrained=None, resume=False, **kwargs):
+                 pretrained=None, resume=False, add_labels=False, **kwargs):
         """ Class instantiation.
 
         Observers will be notified, allowed signals are:
@@ -71,6 +71,9 @@ class Base(Observable):
             if set to true, the code will restore the weights of the model
             but also restore the optimizer's state, as well as the
             hyperparameters used, and the scheduler.
+        add_labels: bool, default False
+            if set and labels are specified in the data manager, add the labels
+            to the forward function parameters.
         kwargs: dict
             specify directly a custom 'model', 'optimizer' or 'loss'. Can also
             be used to set specific optimizer parameters.
@@ -80,6 +83,7 @@ class Base(Observable):
         self.optimizer = kwargs.get("optimizer")
         self.loss = kwargs.get("loss")
         self.resume = resume
+        self.add_labels = add_labels
         for name in ("optimizer", "loss"):
             if name in kwargs:
                 kwargs.pop(name)
@@ -96,8 +100,8 @@ class Base(Observable):
                 **kwargs)
         if self.loss is None:
             if loss_name not in dir(torch.nn):
-                raise ValueError("Loss '{0}' uknown: check available loss in "
-                                 "'pytorch.nn'.")
+                raise ValueError("Loss '{0}' unknown: check available loss in "
+                                 "'pytorch.nn'.".format(loss_name))
             self.loss = getattr(torch.nn, loss_name)()
         self.metrics = {}
         for obj_or_name in (metrics or []):
@@ -118,7 +122,10 @@ class Base(Observable):
             raise ValueError("No GPU found: unset 'use_cuda' parameter.")
         self.checkpoint = None
         if pretrained is not None:
-            self.checkpoint = torch.load(pretrained)
+            kwargs = {}
+            if not use_cuda:
+                kwargs["map_location"] = torch.device("cpu")
+            self.checkpoint = torch.load(pretrained, **kwargs)
             if hasattr(self.checkpoint, "state_dict"):
                 self.model.load_state_dict(self.checkpoint.state_dict())
             elif isinstance(self.checkpoint, dict):
@@ -133,7 +140,8 @@ class Base(Observable):
         self.model = self.model.to(self.device)
 
     def training(self, manager, nb_epochs, checkpointdir=None, fold_index=None,
-                 scheduler=None, with_validation=True, save_after_epochs=1):
+                 scheduler=None, with_validation=True, save_after_epochs=1,
+                 add_labels=False):
         """ Train the model.
 
         Parameters
@@ -269,11 +277,12 @@ class Base(Observable):
             for item in (dataitem.outputs, dataitem.labels):
                 if item is not None:
                     targets.append(item.to(self.device))
-            if len(targets) == 1:
-                targets = targets[0]
+            args = ()
+            if self.add_labels and dataitem.labels is not None:
+                args = (targets[-1], )
             logger.debug("  evaluate model.")
             self.optimizer.zero_grad()
-            output_items = self.model(inputs)
+            output_items = self.model(inputs, *args)
             if (not isinstance(output_items, tuple) and
                     not isinstance(output_items, list)):
                 outputs = output_items
@@ -291,11 +300,10 @@ class Base(Observable):
             logger.debug("  update loss.")
             logger.debug("  outputs: {0} - {1}".format(
                 outputs.shape, outputs.dtype))
-            logger.debug("  targets: {0} - {1}".format(
-                targets.shape, targets.dtype))
+            logger.debug("  targets: {0}".format(len(targets)))
             if hasattr(self.loss, "layer_outputs"):
                 self.loss.layer_outputs = layer_outputs
-            batch_loss = self.loss(outputs, targets)
+            batch_loss = self.loss(outputs, *targets)
             regularizations = self.notify_observers(
                 "regularizer", layer_outputs=layer_outputs)
             for reg in regularizations:
@@ -306,9 +314,11 @@ class Base(Observable):
             loss += batch_loss.item() / nb_batch
             for name, metric in self.metrics.items():
                 logger.debug("  compute metric '{0}'.".format(name))
+                if hasattr(metric, "layer_outputs"):
+                    metric.layer_outputs = layer_outputs
                 if name not in values:
                     values[name] = 0
-                values[name] += float(metric(outputs, targets)) / nb_batch
+                values[name] += float(metric(outputs, *targets)) / nb_batch
             logger.debug("Mini-batch done.")
         pbar.finish()
         logger.debug("Loss {0} ({1})".format(loss, type(loss)))
@@ -416,12 +426,13 @@ class Base(Observable):
                 for item in (dataitem.outputs, dataitem.labels):
                     if item is not None:
                         targets.append(item.to(self.device))
-                if len(targets) == 1:
-                    targets = targets[0]
+                args = ()
+                if self.add_labels and dataitem.labels is not None:
+                    args = (targets[-1], )
                 elif len(targets) == 0:
                     targets = None
                 logger.debug("  evaluate model.")
-                output_items = self.model(inputs)
+                output_items = self.model(inputs, *args)
                 extra_outputs = []
                 if (not isinstance(output_items, tuple) and
                         not isinstance(output_items, list)):
@@ -449,13 +460,15 @@ class Base(Observable):
                     logger.debug("  layer outputs: {0}".format(layer_outputs))
                     if hasattr(self.loss, "layer_outputs"):
                         self.loss.layer_outputs = layer_outputs
-                    batch_loss = self.loss(outputs, targets)
+                    batch_loss = self.loss(outputs, *targets)
                     loss += float(batch_loss) / nb_batch
                     for name, metric in self.metrics.items():
                         logger.debug("  compute metric '{0}'.".format(name))
+                        if hasattr(metric, "layer_outputs"):
+                            metric.layer_outputs = layer_outputs
                         if name not in values:
                             values[name] = 0
-                        values[name] += metric(outputs, targets) / nb_batch
+                        values[name] += metric(outputs, *targets) / nb_batch
                 if len(extra_outputs) > 0:
                     y.append(torch.cat([outputs] + extra_outputs, 1))
                 else:
