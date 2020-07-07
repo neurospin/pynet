@@ -84,7 +84,6 @@ def get_data_manager(fetcher_name, datasetdir, static_fold=0, slicevol=False,
         raise ValueError("Available fetchers are: {0}".format(
             list(fetchers.keys())))
     data = fetcher(datasetdir)
-    inputs = {}
     if not hasattr(data, "metadata_path"):
         raise ValueError("One metadata path is expected.")
     if not hasattr(data, "input_path"):

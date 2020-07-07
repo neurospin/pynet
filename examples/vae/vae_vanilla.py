@@ -13,7 +13,7 @@ implementation in pynet.
 After reading this tutorial, you'll understand the technical details needed to
 implement VAE.
 
-Let’s begin with importing stuffs:
+Let's begin with importing stuffs:
 """
 
 import os
