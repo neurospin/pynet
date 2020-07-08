@@ -4,8 +4,7 @@ from pynet.utils import setup_logging
 
 setup_logging(level="info")
 
-data = fetch_genomic_pred(
-    datasetdir="/tmp/genomic_pred")
+data = fetch_aa_nicodep()
 manager = DataManager(
     input_path=data.input_path,
     labels=["env0"],
