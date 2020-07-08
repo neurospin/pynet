@@ -20,4 +20,6 @@ from .rcnet import RCNet
 from .brainnetcnn import BrainNetCNN
 from .deeplabnet import DeepLabNet
 from .pspnet import PSPNet
+from .braingengan import (
+    BGDiscriminator, BGEncoder, BGCodeDiscriminator, BGGenerator)
 from .torchvisnet import *
