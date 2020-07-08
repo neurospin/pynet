@@ -13,7 +13,7 @@ implementation in pynet.
 After reading this tutorial, you'll understand the technical details needed to
 implement VAE.
 
-Let’s begin with importing stuffs:
+Let's begin with importing stuffs:
 """
 
 import os
@@ -56,6 +56,7 @@ manager = DataManager(
 # ---------
 #
 # The model is composed of two sub-networks:
+#
 # 1. Given x (image), encode it into a distribution over the latent space -
 #    referred to as Q(z|x).
 # 2. Given z in latent space (code representation of an image), decode it into
@@ -159,6 +160,7 @@ class VAE(nn.Module):
 # ----
 #
 # VAE consists of two loss functions:
+#
 # 1. Reconstruction loss: how well we can reconstruct the image
 # 2. KL divergence loss: how off the distribution over the latent space is 
 #    from the prior. Given the prior is a standard Gaussian and the inferred

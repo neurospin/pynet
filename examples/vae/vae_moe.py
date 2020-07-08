@@ -27,6 +27,7 @@ that defines the split points.
 MoE does so using an architecture of multiple subnetworks - one manager and
 multiple experts. The manager maps the input into a soft decision over the
 experts, which is used in two contexts:
+
 1. The output of the network is a weighted average of the experts' outputs,
    where the weights are the manager's output.
 2. The loss function is $\sum_i p_i(y - \bar{y_i})^2$. y is the label,
@@ -102,6 +103,7 @@ manager = DataManager(
 # ---------
 #
 # The model is composed of two sub-networks:
+#
 # 1. Given x (image), encode it into a distribution over the latent space -
 #    referred to as Q(z|x).
 # 2. Given z in latent space (code representation of an image), decode it into
