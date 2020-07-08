@@ -9,7 +9,7 @@ Based on:
 - https://github.com/cyclomon/3dbraingen
 
 This tutorial is for the intuition of simple Generative Adversarial Networks
-(GAN) for generating  realistic  MRI images. Here, we propose a novel that
+(GAN) for generating  realistic  MRI images. Here, we propose a model that
 can successfully generate 3D brain MRI data from random vectors by learning
 the data distribution.
 After reading this tutorial, you'll understand the technical details needed to
@@ -97,7 +97,7 @@ n_epochs = 100
 latent_dim = 1000
 use_cuda = False
 channels = 1
-in_shape = (50, 64, 45) # (64, 64, 64) # (150, 190, 135)
+in_shape = (50, 64, 45) # (150, 190, 135)
 gamma = 20
 beta = 10
 device = torch.device("cuda" if use_cuda else "cpu")
@@ -189,6 +189,7 @@ for epoch in range(n_epochs):
                         "caption": name},
                     win=name)
 
+    # Save model
     for name, model in [("generator", generator),
                         ("discriminator", discriminator),
                         ("encoder", encoder)]:
