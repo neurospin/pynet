@@ -1,4 +1,5 @@
 import os
+import logging
 from pynet.datasets import DataManager, fetch_aa_nicodep
 
 setup_logging(level="info")
