@@ -25,7 +25,7 @@ from collections import namedtuple
 import pandas as pd
 import sklearn
 from pynet.datasets import Fetchers
-from pandas8plink import read_plink
+from pandas_plink import read_plink
 
 
 # Global parameters
