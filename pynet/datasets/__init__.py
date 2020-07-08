@@ -39,6 +39,7 @@ from .metastasis import fetch_metastasis
 from .toy import fetch_toy
 from .tcga_lgg_tif import fetch_tcga_lgg_tif
 from .minst import fetch_minst
+from .mstcc import fetch_aa_nicodep
 
 
 # Global parameters
