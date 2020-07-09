@@ -26,6 +26,7 @@ import pandas as pd
 import sklearn
 from pynet.datasets import Fetchers
 from pandas_plink import read_plink
+import matplotlib.pyplot as plt
 
 
 # Global parameters
@@ -42,7 +43,7 @@ logger = logging.getLogger("pynet")
 
 
 @Fetchers.register
-def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/', to_categorical=False, check=False):
+def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/', visualize_labels=False):
     """ Fetch/prepare nicotine dependence dataset for pynet.
 
     Matrix Y contains the average grain yield, column 1: Grain yield for
@@ -68,30 +69,47 @@ def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/', 
     if not os.path.isdir(datasetdir):
         os.mkdir(datasetdir)
     desc_path = os.path.join(datasetdir, "pynet_aa_nicodep_labels.tsv")
-    desc_categorical_path = os.path.join(
-        datasetdir, "pynet_aa_nicodep_categorical_labels.tsv")
     input_path = os.path.join(datasetdir, "pynet_aa_nicodep_inputs.npy")
     #file_todel = []
-    if not os.path.isfile(desc_path):
+    if not os.path.isfile(desc_path) or not os.path.isfile(desc_path):
         bim, fam, bed = read_plink(os.path.join(datasetdir, 'nicodep_aa'))
 
-        data_x = bed.compute()
+        data_x = np.transpose(bed.compute())
 
         logger.info("Data X: {0}".format(data_x.shape))
-
         # Get data_y
-        #  Cosmetics
         data_y = pd.read_csv(
             os.path.join(datasetdir, "nicodep.pheno"), sep=" ")
+        data_y = data_y.astype({
+            'FID':str,
+            'IID':str,
+            }).set_index(['FID', 'IID'])
+        data_y.drop('gender', axis=1, inplace=True)
         # data_y = pd.read_csv(
         #     os.path.join(datasetdir, "toy_height.phe"), sep="\t")
-        print(data_y.head())
-        print(fam.head())
-        print(bim.head())
-        
-        # data_y.drop(['FID', 'IID'], axis=1, inplace=True)
-        # cov.drop(['FID', 'IID'], axis=1, inplace=True)
+
+        data_y = fam.join(data_y, on=['fid', 'iid'])
+        data_y.reset_index(inplace=True)
+        data_y.drop(['fid', 'iid', 'smoking_status', 'father', 'mother', 'tissue', 'i', 'ethnicity'], axis=1, inplace=True)
+        data_y.set_index('index', inplace=True)
+        data_y = data_y.astype({'trait': int})
+        data_y.rename(columns={'trait':'smoker'}, inplace=True)
+        data_y['smoker'].replace([2, 1], [1, 0])
+        data_y['smoker'].unique()
+
+        if visualize_labels:
+            for label in data_y.columns.tolist()[2:]:
+                data_y.hist(label, bins = len(data_y[label].unique()))
+            plt.show()
+
+        data_y.replace(-9, np.nan, inplace=True)
         logger.info("Data Y: {0}".format(data_y.shape))
+
+        categorical_pheno = []
+        for pheno in categorical_pheno:
+            dummy_values = pd.get_dummies(data_y[pheno], prefix="{0}_cat".format(pheno))
+            data_y = pd.concat([data_y, dummy_values], axis=1)
+
 
     #      residualize
     #     logger.info("Residualize Data Y")
@@ -122,9 +140,8 @@ def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/', 
     #     logger.info("Save Data X")
     #     np.save(input_path, data_x.astype(float))
 
-    #     # Housekeeping
-    #     desc_path = desc_categorical_path if to_categorical else desc_path
-    #     for f in file_todel:
-    #         os.remove(f)
-    # return Item(input_path=input_path, output_path=None,
-    #             metadata_path=desc_path, labels=None)
+        # Housekeeping
+        np.save(input_path, data_x.astype(float))
+        data_y.to_csv(desc_path, sep="\t", index=False)
+    return Item(input_path=input_path, output_path=None,
+                metadata_path=desc_path, labels=None)
