@@ -27,6 +27,9 @@ import sklearn
 from pynet.datasets import Fetchers
 from pandas_plink import read_plink
 import matplotlib.pyplot as plt
+import progressbar
+import statsmodels.api as sm
+import warnings
 
 
 # Global parameters
@@ -43,7 +46,8 @@ logger = logging.getLogger("pynet")
 
 
 @Fetchers.register
-def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/', visualize_labels=False):
+def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
+    visualize_labels=False, p_value_filter=None, N_best=None):
     """ Fetch/prepare nicotine dependence dataset for pynet.
 
     Matrix Y contains the average grain yield, column 1: Grain yield for
@@ -85,17 +89,14 @@ def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/', 
             'IID':str,
             }).set_index(['FID', 'IID'])
         data_y.drop('gender', axis=1, inplace=True)
-        # data_y = pd.read_csv(
-        #     os.path.join(datasetdir, "toy_height.phe"), sep="\t")
-
+        
         data_y = fam.join(data_y, on=['fid', 'iid'])
         data_y.reset_index(inplace=True)
         data_y.drop(['fid', 'iid', 'smoking_status', 'father', 'mother', 'tissue', 'i', 'ethnicity'], axis=1, inplace=True)
         data_y.set_index('index', inplace=True)
         data_y = data_y.astype({'trait': int})
         data_y.rename(columns={'trait':'smoker'}, inplace=True)
-        data_y['smoker'].replace([2, 1], [1, 0])
-        data_y['smoker'].unique()
+        data_y['smoker'].replace([2, 1], [1, 0], inplace=True)
 
         if visualize_labels:
             for label in data_y.columns.tolist()[2:]:
@@ -110,37 +111,50 @@ def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/', 
             dummy_values = pd.get_dummies(data_y[pheno], prefix="{0}_cat".format(pheno))
             data_y = pd.concat([data_y, dummy_values], axis=1)
 
+        if p_value_filter or N_best:
 
-    #      residualize
-    #     logger.info("Residualize Data Y")
-    #     import statsmodels.api as sm
-    #     y = data_y.values
-    #     X = cov.values
-    #     X = sm.add_constant(X)
-    #     model = sm.OLS(y, X, missing='drop')
-    #     results = model.fit()
-    #     y_res = y - results.predict(X).reshape(-1, 1)
-    #     data_y['Height'] = y_res
-    #     data_y['HeightCat'] = pd.qcut(data_y.Height, q=3, labels=[1, 2, 3])
-    #     tmpdf = pd.get_dummies(data_y.HeightCat)
-    #     d = {}
-    #     for i in tmpdf.columns:
-    #         d[i] = "Height_{}".format(i)
-    #     tmpdf.rename(d, axis='columns', inplace=True)
-    #     data_y = pd.concat([data_y, tmpdf], axis=1)
+            pvals = []
+            data_x = data_x[:, ~np.isnan(data_x.sum(axis=0))]
 
-    #     # now data_y colomns are Height, HeightCat, HeigthCat_0, ..
-    #     maskcolumns = data_y.columns.tolist()
-    #     maskcolumns.remove('Height')
-    #     logger.info("Save Data Y")
-    #     data_y[['Height']].to_csv(desc_path, sep="\t", index=False)
-    #     logger.info("Save Data Y (categorical)")
-    #     data_y[maskcolumns].to_csv(desc_categorical_path,
-    #                                sep="\t", index=False)
-    #     logger.info("Save Data X")
-    #     np.save(input_path, data_x.astype(float))
+            pbar = progressbar.ProgressBar(
+                max_value=data_x.shape[1], redirect_stdout=True, prefix="Filtering snps ")
 
-        # Housekeeping
+            n_errors = 0
+            pbar.start()
+            for idx in range(data_x.shape[1]):
+                pbar.update(idx+1)
+                X = np.concatenate([
+                    data_x[:, idx, np.newaxis],
+                    data_y[['age']].values,
+                    data_y[['gender']].astype(int).values], axis=1)
+                X = sm.add_constant(X)
+
+                model = sm.Logit(data_y['smoker'].values, X, missing='drop')
+
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore")
+                    try:
+                        results_res = model.fit(disp=0)
+                        pvals.append((results_res.pvalues[0]))
+                    except:
+                        pvals.append(1)
+                        n_errors += 1
+            #print(n_errors)
+            pvals = np.array(pvals)
+
+            if N_best:
+                snp_list = pvals.argsort()[:N_best].squeeze().tolist()
+
+            if p_value_filter:
+                snp_list_tmp = np.nonzero(pvals < p_value_filter)[0].squeeze().tolist()
+                if N_best:
+                    snp_list = list(set(snp_list).intersection(snp_list_tmp))
+                else:
+                    snp_list = snp_list_tmp
+
+            data_x = data_x[:, snp_list]
+            pbar.finish()
+
         np.save(input_path, data_x.astype(float))
         data_y.to_csv(desc_path, sep="\t", index=False)
     return Item(input_path=input_path, output_path=None,

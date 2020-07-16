@@ -7,7 +7,7 @@ from sklearn.decomposition import PCA
 
 setup_logging(level="info")
 
-data = fetch_aa_nicodep()
+data = fetch_aa_nicodep(p_value_filter=1e-4, N_best=500)
 manager = DataManager(
     input_path=data.input_path,
     labels=["smoker"],
@@ -102,7 +102,7 @@ class TwoLayersMLP(nn.Module):
         layer1_out = self.layers[0](x)
         x = self.layers[1:](layer1_out)
         if self.nb_classes == 1:
-            x = x.view(x.size(0))
+            x = nn.Sigmoid()(x.squeeze())
         return x, {"layer1": layer1_out}
 
 
@@ -160,47 +160,47 @@ def my_loss(x, y):
     indices without the channel dimension.
     """
     device = y.get_device()
-    print(x)
-    print(y)
-    if y.ndim == 2:
+    if y.ndim > 1:
         y = torch.argmax(y, dim=1).type(torch.LongTensor)
-        if device != -1:
-            y = y.to(device)
         criterion = nn.CrossEntropyLoss()
     else:
-        y = torch.unsqueeze(y, -1).type(torch.LongTensor)
-        x = torch.unsqueeze(x, -1)#.type(torch.LongTensor)
-        criterion = nn.BCEWithLogitsLoss()
+        y = y.type(torch.FloatTensor)
+        if device != -1:
+            y = y.to(device)
+        criterion = nn.BCELoss()#WithLogitsLoss()
     return criterion(x, y)
 
 
 cl = DeepLearningInterface(
     optimizer_name="Adam",
-    learning_rate=5e-4,
+    learning_rate=3e-5,
     loss=my_loss,
-    model=model)
+    #loss_name="BCELoss",
+    model=model,
+    metrics=['binary_precision', 'binary_recall'])#, 'f1_score'])
 test_history, train_history = cl.training(
     manager=manager,
-    nb_epochs=(100 if "CI_MODE" not in os.environ else 10),
-    checkpointdir="/neurospin/brainomics/2020_corentin_smoking",
+    nb_epochs=20,
+    checkpointdir="/neurospin/brainomics/2020_corentin_smoking/training_checkpoints",
     fold_index=0,
     with_validation=True)
 y_hat, X, y_true, loss, values = cl.testing(
     manager=manager,
-    with_logit=True,
+    with_logit=False,
+    #logit_function='sigmoid',
     predict=False)
 print(y_hat.shape, y_true.shape)
 print(y_hat)
 print(y_true)
 print("Crossentropy in prediction =", loss)
-heat = np.zeros([3, 3])
-for i in range(3):
-    klass = np.nonzero(y_true[:, i] > 0)
-    for j in range(3):
-        heat[i, j] = np.mean(y_hat[klass, j])
-print("Probabilities matrix", heat)
-plt.figure()
-plot = plt.imshow(heat, cmap="Blues")
-plt.ylabel("Predicted class")
-plt.xlabel("Observed class")
-plt.show()
+# heat = np.zeros([3, 3])
+# for i in range(3):
+#     klass = np.nonzero(y_true[:, i] > 0)
+#     for j in range(3):
+#         heat[i, j] = np.mean(y_hat[klass, j])
+# print("Probabilities matrix", heat)
+# plt.figure()
+# plot = plt.imshow(heat, cmap="Blues")
+# plt.ylabel("Predicted class")
+# plt.xlabel("Observed class")
+# plt.show()
