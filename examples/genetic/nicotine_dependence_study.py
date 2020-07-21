@@ -69,21 +69,13 @@ if visualize_pca:
 def select_features(manager, n_features, cov_file):
     #covariates = pd.read_csv(cov_file)
     for idx, train_dataset in enumerate(manager['train']):
+        print('hey')
         X_train = train_dataset.inputs[train_dataset.indices]
         y_train = train_dataset.labels[train_dataset.indices]
-
-        valid_dataset = manager["validation"][idx]
-        X_valid = valid_dataset.inputs[valid_dataset.indices]
-        y_valid = valid_dataset.labels[valid_dataset.indices]
-
-        #covariates_train = covariates.iloc[train_dataset.indices]
-        #covariates_valid = covariates.iloc[valid_dataset.indices]
-        
-        print(manager['train'][0].inputs[manager['train'][0].indices].shape)
-        X_train = X_train[:, ~np.isnan(X_train.sum(axis=0))]
-        X_valid = X_valid[:, ~np.isnan(X_valid.sum(axis=0))]
-        print(manager['train'][0].inputs[manager['train'][0].indices].shape)
-        break
+        inputs = train_dataset.inputs
+        manager['train'][0].inputs = inputs[:, ~np.isnan(inputs.sum(axis=0))]
+        print(manager['train'][0].inputs.shape)
+     
         
         pbar = progressbar.ProgressBar(
                 max_value=X_train.shape[1], redirect_stdout=True, prefix="Filtering snps fold {}".format(idx))
