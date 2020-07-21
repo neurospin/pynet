@@ -171,6 +171,7 @@ def select_features(manager, n_features, cov_file):
     snp_list = pvals_test.argsort()[:n_features].squeeze().tolist()
     X_test = X_test[:, snp_list]
 
+print('Start feature selection')
 select_features(manager, 500, '/leQ')
 
 import collections
