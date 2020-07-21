@@ -69,6 +69,8 @@ if visualize_pca:
 
 def select_features(manager, n_features, cov_file):
     covariates = pd.read_csv(cov_file)
+    covariates.drop(['FID', 'IID'], axis=1, inplace=True)
+    print(covariates.head())
     for idx, train_dataset in enumerate(manager['train']):
 
 
@@ -168,7 +170,7 @@ def select_features(manager, n_features, cov_file):
 print('Start feature selection')
 
 print(manager['test'].inputs.shape)
-select_features(manager, 500, '/leQ')
+select_features(manager, 500, '/neurospin/brainomics/2020_corentin_smoking/nicodep_nd_aa.cov')
 print(manager['test'].inputs.shape)
 
 import collections
