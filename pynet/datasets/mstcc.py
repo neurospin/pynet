@@ -47,7 +47,7 @@ logger = logging.getLogger("pynet")
 
 @Fetchers.register
 def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
-    visualize_labels=False, treat_nans='remove')#p_value_filter=None, N_best=None):
+    visualize_labels=False, treat_nans='remove'):#p_value_filter=None, N_best=None):
     """ Fetch/prepare nicotine dependence dataset for pynet.
 
     Matrix Y contains the average grain yield, column 1: Grain yield for
