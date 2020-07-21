@@ -79,10 +79,10 @@ def select_features(manager, n_features, cov_file):
         #covariates_train = covariates.iloc[train_dataset.indices]
         #covariates_valid = covariates.iloc[valid_dataset.indices]
         
-        print(manager['train'][0].shape)
+        print(manager['train'][0].inputs[manager['train'][0].indices])
         X_train = X_train[:, ~np.isnan(X_train.sum(axis=0))]
         X_valid = X_valid[:, ~np.isnan(X_valid.sum(axis=0))]
-        print(manager['train'][0].shape)
+        print(manager['train'][0].inputs[manager['train'][0].indices])
         break
         
         pbar = progressbar.ProgressBar(
@@ -96,12 +96,12 @@ def select_features(manager, n_features, cov_file):
             pbar.update(idx+1)
             X = np.concatenate([
                 X_train[:, idx, np.newaxis],
-                X_covariates], axis=1)
+                covariates_train], axis=1)
             X = sm.add_constant(X)
 
             Z = np.concatenate([
-                X_train[:, idx, np.newaxis],
-                X_covariates], axis=1)
+                X_valid[:, idx, np.newaxis],
+                covariates_valid], axis=1)
             Z = sm.add_constant(X)
 
             model_train = sm.Logit(y_train, X, missing='drop')
