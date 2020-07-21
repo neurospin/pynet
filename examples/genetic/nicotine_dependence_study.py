@@ -68,7 +68,7 @@ if visualize_pca:
 
 
 def select_features(manager, n_features, cov_file):
-    covariates = pd.read_csv(cov_file)
+    covariates = pd.read_csv(cov_file, sep=' ')
     covariates.drop(['FID', 'IID'], axis=1, inplace=True)
     print(covariates.head())
     for idx, train_dataset in enumerate(manager['train']):
@@ -101,7 +101,7 @@ def select_features(manager, n_features, cov_file):
             Z = np.concatenate([
                 X_valid[:, idx, np.newaxis],
                 covariates_valid], axis=1)
-            Z = sm.add_constant(X)
+            Z = sm.add_constant(Z)
 
             model_train = sm.Logit(y_train, X, missing='drop')
             model_valid = sm.Logit(y_valid, Z, missing='drop')
