@@ -121,15 +121,16 @@ def select_features(manager, n_features, cov_file):
                 except:
                     pvals_valid.append(1)
                     n_errors += 1
-        #print(n_errors)
+        
+        print('Number of errors: {}'.format(n_errors))
         pvals_train = np.array(pvals_train)
         pvals_valid = np.array(pvals_valid)
 
         snp_list_train = pvals_train.argsort()[:n_features].squeeze().tolist()
-        X_train = X_train[:, snp_list]
+        X_train = X_train[:, snp_list_train]
 
         snp_list_valid = pvals_valid.argsort()[:n_features].squeeze().tolist()
-        X_valid = X_valid[:, snp_list]
+        X_valid = X_valid[:, snp_list_valid]
 
     test_dataset = manager['test']
     X_test = test_dataset.inputs[test_dataset.indices]
@@ -138,56 +139,37 @@ def select_features(manager, n_features, cov_file):
     covariates_test = covariates.iloc[test_dataset.indices]
         
 
-        X_train = X_train[:, ~np.isnan(X_train.sum(axis=0))]
-        X_valid = X_valid[:, ~np.isnan(X_valid.sum(axis=0))]
-        print(manager['train'][0].shape)
-        break
-        
-        pbar = progressbar.ProgressBar(
-                max_value=X_train.shape[1], redirect_stdout=True, prefix="Filtering snps fold {}".format(idx))
+    X_test = X_test[:, ~np.isnan(X_test.sum(axis=0))]
+    
+    pbar = progressbar.ProgressBar(
+            max_value=X_test.shape[1], redirect_stdout=True, prefix="Filtering snps test ")
 
-        pvals_train = []
-        pvals_valid = []
-        n_errors = 0
-        pbar.start()
-        for idx in range(X_train.shape[1]):
-            pbar.update(idx+1)
-            X = np.concatenate([
-                X_train[:, idx, np.newaxis],
-                X_covariates], axis=1)
-            X = sm.add_constant(X)
+    pvals_test = []
+    n_errors = 0
+    pbar.start()
+    for idx in range(X_train.shape[1]):
+        pbar.update(idx+1)
+        X = np.concatenate([
+            X_test[:, idx, np.newaxis],
+            covariates_test], axis=1)
+        X = sm.add_constant(X)
 
-            Z = np.concatenate([
-                X_train[:, idx, np.newaxis],
-                X_covariates], axis=1)
-            Z = sm.add_constant(X)
+        model_test = sm.Logit(y_test, X, missing='drop')
 
-            model_train = sm.Logit(y_train, X, missing='drop')
-            model_valid = sm.Logit(y_valid, Z, missing='drop')
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            try:
+                results_test = model_test.fit(disp=0)
+                pvals_test.append((results_test.pvalues[0]))
+            except:
+                pvals_test.append(1)
+                n_errors += 1
+    
+    print('Number of errors: {}'.format(n_errors))
+    pvals_test = np.array(pvals_test)
 
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore")
-                try:
-                    results_train = model_train.fit(disp=0)
-                    pvals_train.append((results_train.pvalues[0]))
-                except:
-                    pvals_train.append(1)
-                    n_errors += 1
-                try:
-                    results_valid = model_valid.fit(disp=0)
-                    pvals_valid.append((results_valid.pvalues[0]))
-                except:
-                    pvals_valid.append(1)
-                    n_errors += 1
-        #print(n_errors)
-        pvals_train = np.array(pvals_train)
-        pvals_valid = np.array(pvals_valid)
-
-        snp_list_train = pvals_train.argsort()[:n_features].squeeze().tolist()
-        X_train = X_train[:, snp_list]
-
-        snp_list_valid = pvals_valid.argsort()[:n_features].squeeze().tolist()
-        X_valid = X_valid[:, snp_list]
+    snp_list = pvals_test.argsort()[:n_features].squeeze().tolist()
+    X_test = X_test[:, snp_list]
 
 select_features(manager, 500, '/leQ')
 
