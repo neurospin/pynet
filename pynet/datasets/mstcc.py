@@ -76,7 +76,7 @@ def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
     input_path = os.path.join(datasetdir, "pynet_aa_nicodep_inputs.npy")
     #file_todel = []
     if not os.path.isfile(desc_path) or not os.path.isfile(desc_path):
-        bim, fam, bed = read_plink(os.path.join(datasetdir, 'nicodep_aa'))
+        bim, fam, bed = read_plink(os.path.join(datasetdir, 'nicodep_nd_aa'))
 
         data_x = np.transpose(bed.compute())
 
@@ -142,7 +142,6 @@ def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
         #             except:
         #                 pvals.append(1)
         #                 n_errors += 1
-        #     #print(n_errors)
         #     pvals = np.array(pvals)
 
         #     if N_best:

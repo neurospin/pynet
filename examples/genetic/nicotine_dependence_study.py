@@ -7,6 +7,7 @@ from sklearn.decomposition import PCA
 import pandas as pd
 import statsmodels.api as sm
 import warnings
+import progressbar
 
 setup_logging(level="info")
 
@@ -67,15 +68,19 @@ if visualize_pca:
 
 
 def select_features(manager, n_features, cov_file):
-    #covariates = pd.read_csv(cov_file)
+    covariates = pd.read_csv(cov_file)
     for idx, train_dataset in enumerate(manager['train']):
-        print('hey')
+
+
         X_train = train_dataset.inputs[train_dataset.indices]
         y_train = train_dataset.labels[train_dataset.indices]
-        inputs = train_dataset.inputs
-        manager['train'][0].inputs = inputs[:, ~np.isnan(inputs.sum(axis=0))]
-        print(manager['train'][0].inputs.shape)
-     
+
+        valid_dataset = manager["validation"][idx]
+        X_valid = valid_dataset.inputs[valid_dataset.indices]
+        y_valid = valid_dataset.labels[valid_dataset.indices]
+
+        covariates_train = covariates.iloc[train_dataset.indices]
+        covariates_valid = covariates.iloc[valid_dataset.indices]
         
         pbar = progressbar.ProgressBar(
                 max_value=X_train.shape[1], redirect_stdout=True, prefix="Filtering snps fold {}".format(idx))
@@ -119,20 +124,17 @@ def select_features(manager, n_features, cov_file):
         pvals_valid = np.array(pvals_valid)
 
         snp_list_train = pvals_train.argsort()[:n_features].squeeze().tolist()
-        X_train = X_train[:, snp_list_train]
+        manager['train'][idx].inputs = train_dataset.inputs[:, snp_list_train]
 
         snp_list_valid = pvals_valid.argsort()[:n_features].squeeze().tolist()
-        X_valid = X_valid[:, snp_list_valid]
+        manager['validation'][idx].inputs = valid_dataset.inputs[:, snp_list_valid]
 
     test_dataset = manager['test']
     X_test = test_dataset.inputs[test_dataset.indices]
     y_test = test_dataset.labels[test_dataset.indices]
 
     covariates_test = covariates.iloc[test_dataset.indices]
-        
-
-    X_test = X_test[:, ~np.isnan(X_test.sum(axis=0))]
-    
+            
     pbar = progressbar.ProgressBar(
             max_value=X_test.shape[1], redirect_stdout=True, prefix="Filtering snps test ")
 
@@ -161,10 +163,13 @@ def select_features(manager, n_features, cov_file):
     pvals_test = np.array(pvals_test)
 
     snp_list = pvals_test.argsort()[:n_features].squeeze().tolist()
-    X_test = X_test[:, snp_list]
+    manager['test'].inputs = test_dataset.inputs[:, snp_list]
 
 print('Start feature selection')
+
+print(manager['test'].inputs.shape)
 select_features(manager, 500, '/leQ')
+print(manager['test'].inputs.shape)
 
 import collections
 import torch
