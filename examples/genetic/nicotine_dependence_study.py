@@ -79,10 +79,10 @@ def select_features(manager, n_features, cov_file):
         #covariates_train = covariates.iloc[train_dataset.indices]
         #covariates_valid = covariates.iloc[valid_dataset.indices]
         
-        print(manager['train'][0].inputs[manager['train'][0].indices])
+        print(manager['train'][0].inputs[manager['train'][0].indices].shape)
         X_train = X_train[:, ~np.isnan(X_train.sum(axis=0))]
         X_valid = X_valid[:, ~np.isnan(X_valid.sum(axis=0))]
-        print(manager['train'][0].inputs[manager['train'][0].indices])
+        print(manager['train'][0].inputs[manager['train'][0].indices].shape)
         break
         
         pbar = progressbar.ProgressBar(
