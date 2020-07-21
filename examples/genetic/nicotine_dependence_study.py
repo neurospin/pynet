@@ -4,10 +4,13 @@ from pynet.utils import setup_logging
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.decomposition import PCA
+import pandas as pd
+import statsmodels.api as sm
+import warnings
 
 setup_logging(level="info")
 
-data = fetch_aa_nicodep(p_value_filter=1e-4, N_best=500)
+data = fetch_aa_nicodep(treat_nans=None)#p_value_filter=1e-4, N_best=500)
 manager = DataManager(
     input_path=data.input_path,
     labels=["smoker"],
@@ -62,6 +65,131 @@ if visualize_pca:
     plt.legend(loc="best")
     plt.show()
 
+
+def select_features(manager, n_features, cov_file):
+    #covariates = pd.read_csv(cov_file)
+    for idx, train_dataset in enumerate(manager['train']):
+        X_train = train_dataset.inputs[train_dataset.indices]
+        y_train = train_dataset.labels[train_dataset.indices]
+
+        valid_dataset = manager["validation"][idx]
+        X_valid = valid_dataset.inputs[valid_dataset.indices]
+        y_valid = valid_dataset.labels[valid_dataset.indices]
+
+        #covariates_train = covariates.iloc[train_dataset.indices]
+        #covariates_valid = covariates.iloc[valid_dataset.indices]
+        
+        print(manager['train'][0].shape)
+        X_train = X_train[:, ~np.isnan(X_train.sum(axis=0))]
+        X_valid = X_valid[:, ~np.isnan(X_valid.sum(axis=0))]
+        print(manager['train'][0].shape)
+        break
+        
+        pbar = progressbar.ProgressBar(
+                max_value=X_train.shape[1], redirect_stdout=True, prefix="Filtering snps fold {}".format(idx))
+
+        pvals_train = []
+        pvals_valid = []
+        n_errors = 0
+        pbar.start()
+        for idx in range(X_train.shape[1]):
+            pbar.update(idx+1)
+            X = np.concatenate([
+                X_train[:, idx, np.newaxis],
+                X_covariates], axis=1)
+            X = sm.add_constant(X)
+
+            Z = np.concatenate([
+                X_train[:, idx, np.newaxis],
+                X_covariates], axis=1)
+            Z = sm.add_constant(X)
+
+            model_train = sm.Logit(y_train, X, missing='drop')
+            model_valid = sm.Logit(y_valid, Z, missing='drop')
+
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                try:
+                    results_train = model_train.fit(disp=0)
+                    pvals_train.append((results_train.pvalues[0]))
+                except:
+                    pvals_train.append(1)
+                    n_errors += 1
+                try:
+                    results_valid = model_valid.fit(disp=0)
+                    pvals_valid.append((results_valid.pvalues[0]))
+                except:
+                    pvals_valid.append(1)
+                    n_errors += 1
+        #print(n_errors)
+        pvals_train = np.array(pvals_train)
+        pvals_valid = np.array(pvals_valid)
+
+        snp_list_train = pvals_train.argsort()[:n_features].squeeze().tolist()
+        X_train = X_train[:, snp_list]
+
+        snp_list_valid = pvals_valid.argsort()[:n_features].squeeze().tolist()
+        X_valid = X_valid[:, snp_list]
+
+    test_dataset = manager['test']
+    X_test = test_dataset.inputs[test_dataset.indices]
+    y_test = test_dataset.labels[test_dataset.indices]
+
+    covariates_test = covariates.iloc[test_dataset.indices]
+        
+
+        X_train = X_train[:, ~np.isnan(X_train.sum(axis=0))]
+        X_valid = X_valid[:, ~np.isnan(X_valid.sum(axis=0))]
+        print(manager['train'][0].shape)
+        break
+        
+        pbar = progressbar.ProgressBar(
+                max_value=X_train.shape[1], redirect_stdout=True, prefix="Filtering snps fold {}".format(idx))
+
+        pvals_train = []
+        pvals_valid = []
+        n_errors = 0
+        pbar.start()
+        for idx in range(X_train.shape[1]):
+            pbar.update(idx+1)
+            X = np.concatenate([
+                X_train[:, idx, np.newaxis],
+                X_covariates], axis=1)
+            X = sm.add_constant(X)
+
+            Z = np.concatenate([
+                X_train[:, idx, np.newaxis],
+                X_covariates], axis=1)
+            Z = sm.add_constant(X)
+
+            model_train = sm.Logit(y_train, X, missing='drop')
+            model_valid = sm.Logit(y_valid, Z, missing='drop')
+
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                try:
+                    results_train = model_train.fit(disp=0)
+                    pvals_train.append((results_train.pvalues[0]))
+                except:
+                    pvals_train.append(1)
+                    n_errors += 1
+                try:
+                    results_valid = model_valid.fit(disp=0)
+                    pvals_valid.append((results_valid.pvalues[0]))
+                except:
+                    pvals_valid.append(1)
+                    n_errors += 1
+        #print(n_errors)
+        pvals_train = np.array(pvals_train)
+        pvals_valid = np.array(pvals_valid)
+
+        snp_list_train = pvals_train.argsort()[:n_features].squeeze().tolist()
+        X_train = X_train[:, snp_list]
+
+        snp_list_valid = pvals_valid.argsort()[:n_features].squeeze().tolist()
+        X_valid = X_valid[:, snp_list]
+
+select_features(manager, 500, '/leQ')
 
 import collections
 import torch

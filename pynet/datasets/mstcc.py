@@ -47,7 +47,7 @@ logger = logging.getLogger("pynet")
 
 @Fetchers.register
 def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
-    visualize_labels=False, p_value_filter=None, N_best=None):
+    visualize_labels=False, treat_nans='remove')#p_value_filter=None, N_best=None):
     """ Fetch/prepare nicotine dependence dataset for pynet.
 
     Matrix Y contains the average grain yield, column 1: Grain yield for
@@ -111,49 +111,52 @@ def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
             dummy_values = pd.get_dummies(data_y[pheno], prefix="{0}_cat".format(pheno))
             data_y = pd.concat([data_y, dummy_values], axis=1)
 
-        if p_value_filter or N_best:
-
-            pvals = []
+        if treat_nans == 'remove':
             data_x = data_x[:, ~np.isnan(data_x.sum(axis=0))]
 
-            pbar = progressbar.ProgressBar(
-                max_value=data_x.shape[1], redirect_stdout=True, prefix="Filtering snps ")
+        # if p_value_filter or N_best:
 
-            n_errors = 0
-            pbar.start()
-            for idx in range(data_x.shape[1]):
-                pbar.update(idx+1)
-                X = np.concatenate([
-                    data_x[:, idx, np.newaxis],
-                    data_y[['age']].values,
-                    data_y[['gender']].astype(int).values], axis=1)
-                X = sm.add_constant(X)
+        #     pvals = []
+        #     data_x = data_x[:, ~np.isnan(data_x.sum(axis=0))]
 
-                model = sm.Logit(data_y['smoker'].values, X, missing='drop')
+        #     pbar = progressbar.ProgressBar(
+        #         max_value=data_x.shape[1], redirect_stdout=True, prefix="Filtering snps ")
 
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore")
-                    try:
-                        results_res = model.fit(disp=0)
-                        pvals.append((results_res.pvalues[0]))
-                    except:
-                        pvals.append(1)
-                        n_errors += 1
-            #print(n_errors)
-            pvals = np.array(pvals)
+        #     n_errors = 0
+        #     pbar.start()
+        #     for idx in range(data_x.shape[1]):
+        #         pbar.update(idx+1)
+        #         X = np.concatenate([
+        #             data_x[:, idx, np.newaxis],
+        #             data_y[['age']].values,
+        #             data_y[['gender']].astype(int).values], axis=1)
+        #         X = sm.add_constant(X)
 
-            if N_best:
-                snp_list = pvals.argsort()[:N_best].squeeze().tolist()
+        #         model = sm.Logit(data_y['smoker'].values, X, missing='drop')
 
-            if p_value_filter:
-                snp_list_tmp = np.nonzero(pvals < p_value_filter)[0].squeeze().tolist()
-                if N_best:
-                    snp_list = list(set(snp_list).intersection(snp_list_tmp))
-                else:
-                    snp_list = snp_list_tmp
+        #         with warnings.catch_warnings():
+        #             warnings.filterwarnings("ignore")
+        #             try:
+        #                 results_res = model.fit(disp=0)
+        #                 pvals.append((results_res.pvalues[0]))
+        #             except:
+        #                 pvals.append(1)
+        #                 n_errors += 1
+        #     #print(n_errors)
+        #     pvals = np.array(pvals)
 
-            data_x = data_x[:, snp_list]
-            pbar.finish()
+        #     if N_best:
+        #         snp_list = pvals.argsort()[:N_best].squeeze().tolist()
+
+        #     if p_value_filter:
+        #         snp_list_tmp = np.nonzero(pvals < p_value_filter)[0].squeeze().tolist()
+        #         if N_best:
+        #             snp_list = list(set(snp_list).intersection(snp_list_tmp))
+        #         else:
+        #             snp_list = snp_list_tmp
+
+        #     data_x = data_x[:, snp_list]
+        #     pbar.finish()
 
         np.save(input_path, data_x.astype(float))
         data_y.to_csv(desc_path, sep="\t", index=False)
