@@ -8,170 +8,149 @@ import pandas as pd
 import statsmodels.api as sm
 import warnings
 import progressbar
+import pickle
 
 setup_logging(level="info")
 
-data = fetch_aa_nicodep(treat_nans=None)#p_value_filter=1e-4, N_best=500)
-manager = DataManager(
-    input_path=data.input_path,
-    labels=["smoker"],
-    stratify_label="smoker",
-    metadata_path=data.metadata_path,
-    number_of_folds=2,
-    batch_size=5,
-    test_size=0.2)
+manager_path = '/neurospin/brainomics/2020_corentin_smoking/data_manager.pkl'
+if not os.path.exists(manager_path):
 
-visualize_pca = False
+    data = fetch_aa_nicodep()#p_value_filter=1e-4, N_best=500)
 
-train_dataset = manager["train"][0]
-X_train = train_dataset.inputs[train_dataset.indices]
-y_train = train_dataset.labels[train_dataset.indices]
-test_dataset = manager["test"]
-X_test = test_dataset.inputs[test_dataset.indices]
-y_test = test_dataset.labels[test_dataset.indices]
-valid_dataset = manager["validation"][0]
-X_valid = valid_dataset.inputs[valid_dataset.indices]
-y_valid = valid_dataset.labels[valid_dataset.indices]
-print(X_train.shape, y_train.shape)
-print(X_test.shape, y_test.shape)
-print(X_valid.shape, y_valid.shape)
-nb_snps = X_train.shape[1]
-y_train = manager["train"][0].labels[train_dataset.indices]
-print(y_train.shape)
+    manager = DataManager(
+        input_path=data.input_path,
+        labels=["smoker"],
+        stratify_label="smoker",
+        metadata_path=data.metadata_path,
+        number_of_folds=2,
+        batch_size=5,
+        test_size=0.2)
 
-if visualize_pca:
+    visualize_pca = False
 
-    nan_mask_train = np.isnan(X_train.sum(axis=0))
-    nan_mask_test = np.isnan(X_test.sum(axis=0))
+    if visualize_pca:
 
-    X_train_no_na = X_train[:, ~(nan_mask_train|nan_mask_test)]
-    X_test_no_na = X_test[:, ~(nan_mask_train|nan_mask_test)]
-
-    print(X_train_no_na.shape)
-    print(X_test_no_na.shape)
-
-    plt.figure()
-    plt.title("Train / test data")
-    plt.hist(y_train, label="Train")
-    plt.hist(y_test, label="Test")
-    plt.legend(loc="best")
-    X = np.concatenate((X_train_no_na, X_test_no_na))
-    pca = PCA(n_components=2)
-    p = pca.fit(X).fit_transform(X)
-    Ntrain = X_train.shape[0]
-    plt.figure()
-    plt.title("PCA decomposition")
-    plt.scatter(p[0:Ntrain, 0], p[0:Ntrain, 1], label="Train")
-    plt.scatter(p[Ntrain:, 0], p[Ntrain:, 1], label="Test", color="orange")
-    plt.legend(loc="best")
-    plt.show()
-
-
-def select_features(manager, n_features, cov_file):
-    covariates = pd.read_csv(cov_file, sep=' ')
-    covariates.drop(['FID', 'IID'], axis=1, inplace=True)
-    print(covariates.head())
-    for idx, train_dataset in enumerate(manager['train']):
-
-
+        train_dataset = manager["train"][0]
         X_train = train_dataset.inputs[train_dataset.indices]
         y_train = train_dataset.labels[train_dataset.indices]
+        test_dataset = manager["test"]
+        X_test = test_dataset.inputs[test_dataset.indices]
+        y_test = test_dataset.labels[test_dataset.indices]
 
-        valid_dataset = manager["validation"][idx]
-        X_valid = valid_dataset.inputs[valid_dataset.indices]
-        y_valid = valid_dataset.labels[valid_dataset.indices]
+        plt.figure()
+        plt.title("Train / test data")
+        plt.hist(y_train, label="Train")
+        plt.hist(y_test, label="Test")
+        plt.legend(loc="best")
+        X = np.concatenate((X_train_no_na, X_test_no_na))
+        pca = PCA(n_components=2)
+        p = pca.fit(X).fit_transform(X)
+        Ntrain = X_train.shape[0]
+        plt.figure()
+        plt.title("PCA decomposition")
+        plt.scatter(p[0:Ntrain, 0], p[0:Ntrain, 1], label="Train")
+        plt.scatter(p[Ntrain:, 0], p[Ntrain:, 1], label="Test", color="orange")
+        plt.legend(loc="best")
+        plt.show()
 
-        covariates_train = covariates.iloc[train_dataset.indices]
-        covariates_valid = covariates.iloc[valid_dataset.indices]
-        
+
+    def select_features(manager, n_features, cov_file):
+        covariates = pd.read_csv(cov_file, sep=' ')
+        covariates.drop(['FID', 'IID'], axis=1, inplace=True)
+        for idx, train_dataset in enumerate(manager['train']):
+
+            X_train = train_dataset.inputs[train_dataset.indices]
+            y_train = train_dataset.labels[train_dataset.indices]
+
+            valid_dataset = manager["validation"][idx]
+
+            covariates_train = covariates.iloc[train_dataset.indices].values
+
+            pbar = progressbar.ProgressBar(
+                    max_value=X_train.shape[1], redirect_stdout=True, prefix="Filtering snps fold {}".format(idx))
+
+            pvals = []
+            n_errors = 0
+            pbar.start()
+            for i in range(X_train.shape[1]):
+                pbar.update(i+1)
+                X = np.concatenate([
+                    X_train[:, i, np.newaxis],
+                    covariates_train], axis=1)
+
+                X = sm.add_constant(X)
+
+                model = sm.Logit(y_train, X, missing='drop')
+
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore")
+                    try:
+                        results = model.fit(disp=0)
+                        pvals.append((results.pvalues[0]))
+                    except:
+                        pvals.append(1)
+                        n_errors += 1
+
+            pbar.finish()
+            print('Number of errors: {}'.format(n_errors))
+            pvals = np.array(pvals)
+
+            snp_list = pvals.argsort()[:n_features].squeeze().tolist()
+            manager['train'][idx].inputs = train_dataset.inputs[:, snp_list]
+
+            manager['validation'][idx].inputs = valid_dataset.inputs[:, snp_list]
+
+        test_dataset = manager['test']
+
+        train_dataset = manager['train'][0]
+        valid_dataset = manager['validation'][0]
+
+        full_train_indices = np.concatenate([train_dataset.indices, valid_dataset.indices])
+
+        covariates_full_train = covariates.iloc[full_train_indices].values
+        full_X_train = train_dataset.inputs[full_train_indices]
+        full_y_train = train_dataset.labels[full_train_indices]
+        print(full_X_train.shape)
+
         pbar = progressbar.ProgressBar(
-                max_value=X_train.shape[1], redirect_stdout=True, prefix="Filtering snps fold {}".format(idx))
+                max_value=full_X_train.shape[1], redirect_stdout=True, prefix="Filtering snps test ")
 
-        pvals_train = []
-        pvals_valid = []
+        pvals = []
         n_errors = 0
         pbar.start()
-        for idx in range(X_train.shape[1]):
+        for idx in range(full_X_train.shape[1]):
             pbar.update(idx+1)
             X = np.concatenate([
-                X_train[:, idx, np.newaxis],
-                covariates_train], axis=1)
+                full_X_train[:, idx, np.newaxis],
+                covariates_full_train], axis=1)
             X = sm.add_constant(X)
 
-            Z = np.concatenate([
-                X_valid[:, idx, np.newaxis],
-                covariates_valid], axis=1)
-            Z = sm.add_constant(Z)
-
-            model_train = sm.Logit(y_train, X, missing='drop')
-            model_valid = sm.Logit(y_valid, Z, missing='drop')
+            model = sm.Logit(full_y_train, X, missing='drop')
 
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore")
                 try:
-                    results_train = model_train.fit(disp=0)
-                    pvals_train.append((results_train.pvalues[0]))
-                except:
-                    pvals_train.append(1)
+                    results = model.fit(disp=0)
+                    pvals.append((results.pvalues[0]))
+                except Exception as e:
+                    pvals.append(1)
                     n_errors += 1
-                try:
-                    results_valid = model_valid.fit(disp=0)
-                    pvals_valid.append((results_valid.pvalues[0]))
-                except:
-                    pvals_valid.append(1)
-                    n_errors += 1
-        
+        pbar.finish()
         print('Number of errors: {}'.format(n_errors))
-        pvals_train = np.array(pvals_train)
-        pvals_valid = np.array(pvals_valid)
+        pvals = np.array(pvals)
 
-        snp_list_train = pvals_train.argsort()[:n_features].squeeze().tolist()
-        manager['train'][idx].inputs = train_dataset.inputs[:, snp_list_train]
+        snp_list = pvals.argsort()[:n_features].squeeze().tolist()
+        manager['test'].inputs = test_dataset.inputs[:, snp_list]
 
-        snp_list_valid = pvals_valid.argsort()[:n_features].squeeze().tolist()
-        manager['validation'][idx].inputs = valid_dataset.inputs[:, snp_list_valid]
+    print('Start feature selection')
 
-    test_dataset = manager['test']
-    X_test = test_dataset.inputs[test_dataset.indices]
-    y_test = test_dataset.labels[test_dataset.indices]
+    select_features(manager, 1000, '/neurospin/brainomics/2020_corentin_smoking/nicodep_nd_aa.cov')
+    with open(manager_path, 'wb') as output:
+        pickle.dump(manager, output, pickle.HIGHEST_PROTOCOL)
+else:
+    with open(manager_path, 'rb') as input:
+        manager = pickle.load(input)
 
-    covariates_test = covariates.iloc[test_dataset.indices]
-            
-    pbar = progressbar.ProgressBar(
-            max_value=X_test.shape[1], redirect_stdout=True, prefix="Filtering snps test ")
-
-    pvals_test = []
-    n_errors = 0
-    pbar.start()
-    for idx in range(X_train.shape[1]):
-        pbar.update(idx+1)
-        X = np.concatenate([
-            X_test[:, idx, np.newaxis],
-            covariates_test], axis=1)
-        X = sm.add_constant(X)
-
-        model_test = sm.Logit(y_test, X, missing='drop')
-
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore")
-            try:
-                results_test = model_test.fit(disp=0)
-                pvals_test.append((results_test.pvalues[0]))
-            except:
-                pvals_test.append(1)
-                n_errors += 1
-    
-    print('Number of errors: {}'.format(n_errors))
-    pvals_test = np.array(pvals_test)
-
-    snp_list = pvals_test.argsort()[:n_features].squeeze().tolist()
-    manager['test'].inputs = test_dataset.inputs[:, snp_list]
-
-print('Start feature selection')
-
-print(manager['test'].inputs.shape)
-select_features(manager, 500, '/neurospin/brainomics/2020_corentin_smoking/nicodep_nd_aa.cov')
-print(manager['test'].inputs.shape)
 
 import collections
 import torch
@@ -232,8 +211,8 @@ def linear1_l1_activity_regularizer(signal):
     return l1_regularization
 
 
-nb_snps = X_train.shape[1]
-model = TwoLayersMLP(nb_snps, nb_neurons=[64, 32], nb_classes=1)
+nb_snps = manager['train'][0].inputs.shape[1]
+model = TwoLayersMLP(nb_snps, nb_neurons=[128, 32], nb_classes=1)
 print(model)
 # cl = DeepLearningInterface(
 #     optimizer_name="SGD",
@@ -287,7 +266,7 @@ cl = DeepLearningInterface(
     loss=my_loss,
     #loss_name="BCELoss",
     model=model,
-    metrics=['binary_precision', 'binary_recall'])#, 'f1_score'])
+    metrics=['binary_precision', 'binary_recall'])#, 'sklearn_f1_score'])
 test_history, train_history = cl.training(
     manager=manager,
     nb_epochs=20,
