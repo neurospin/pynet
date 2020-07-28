@@ -9,20 +9,24 @@ import statsmodels.api as sm
 import warnings
 import progressbar
 import pickle
+import shutil
+from pandas_plink import read_plink
+import subprocess
 
 setup_logging(level="info")
 
-manager_path = '/neurospin/brainomics/2020_corentin_smoking/data_manager.pkl'
+data_path = '/neurospin/brainomics/2020_corentin_smoking/'
+manager_path = os.path.join(data_path, 'data_manager.pkl')
 if not os.path.exists(manager_path):
 
-    data = fetch_aa_nicodep()#p_value_filter=1e-4, N_best=500)
+    data = fetch_aa_nicodep(data_path, treat_nans=None)
 
     manager = DataManager(
         input_path=data.input_path,
         labels=["smoker"],
         stratify_label="smoker",
         metadata_path=data.metadata_path,
-        number_of_folds=2,
+        number_of_folds=4,
         batch_size=5,
         test_size=0.2)
 
@@ -54,9 +58,13 @@ if not os.path.exists(manager_path):
         plt.show()
 
 
-    def select_features(manager, n_features, cov_file):
-        covariates = pd.read_csv(cov_file, sep=' ')
-        covariates.drop(['FID', 'IID'], axis=1, inplace=True)
+    def select_features(manager, n_features, data_name,
+        use_plink=True, plink_path=os.path.join(data_path, 'plink'),
+        plink_maf=0.05):
+
+        if not use_plink:
+            covariates = pd.read_csv(cov_file, sep=' ')
+            covariates.drop(['FID', 'IID'], axis=1, inplace=True)
         for idx, train_dataset in enumerate(manager['train']):
 
             X_train = train_dataset.inputs[train_dataset.indices]
@@ -64,23 +72,147 @@ if not os.path.exists(manager_path):
 
             valid_dataset = manager["validation"][idx]
 
-            covariates_train = covariates.iloc[train_dataset.indices].values
+            if use_plink:
+                if not os.path.isdir(os.path.join(data_path, 'tmp')):
+                    os.mkdir(os.path.join(data_path, 'tmp'))
+
+                _, fam, _ = read_plink(os.path.join(data_path, 'nicodep_nd_aa'),
+                    verbose=False)
+
+                to_keep = fam[['fid', 'iid']].iloc[train_dataset.indices]
+                to_keep.to_csv(os.path.join(data_path, 'tmp', 'indivs.txt'),
+                    header=False, index=False, sep=' ')
+
+                file_path = os.path.join(data_path, data_name)
+
+                print('Feature selection fold {}'.format(idx))
+                # subprocess.run([
+                #     os.path.join(plink_path, 'plink'),
+                #     '--bfile', file_path,
+                #     '--maf', str(plink_maf),
+                #     '--geno', str(0),
+                #     '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
+                #     '--logistic', '--covar', file_path + '.cov',
+                #     '--out', os.path.join(data_path, 'tmp', 'res')],
+                #     stdout=open(os.devnull, 'wb'))
+                os.system(
+                    '{} --bfile {} --maf {} --geno {} --keep {} --logistic --covar {} --out {} '.format(
+                        os.path.join(plink_path, 'plink'),
+                        file_path,
+                        plink_maf,
+                        0,
+                        os.path.join(data_path, 'tmp', 'indivs.txt'),
+                        file_path + '.cov',
+                        os.path.join(data_path, 'tmp', 'res')
+                    ))
+
+                res = pd.read_csv(os.path.join(data_path, 'tmp', 'res.assoc.logistic'), delim_whitespace=True)
+
+                snp_list = np.sort(res.loc[res['TEST'] == 'ADD', 'P'].values.argsort()[:n_features].squeeze()).tolist()
+            else:
+                covariates_train = covariates.iloc[train_dataset.indices]
+
+                pbar = progressbar.ProgressBar(
+                        max_value=X_train.shape[1], redirect_stdout=True, prefix="Filtering snps fold {}".format(idx))
+
+                pvals = []
+                n_errors = 0
+                pbar.start()
+                for i in range(X_train.shape[1]):
+                    pbar.update(i+1)
+                    X = np.concatenate([
+                        X_train[:, i, np.newaxis],
+                        covariates_train.values], axis=1)
+
+                    X = sm.add_constant(X)
+
+                    model = sm.Logit(y_train, X, missing='drop')
+
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore")
+                        try:
+                            results = model.fit(disp=0)
+                            pvals.append((results.pvalues[0]))
+                        except:
+                            pvals.append(1)
+                            n_errors += 1
+
+                pbar.finish()
+                print('Number of errors: {}'.format(n_errors))
+                pvals = np.array(pvals)
+
+                snp_list = np.sort(pvals.argsort()[:n_features].squeeze()).tolist()
+
+            manager['train'][idx].inputs = train_dataset.inputs[:, snp_list]
+
+            manager['validation'][idx].inputs = valid_dataset.inputs[:, snp_list]
+
+
+
+        test_dataset = manager['test']
+
+        if use_plink:
+            if not os.path.isdir(os.path.join(data_path, 'tmp')):
+                os.mkdir(os.path.join(data_path, 'tmp'))
+
+            _, fam, _ = read_plink(os.path.join(data_path, 'nicodep_nd_aa'),
+                verbose=False)
+
+            to_remove = fam[['fid', 'iid']].iloc[test_dataset.indices]
+            to_remove.to_csv(os.path.join(data_path, 'tmp', 'indivs.txt'),
+                header=False, index=False, sep=' ')
+
+            file_path = os.path.join(data_path, data_name)
+
+            print('Feature selection for testing'.format(idx))
+            # subprocess.run([
+            #     os.path.join(plink_path, 'plink'),
+            #     '--bfile', file_path,
+            #     '--maf', str(plink_maf),
+            #     '--geno', str(0),
+            #     '--remove', os.path.join(data_path, 'tmp', 'indivs.txt'),
+            #     '--logistic', '--covar', file_path + '.cov',
+            #     '--out', os.path.join(data_path, 'tmp', 'res')],
+            #     stdout=open(os.devnull, 'wb'))
+            os.system(
+                '{} --bfile {} --maf {} --geno {} --remove {} --logistic --covar {} --out {} '.format(
+                    os.path.join(plink_path, 'plink'),
+                    file_path,
+                    plink_maf,
+                    0,
+                    os.path.join(data_path, 'tmp', 'indivs.txt'),
+                    file_path + '.cov',
+                    os.path.join(data_path, 'tmp', 'res')
+                ))
+
+            res = pd.read_csv(os.path.join(data_path, 'tmp', 'res.assoc.logistic'), delim_whitespace=True)
+            snp_list = np.sort(res.loc[res['TEST'] =='ADD', 'P'].values.argsort()[:n_features].squeeze()).tolist()
+
+        else:
+            train_dataset = manager['train'][0]
+            valid_dataset = manager['validation'][0]
+
+            full_train_indices = np.concatenate([train_dataset.indices, valid_dataset.indices])
+
+            covariates_full_train = covariates.iloc[full_train_indices]
+            full_X_train = test_dataset.inputs[full_train_indices]
+            full_y_train = test_dataset.labels[full_train_indices]
+            print(full_X_train.shape)
 
             pbar = progressbar.ProgressBar(
-                    max_value=X_train.shape[1], redirect_stdout=True, prefix="Filtering snps fold {}".format(idx))
+                    max_value=full_X_train.shape[1], redirect_stdout=True, prefix="Filtering snps test ")
 
             pvals = []
             n_errors = 0
             pbar.start()
-            for i in range(X_train.shape[1]):
-                pbar.update(i+1)
+            for idx in range(full_X_train.shape[1]):
+                pbar.update(idx+1)
                 X = np.concatenate([
-                    X_train[:, i, np.newaxis],
-                    covariates_train], axis=1)
-
+                    full_X_train[:, idx, np.newaxis],
+                    covariates_full_train.values], axis=1)
                 X = sm.add_constant(X)
 
-                model = sm.Logit(y_train, X, missing='drop')
+                model = sm.Logit(full_y_train, X, missing='drop')
 
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore")
@@ -90,64 +222,24 @@ if not os.path.exists(manager_path):
                     except:
                         pvals.append(1)
                         n_errors += 1
-
             pbar.finish()
             print('Number of errors: {}'.format(n_errors))
             pvals = np.array(pvals)
 
-            snp_list = pvals.argsort()[:n_features].squeeze().tolist()
-            manager['train'][idx].inputs = train_dataset.inputs[:, snp_list]
-
-            manager['validation'][idx].inputs = valid_dataset.inputs[:, snp_list]
-
-        test_dataset = manager['test']
-
-        train_dataset = manager['train'][0]
-        valid_dataset = manager['validation'][0]
-
-        full_train_indices = np.concatenate([train_dataset.indices, valid_dataset.indices])
-
-        covariates_full_train = covariates.iloc[full_train_indices].values
-        full_X_train = train_dataset.inputs[full_train_indices]
-        full_y_train = train_dataset.labels[full_train_indices]
-        print(full_X_train.shape)
-
-        pbar = progressbar.ProgressBar(
-                max_value=full_X_train.shape[1], redirect_stdout=True, prefix="Filtering snps test ")
-
-        pvals = []
-        n_errors = 0
-        pbar.start()
-        for idx in range(full_X_train.shape[1]):
-            pbar.update(idx+1)
-            X = np.concatenate([
-                full_X_train[:, idx, np.newaxis],
-                covariates_full_train], axis=1)
-            X = sm.add_constant(X)
-
-            model = sm.Logit(full_y_train, X, missing='drop')
-
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore")
-                try:
-                    results = model.fit(disp=0)
-                    pvals.append((results.pvalues[0]))
-                except Exception as e:
-                    pvals.append(1)
-                    n_errors += 1
-        pbar.finish()
-        print('Number of errors: {}'.format(n_errors))
-        pvals = np.array(pvals)
-
-        snp_list = pvals.argsort()[:n_features].squeeze().tolist()
+            snp_list = np.sort(pvals.argsort()[:n_features].squeeze()).tolist()
         manager['test'].inputs = test_dataset.inputs[:, snp_list]
+
+        if use_plink:
+            shutil.rmtree(os.path.join(data_path, 'tmp'), ignore_errors=True)
 
     print('Start feature selection')
 
-    select_features(manager, 1000, '/neurospin/brainomics/2020_corentin_smoking/nicodep_nd_aa.cov')
-    with open(manager_path, 'wb') as output:
-        pickle.dump(manager, output, pickle.HIGHEST_PROTOCOL)
+    select_features(manager, 5000, 'nicodep_nd_aa')
+    # with open(manager_path, 'wb') as output:
+    #     pickle.dump(manager, output, pickle.HIGHEST_PROTOCOL)
 else:
+
+    print('Loading data manager')
     with open(manager_path, 'rb') as input:
         manager = pickle.load(input)
 
@@ -213,6 +305,33 @@ def linear1_l1_activity_regularizer(signal):
 
 nb_snps = manager['train'][0].inputs.shape[1]
 model = TwoLayersMLP(nb_snps, nb_neurons=[128, 32], nb_classes=1)
+
+class MyNet(torch.nn.Module):
+    def __init__(self):
+        super(MyNet, self).__init__()
+        self.conv1 = torch.nn.Conv1d(1, 32, kernel_size=3, stride=3, padding=1)
+        self.maxpool = torch.nn.MaxPool1d(kernel_size=2)
+        out_conv1_shape = int((nb_snps + 2 * 1 - 1 * (3 - 1) - 1)/ 3 + 1)
+        self.input_linear_features = int((out_conv1_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
+        self.linear = nn.Sequential(collections.OrderedDict([
+            ("linear1", nn.Linear(32 * self.input_linear_features, 64)),
+            ("activation1", nn.ReLU()),
+            ("linear2", nn.Linear(64, 32)),
+            ("activation2", nn.Softplus()),
+            ("linear3", nn.Linear(32, 1))
+        ]))
+
+    def forward(self, x):
+        x = x.view(x.shape[0], 1, x.shape[1])
+        x = self.maxpool(self.conv1(x))
+        x = x.view(-1, 32 * self.input_linear_features)
+        x = self.linear(x)
+        x = x.view(x.size(0))
+        x = nn.Sigmoid()(x)
+        return x
+
+
+model = MyNet()
 print(model)
 # cl = DeepLearningInterface(
 #     optimizer_name="SGD",
@@ -256,13 +375,16 @@ def my_loss(x, y):
         y = y.type(torch.FloatTensor)
         if device != -1:
             y = y.to(device)
+        print(x)
+        print(y)
         criterion = nn.BCELoss()#WithLogitsLoss()
     return criterion(x, y)
 
 
 cl = DeepLearningInterface(
-    optimizer_name="Adam",
-    learning_rate=3e-5,
+    optimizer_name="SGD",
+    momentum=0.8,
+    learning_rate=1e-2,
     loss=my_loss,
     #loss_name="BCELoss",
     model=model,
