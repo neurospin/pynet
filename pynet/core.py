@@ -141,7 +141,7 @@ class Base(Observable):
 
     def training(self, manager, nb_epochs, checkpointdir=None, fold_index=None,
                  scheduler=None, with_validation=True, save_after_epochs=1,
-                 add_labels=False):
+                 add_labels=False, early_stop=False, early_stop_lag=5, early_stop_epsilon=1e-4):
         """ Train the model.
 
         Parameters
@@ -190,6 +190,11 @@ class Base(Observable):
                 train=True,
                 validation=with_validation,
                 fold_index=fold)
+            
+            if early_stop:
+                val_losses = []
+                wrong_since = 0
+
             for epoch in range(nb_epochs):
                 logger.debug("Running epoch {0}:".format(fold))
                 logger.debug("  notify observers with signal 'before_epoch'.")
@@ -204,7 +209,6 @@ class Base(Observable):
                     scheduler.step(loss)
                 logger.debug("  update train history.")
                 train_history.log((fold, epoch), loss=loss, **values)
-                train_history.summary()
                 if (checkpointdir is not None and
                         epoch % save_after_epochs == 0):
                     logger.debug("  create checkpoint.")
@@ -222,6 +226,20 @@ class Base(Observable):
                 if with_validation:
                     logger.debug("  validation.")
                     y_pred, loss, values = self.test(loaders.validation)
+
+                    if early_stop:
+                        val_losses.append(loss)
+                        if (len(val_losses) >= 2 and
+                            (np.abs(val_losses[-2]-val_losses[-1]) < early_stop_epsilon or
+                            val_losses[-1] > val_losses[-2])):
+                            
+                            wrong_since += 1
+                            if wrong_since >= early_stop_lag:
+                                logger.info("Training stopped by early stopping")
+                                break
+                        else:
+                            wrong_since = 0
+                        
                     observers_kwargs["val_loss"] = loss
                     observers_kwargs.update(dict(
                         ("val_{0}".format(key), val)
