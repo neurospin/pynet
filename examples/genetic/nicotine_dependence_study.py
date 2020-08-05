@@ -439,6 +439,8 @@ def my_loss(x, y):
         y = torch.argmax(y, dim=1).type(torch.LongTensor)
         criterion = nn.CrossEntropyLoss()
     else:
+        print(x)
+        print(y)
         y = y.type(torch.FloatTensor)
         #x = x.type(torch.FloatTensor)
         if device != -1:
