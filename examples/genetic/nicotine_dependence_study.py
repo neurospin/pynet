@@ -355,9 +355,12 @@ class MyNet(torch.nn.Module):
         self.conv1 = torch.nn.Conv1d(1, 64, kernel_size=8, stride=8, padding=1)
         self.maxpool1 = torch.nn.MaxPool1d(kernel_size=2)
 
+        self.batchnorm1 = nn.BatchNorm1d(64)
+
 
         self.conv2 = torch.nn.Conv1d(64, 32, kernel_size=20, stride=8, padding=0)
         self.maxpool2 = torch.nn.MaxPool1d(kernel_size=2)
+        self.batchnorm2 = nn.BatchNorm1d(32)
 
         out_conv1_shape = int((nb_snps + 2 * 1 - 1 * (8 - 1) - 1)/ 8 + 1)
         out_conv1_shape = int((out_conv1_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
@@ -368,17 +371,19 @@ class MyNet(torch.nn.Module):
         self.linear = nn.Sequential(collections.OrderedDict([
             ("linear1", nn.Linear(32 * self.input_linear_features, 64)),
             ("activation1", nn.ReLU()),
+            ("batchnorm1", nn.BatchNorm1d(64)),
             ("dropout", self.dropout),
             ("linear2", nn.Linear(64, 32)),
             ("activation2", nn.Softplus()),
+            ("batchnorm2", nn.BatchNorm1d(32)),
             ("dropout", self.dropout),
             ("linear3", nn.Linear(32, 1))
         ]))
 
     def forward(self, x):
         x = x.view(x.shape[0], 1, x.shape[1])
-        x = self.maxpool1(self.conv1(x))
-        x = self.maxpool2(self.conv2(x))
+        x = self.batchnorm1(nn.Relu()(self.maxpool1(self.conv1(x))))
+        x = self.batchnorm2(nn.Relu()(self.maxpool2(self.conv2(x))))
         out_conv = x.view(-1, 32 * self.input_linear_features)
         x = self.linear(out_conv)
         x = x.view(x.size(0))
