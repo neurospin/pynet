@@ -370,7 +370,7 @@ class MyNet(torch.nn.Module):
         out_conv2_shape = int((out_conv1_shape + 2 * 0 - 1 * (12 - 1) - 1)/ 3 + 1)
         out_conv2_shape = int((out_conv2_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
 
-        out_conv3_shape = int((out_conv1_shape + 2 * 0 - 1 * (50 - 1) - 1)/ 10 + 1)
+        out_conv3_shape = int((out_conv2_shape + 2 * 0 - 1 * (50 - 1) - 1)/ 10 + 1)
         self.input_linear_features = int((out_conv3_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
 
         self.dropout = nn.Dropout(0.8)
