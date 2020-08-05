@@ -375,7 +375,7 @@ class MyNet(torch.nn.Module):
 
         self.dropout = nn.Dropout(0.8)
         self.linear = nn.Sequential(collections.OrderedDict([
-            ("linear1", nn.Linear(32 * self.input_linear_features, 64)),
+            ("linear1", nn.Linear(16 * self.input_linear_features, 64)),
             ("activation1", nn.ReLU()),
             ("batchnorm1", nn.BatchNorm1d(64)),
             ("dropout", self.dropout),
@@ -391,7 +391,7 @@ class MyNet(torch.nn.Module):
         x = self.batchnorm1(nn.ReLU()(self.maxpool(self.conv1(x))))
         x = self.batchnorm2(nn.ReLU()(self.maxpool(self.conv2(x))))
         x = self.batchnorm3(nn.ReLU()(self.maxpool(self.conv3(x))))
-        out_conv = x.view(-1, 32 * self.input_linear_features)
+        out_conv = x.view(-1, 16 * self.input_linear_features)
         x = self.linear(out_conv)
         x = x.view(x.size(0))
         x = nn.Sigmoid()(x)
@@ -439,8 +439,6 @@ def my_loss(x, y):
         y = torch.argmax(y, dim=1).type(torch.LongTensor)
         criterion = nn.CrossEntropyLoss()
     else:
-        print(x)
-        print(y)
         y = y.type(torch.FloatTensor)
         #x = x.type(torch.FloatTensor)
         if device != -1:
