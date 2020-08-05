@@ -89,7 +89,7 @@ def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
             'IID':str,
             }).set_index(['FID', 'IID'])
         data_y.drop('gender', axis=1, inplace=True)
-        
+
         data_y = fam.join(data_y, on=['fid', 'iid'])
         data_y.reset_index(inplace=True)
         data_y.drop(['fid', 'iid', 'smoking_status', 'father', 'mother', 'tissue', 'i', 'ethnicity'], axis=1, inplace=True)
@@ -103,7 +103,7 @@ def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
                 data_y.hist(label, bins = len(data_y[label].unique()))
             plt.show()
 
-        data_y.replace(-9, np.nan, inplace=True)
+        data_y.replace(-9, -1, inplace=True)
         logger.info("Data Y: {0}".format(data_y.shape))
 
         categorical_pheno = []
@@ -113,49 +113,6 @@ def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
 
         if treat_nans == 'remove':
             data_x = data_x[:, ~np.isnan(data_x.sum(axis=0))]
-
-        # if p_value_filter or N_best:
-
-        #     pvals = []
-        #     data_x = data_x[:, ~np.isnan(data_x.sum(axis=0))]
-
-        #     pbar = progressbar.ProgressBar(
-        #         max_value=data_x.shape[1], redirect_stdout=True, prefix="Filtering snps ")
-
-        #     n_errors = 0
-        #     pbar.start()
-        #     for idx in range(data_x.shape[1]):
-        #         pbar.update(idx+1)
-        #         X = np.concatenate([
-        #             data_x[:, idx, np.newaxis],
-        #             data_y[['age']].values,
-        #             data_y[['gender']].astype(int).values], axis=1)
-        #         X = sm.add_constant(X)
-
-        #         model = sm.Logit(data_y['smoker'].values, X, missing='drop')
-
-        #         with warnings.catch_warnings():
-        #             warnings.filterwarnings("ignore")
-        #             try:
-        #                 results_res = model.fit(disp=0)
-        #                 pvals.append((results_res.pvalues[0]))
-        #             except:
-        #                 pvals.append(1)
-        #                 n_errors += 1
-        #     pvals = np.array(pvals)
-
-        #     if N_best:
-        #         snp_list = pvals.argsort()[:N_best].squeeze().tolist()
-
-        #     if p_value_filter:
-        #         snp_list_tmp = np.nonzero(pvals < p_value_filter)[0].squeeze().tolist()
-        #         if N_best:
-        #             snp_list = list(set(snp_list).intersection(snp_list_tmp))
-        #         else:
-        #             snp_list = snp_list_tmp
-
-        #     data_x = data_x[:, snp_list]
-        #     pbar.finish()
 
         np.save(input_path, data_x.astype(float))
         data_y.to_csv(desc_path, sep="\t", index=False)
