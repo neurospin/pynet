@@ -362,11 +362,19 @@ class MyNet(torch.nn.Module):
         self.maxpool2 = torch.nn.MaxPool1d(kernel_size=2)
         self.batchnorm2 = nn.BatchNorm1d(32)
 
+        self.conv2 = torch.nn.Conv1d(32, 16, kernel_size=50, stride=10, padding=0)
+        self.maxpool2 = torch.nn.MaxPool1d(kernel_size=2)
+        self.batchnorm2 = nn.BatchNorm1d(32)
+
         out_conv1_shape = int((nb_snps + 2 * 1 - 1 * (3 - 1) - 1)/ 3 + 1)
         out_conv1_shape = int((out_conv1_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
 
         out_conv2_shape = int((out_conv1_shape + 2 * 0 - 1 * (12 - 1) - 1)/ 3 + 1)
-        self.input_linear_features = int((out_conv2_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
+        out_conv2_shape = int((out_conv2_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
+
+        out_conv3_shape = int((out_conv1_shape + 2 * 0 - 1 * (50 - 1) - 1)/ 10 + 1)
+        self.input_linear_features = int((out_conv3_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
+
         self.dropout = nn.Dropout(0.8)
         self.linear = nn.Sequential(collections.OrderedDict([
             ("linear1", nn.Linear(32 * self.input_linear_features, 64)),
@@ -454,12 +462,12 @@ cl = DeepLearningInterface(
 #cl.add_observer("regularizer", linear1_l1_activity_regularizer)
 test_history, train_history = cl.training(
     manager=manager,
-    nb_epochs=10,
+    nb_epochs=30,
     checkpointdir="/neurospin/brainomics/2020_corentin_smoking/training_checkpoints",
-    fold_index=0,
+    #fold_index=0,
     with_validation=True,
     early_stop=True,
-    early_stop_lag=2)
+    early_stop_lag=3)
 y_hat, X, y_true, loss, values = cl.testing(
     manager=manager,
     with_logit=False,
