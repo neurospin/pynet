@@ -28,7 +28,7 @@ if not os.path.exists(manager_path):
         labels=labels,
         stratify_label="smoker",
         metadata_path=data.metadata_path,
-        number_of_folds=4,
+        number_of_folds=8,
         batch_size=16,
         test_size=0.2)
 
@@ -457,13 +457,13 @@ cl = DeepLearningInterface(
     metrics=['binary_accuracy', 'binary_precision', 'binary_recall', 'f1_score'])
     #metrics=['accuracy'])
 
-# cl.add_observer("regularizer", linear1_l2_kernel_regularizer)
+cl.add_observer("regularizer", linear1_l2_kernel_regularizer)
 #cl.add_observer("regularizer", linear1_l1_activity_regularizer)
 test_history, train_history = cl.training(
     manager=manager,
     nb_epochs=30,
     checkpointdir="/neurospin/brainomics/2020_corentin_smoking/training_checkpoints",
-    #fold_index=0,
+    fold_index=0,
     with_validation=True,
     early_stop=True,
     early_stop_lag=3)
