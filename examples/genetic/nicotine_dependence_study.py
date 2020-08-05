@@ -454,7 +454,7 @@ cl = DeepLearningInterface(
 #cl.add_observer("regularizer", linear1_l1_activity_regularizer)
 test_history, train_history = cl.training(
     manager=manager,
-    nb_epochs=40,
+    nb_epochs=10,
     checkpointdir="/neurospin/brainomics/2020_corentin_smoking/training_checkpoints",
     fold_index=0,
     with_validation=True,
