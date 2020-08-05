@@ -226,19 +226,6 @@ class Base(Observable):
                 if with_validation:
                     logger.debug("  validation.")
                     y_pred, loss, values = self.test(loaders.validation)
-
-                    if early_stop:
-                        val_losses.append(loss)
-                        if (len(val_losses) >= 2 and
-                            (np.abs(val_losses[-2]-val_losses[-1]) < early_stop_epsilon or
-                            val_losses[-1] > val_losses[-2])):
-                            
-                            wrong_since += 1
-                            if wrong_since >= early_stop_lag:
-                                logger.info("Training stopped by early stopping")
-                                break
-                        else:
-                            wrong_since = 0
                         
                     observers_kwargs["val_loss"] = loss
                     observers_kwargs.update(dict(
@@ -255,6 +242,19 @@ class Base(Observable):
                             outdir=checkpointdir,
                             epoch=epoch,
                             fold=fold)
+                    
+                    if early_stop:
+                        val_losses.append(loss)
+                        if (len(val_losses) >= 2 and
+                            (np.abs(val_losses[-2]-val_losses[-1]) < early_stop_epsilon or
+                            val_losses[-1] > val_losses[-2])):
+                            
+                            wrong_since += 1
+                            if wrong_since >= early_stop_lag:
+                                logger.debug("Training stopped by early stopping")
+                                break
+                        else:
+                            wrong_since = 0
                 logger.debug("  notify observers with signal 'after_epoch'.")
                 self.notify_observers("after_epoch", epoch=epoch, fold=fold,
                                       **observers_kwargs)
