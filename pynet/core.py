@@ -183,6 +183,7 @@ class Base(Observable):
         folds = range(manager.number_of_folds)
         if fold_index is not None:
             folds = [fold_index]
+        print(folds)
         for fold in folds:
             logger.debug("Running fold {0}...".format(fold))
             reset_weights(self.model, self.checkpoint)
@@ -194,7 +195,8 @@ class Base(Observable):
             if early_stop:
                 val_losses = []
                 wrong_since = 0
-
+            print(fold)
+            print(nb_epochs)
             for epoch in range(nb_epochs):
                 logger.debug("Running epoch {0}:".format(fold))
                 logger.debug("  notify observers with signal 'before_epoch'.")
