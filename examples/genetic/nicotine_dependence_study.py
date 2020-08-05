@@ -352,22 +352,22 @@ model = TwoLayersMLP(nb_snps, nb_neurons=[128, 32], nb_classes=1)
 class MyNet(torch.nn.Module):
     def __init__(self):
         super(MyNet, self).__init__()
-        self.conv1 = torch.nn.Conv1d(1, 64, kernel_size=8, stride=8, padding=1)
+        self.conv1 = torch.nn.Conv1d(1, 64, kernel_size=3, stride=3, padding=1)
         self.maxpool1 = torch.nn.MaxPool1d(kernel_size=2)
 
         self.batchnorm1 = nn.BatchNorm1d(64)
 
 
-        self.conv2 = torch.nn.Conv1d(64, 32, kernel_size=20, stride=8, padding=0)
+        self.conv2 = torch.nn.Conv1d(64, 32, kernel_size=12, stride=3, padding=0)
         self.maxpool2 = torch.nn.MaxPool1d(kernel_size=2)
         self.batchnorm2 = nn.BatchNorm1d(32)
 
-        out_conv1_shape = int((nb_snps + 2 * 1 - 1 * (8 - 1) - 1)/ 8 + 1)
+        out_conv1_shape = int((nb_snps + 2 * 1 - 1 * (3 - 1) - 1)/ 3 + 1)
         out_conv1_shape = int((out_conv1_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
 
-        out_conv2_shape = int((out_conv1_shape + 2 * 0 - 1 * (20 - 1) - 1)/ 8 + 1)
+        out_conv2_shape = int((out_conv1_shape + 2 * 0 - 1 * (12 - 1) - 1)/ 3 + 1)
         self.input_linear_features = int((out_conv2_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
-        self.dropout = nn.Dropout(0.6)
+        self.dropout = nn.Dropout(0.8)
         self.linear = nn.Sequential(collections.OrderedDict([
             ("linear1", nn.Linear(32 * self.input_linear_features, 64)),
             ("activation1", nn.ReLU()),
