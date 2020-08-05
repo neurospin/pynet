@@ -209,6 +209,7 @@ class Base(Observable):
                     scheduler.step(loss)
                 logger.debug("  update train history.")
                 train_history.log((fold, epoch), loss=loss, **values)
+                train_history.summary()
                 if (checkpointdir is not None and
                         epoch % save_after_epochs == 0):
                     logger.debug("  create checkpoint.")
