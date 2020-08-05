@@ -382,8 +382,8 @@ class MyNet(torch.nn.Module):
 
     def forward(self, x):
         x = x.view(x.shape[0], 1, x.shape[1])
-        x = self.batchnorm1(nn.Relu()(self.maxpool1(self.conv1(x))))
-        x = self.batchnorm2(nn.Relu()(self.maxpool2(self.conv2(x))))
+        x = self.batchnorm1(nn.ReLU()(self.maxpool1(self.conv1(x))))
+        x = self.batchnorm2(nn.ReLU()(self.maxpool2(self.conv2(x))))
         out_conv = x.view(-1, 32 * self.input_linear_features)
         x = self.linear(out_conv)
         x = x.view(x.size(0))
