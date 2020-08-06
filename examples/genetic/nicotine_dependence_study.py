@@ -316,6 +316,7 @@ class TwoLayersMLP(nn.Module):
         self.layers = nn.Sequential(collections.OrderedDict([
             ("linear1", nn.Linear(data_size, nb_neurons[0])),
             ("activation1", nn.ReLU()),
+            ("drop1", nn.Dropout(drop_rate)),
             ("linear2", nn.Linear(nb_neurons[0], nb_neurons[1])),
             ("activation2", nn.Softplus()),
             ("drop1", nn.Dropout(drop_rate)),
@@ -329,14 +330,15 @@ class TwoLayersMLP(nn.Module):
             x = nn.Sigmoid()(x.squeeze())
         return x, {"layer1": layer1_out}
 
-
-def linear1_l2_kernel_regularizer(signal):
-    lambda2 = 0.01
-    model = signal.object.model
-    all_linear2_params = torch.cat([
-        x.view(-1) for x in model.linear[0].parameters()])
-    l2_regularization = lambda2 * torch.norm(all_linear2_params, 2)
-    return l2_regularization
+def kernel_regularizer(kernel, lambda2=0.01, norm=2)
+    def regularizer(signal):
+        model = signal.object.model
+        kernel = eval(kernel)
+        all_linear2_params = torch.cat([
+            x.view(-1) for x in kernel.parameters()])
+        l2_regularization = lambda2 * torch.norm(all_linear2_params, norm)
+        return l2_regularization
+    return regularizer
 
 
 def linear1_l1_activity_regularizer(signal):
@@ -457,7 +459,9 @@ cl = DeepLearningInterface(
     metrics=['binary_accuracy', 'binary_precision', 'binary_recall', 'f1_score'])
     #metrics=['accuracy'])
 
-cl.add_observer("regularizer", linear1_l2_kernel_regularizer)
+cl.add_observer("regularizer_linear1", kernel_regularizer('model.linear[0]'))
+cl.add_observer("regularizer_linear2", kernel_regularizer('model.linear[4]'))
+cl.add_observer("regularizer_linear3", kernel_regularizer('model.linear[8]'))
 #cl.add_observer("regularizer", linear1_l1_activity_regularizer)
 test_history, train_history = cl.training(
     manager=manager,
