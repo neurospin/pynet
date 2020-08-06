@@ -471,9 +471,9 @@ cl = DeepLearningInterface(
     metrics=['binary_accuracy', 'binary_precision', 'binary_recall', 'f1_score'])
     #metrics=['accuracy'])
 
-cl.add_observer("regularizer", KernelRegularizer('linear[0]', 0.1))
-cl.add_observer("regularizer", KernelRegularizer('linear[4]', 0.1))
-cl.add_observer("regularizer", KernelRegularizer('linear[8]', 0.1))
+cl.add_observer("regularizer", KernelRegularizer('linear[0]', 1))
+cl.add_observer("regularizer", KernelRegularizer('linear[4]', 1))
+cl.add_observer("regularizer", KernelRegularizer('linear[8]', 1))
 #cl.add_observer("regularizer", linear1_l1_activity_regularizer)
 test_history, train_history = cl.training(
     manager=manager,
