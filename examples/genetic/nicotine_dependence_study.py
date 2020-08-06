@@ -330,7 +330,7 @@ class TwoLayersMLP(nn.Module):
             x = nn.Sigmoid()(x.squeeze())
         return x, {"layer1": layer1_out}
 
-def kernel_regularizer(kernel, lambda2=0.01, norm=2)
+def kernel_regularizer(kernel, lambda2=0.01, norm=2):
     def regularizer(signal):
         model = signal.object.model
         kernel = eval(kernel)
