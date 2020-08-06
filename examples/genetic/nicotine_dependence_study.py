@@ -330,15 +330,27 @@ class TwoLayersMLP(nn.Module):
             x = nn.Sigmoid()(x.squeeze())
         return x, {"layer1": layer1_out}
 
-def kernel_regularizer(kernel, lambda2=0.01, norm=2):
-    def regularizer(signal):
+class KernelRegularizer(object):
+    """ Total Variation Loss (Smooth Term).
+    For a dense flow field, we regularize it with the following loss that
+    discourages discontinuity.
+    k1 * FlowLoss
+    FlowLoss: a gradient loss on the flow field.
+    Recommend for k1 are 1.0 for ncc, or 0.01 for mse.
+    """
+    def __init__(self, kernel, lambda2=0.01, norm=2):
+        self.kernel = kernel
+        self.lambda2 = lambda2
+        self.norm = norm
+
+    def __call__(self, signal):
+       def regularizer(signal):
         model = signal.object.model
-        kernel = getattr(model, kernel)
-        all_linear2_params = torch.cat([
+        kernel = getattr(model, self.kernel)
+        params = torch.cat([
             x.view(-1) for x in kernel.parameters()])
-        l2_regularization = lambda2 * torch.norm(all_linear2_params, norm)
+        l2_regularization = self.lambda2 * torch.norm(params, self.norm)
         return l2_regularization
-    return regularizer
 
 
 def linear1_l1_activity_regularizer(signal):
@@ -459,9 +471,9 @@ cl = DeepLearningInterface(
     metrics=['binary_accuracy', 'binary_precision', 'binary_recall', 'f1_score'])
     #metrics=['accuracy'])
 
-cl.add_observer("regularizer", kernel_regularizer('linear[0]'))
-cl.add_observer("regularizer", kernel_regularizer('linear[4]'))
-cl.add_observer("regularizer", kernel_regularizer('linear[8]'))
+cl.add_observer("regularizer", KernelRegularizer('linear[0]'))
+cl.add_observer("regularizer", KernelRegularizer('linear[4]'))
+cl.add_observer("regularizer", KernelRegularizer('linear[8]'))
 #cl.add_observer("regularizer", linear1_l1_activity_regularizer)
 test_history, train_history = cl.training(
     manager=manager,
