@@ -241,7 +241,7 @@ def checkpoint(model, epoch, fold, outdir, optimizer=None, scheduler=None,
         others parameters to save.
     """
     outfile = os.path.join(
-        outdir, "model_{0}_epoch_{1}.pth".format(fold, epoch))
+        outdir, "model_{0}_epoch_{1}.pth".format(fold, int(epoch)))
     if optimizer is not None:
         kwargs.update(optimizer=optimizer.state_dict())
     if scheduler is not None:

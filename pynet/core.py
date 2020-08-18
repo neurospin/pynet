@@ -253,6 +253,17 @@ class Base(Observable):
                             
                             wrong_since += 1
                             if wrong_since >= early_stop_lag:
+                                
+                                if checkpointdir is not None:
+                                    best_loss_epoch = np.argmin(val_losses[::save_after_epochs]) * save_after_epochs
+
+                                    model_state = torch.load(os.path.join(
+                                        checkpointdir,
+                                        'model_{}_epoch_{}.pth'.format(fold, best_loss_epoch)))['model']
+                                    
+                                    self.model = self.model.__class__()
+                                    self.model.load_state_dict(model_state)
+
                                 logger.info("Training stopped by early stopping")
                                 break
                         else:

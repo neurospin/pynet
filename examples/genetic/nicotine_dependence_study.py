@@ -12,10 +12,12 @@ import pickle
 import shutil
 from pandas_plink import read_plink
 import subprocess
+from time import time
 
 setup_logging(level="info")
 
 data_path = '/neurospin/brainomics/2020_corentin_smoking/'
+data_path = '/media/ca263211/Crucial X8/CEA/Stage/nicodep/data'
 manager_path = os.path.join(data_path, 'data_manager.pkl')
 if not os.path.exists(manager_path):
 
@@ -28,9 +30,9 @@ if not os.path.exists(manager_path):
         labels=labels,
         stratify_label="smoker",
         metadata_path=data.metadata_path,
-        number_of_folds=8,
+        number_of_folds=10,
         batch_size=16,
-        test_size=0.2)
+        test_size=0.02)
 
     visualize_pca = False
 
@@ -70,9 +72,6 @@ if not os.path.exists(manager_path):
             covariates.drop(['FID', 'IID'], axis=1, inplace=True)
         for idx, train_dataset in enumerate(manager['train']):
 
-            X_train = train_dataset.inputs[train_dataset.indices]
-            y_train = train_dataset.labels[train_dataset.indices]
-
             valid_dataset = manager["validation"][idx]
 
             if use_plink:
@@ -93,38 +92,38 @@ if not os.path.exists(manager_path):
                 snp_to_remove.to_csv(os.path.join(data_path, 'tmp', 'snps.txt'),
                     header=False, index=False, sep='\n')
 
-
                 file_path = os.path.join(data_path, data_name)
 
                 print('Feature selection fold {}'.format(idx))
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore")
-                    if not label:
-                        subprocess.run([
-                            os.path.join(plink_path, 'plink'),
-                            '--bfile', file_path,
-                            '--maf', str(plink_maf),
-                            '--geno', str(0),
-                            '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
-                            '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
-                            '--{}'.format(plink_method), '--covar', file_path + '.cov',
-                            '--out', os.path.join(data_path, 'tmp', 'res')],
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL)
-                    else:
-                        subprocess.run([
-                            os.path.join(plink_path, 'plink'),
-                            '--bfile', file_path,
-                            '--maf', str(plink_maf),
-                            '--geno', str(0),
-                            '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
-                            '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
-                            '--{}'.format(plink_method), '--covar', file_path + '.cov',
-                            '--pheno', pheno_path, '--pheno-name', label,
-                            '--out', os.path.join(data_path, 'tmp', 'res')],
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL)
 
+                maf_list = []
+                if plink_maf != 0:
+                    maf_list = ['--maf', str(plink_maf)]
+                # with warnings.catch_warnings():
+                #     warnings.filterwarnings("ignore")
+                if not label:
+                    subprocess.run([
+                        os.path.join(plink_path, 'plink'),
+                        '--bfile', file_path,
+                        '--geno', str(0),
+                        '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
+                        '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
+                        '--{}'.format(plink_method), '--covar', file_path + '.cov',
+                        '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL)
+                else:
+                    subprocess.run([
+                        os.path.join(plink_path, 'plink'),
+                        '--bfile', file_path,
+                        '--geno', str(0),
+                        '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
+                        '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
+                        '--{}'.format(plink_method), '--covar', file_path + '.cov',
+                        '--pheno', pheno_path, '--pheno-name', label,
+                        '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL)
                 res = pd.read_csv(os.path.join(data_path, 'tmp', 'res.assoc.{}'.format(plink_method)), delim_whitespace=True)
                 res = res[res['TEST'] == 'ADD']
 
@@ -133,6 +132,9 @@ if not os.path.exists(manager_path):
                 snp_list = bim.loc[bim['snp'].isin(best_snp_rs), ['chrom', 'pos', 'i']]
                 snp_list = snp_list.sort_values(['chrom', 'pos'])['i'].tolist()
             else:
+
+                X_train = train_dataset.inputs[train_dataset.indices]
+                y_train = train_dataset.labels[train_dataset.indices]
                 covariates_train = covariates.iloc[train_dataset.indices]
 
                 pbar = progressbar.ProgressBar(
@@ -171,7 +173,6 @@ if not os.path.exists(manager_path):
             manager['validation'][idx].inputs = valid_dataset.inputs[:, snp_list]
 
 
-
         test_dataset = manager['test']
 
         if use_plink:
@@ -194,35 +195,32 @@ if not os.path.exists(manager_path):
 
             file_path = os.path.join(data_path, data_name)
 
-            print('Feature selection for testing'.format(idx))
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore")
-
-                if not label:
-                    subprocess.run([
-                        os.path.join(plink_path, 'plink'),
-                        '--bfile', file_path,
-                        '--maf', str(plink_maf),
-                        '--geno', str(0),
-                        '--remove', os.path.join(data_path, 'tmp', 'indivs.txt'),
-                        '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
-                        '--{}'.format(plink_method), '--covar', file_path + '.cov',
-                        '--out', os.path.join(data_path, 'tmp', 'res')],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL)
-                else:
-                    subprocess.run([
-                        os.path.join(plink_path, 'plink'),
-                        '--bfile', file_path,
-                        '--maf', str(plink_maf),
-                        '--geno', str(0),
-                        '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
-                        '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
-                        '--{}'.format(plink_method), '--covar', file_path + '.cov',
-                        '--pheno', pheno_path, '--pheno-name', label,
-                        '--out', os.path.join(data_path, 'tmp', 'res')],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL)
+            print('Feature selection for testing')
+            # with warnings.catch_warnings():
+            #     warnings.filterwarnings("ignore")
+            if not label:
+                subprocess.run([
+                    os.path.join(plink_path, 'plink'),
+                    '--bfile', file_path,
+                    '--geno', str(0),
+                    '--remove', os.path.join(data_path, 'tmp', 'indivs.txt'),
+                    '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
+                    '--{}'.format(plink_method), '--covar', file_path + '.cov',
+                    '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL)
+            else:
+                subprocess.run([
+                    os.path.join(plink_path, 'plink'),
+                    '--bfile', file_path,
+                    '--geno', str(0),
+                    '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
+                    '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
+                    '--{}'.format(plink_method), '--covar', file_path + '.cov',
+                    '--pheno', pheno_path, '--pheno-name', label,
+                    '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL)
 
             res = pd.read_csv(os.path.join(data_path, 'tmp', 'res.assoc.{}'.format(plink_method)), delim_whitespace=True)
             res = res[res['TEST'] == 'ADD']
@@ -277,7 +275,7 @@ if not os.path.exists(manager_path):
 
     print('Start feature selection')
 
-    select_features(manager, 5000, 'nicodep_nd_aa')#, plink_method='linear', label='ftnd')
+    select_features(manager, 10000, 'nicodep_nd_aa', plink_maf=0)#, plink_method='linear', label='ftnd')
     # with open(manager_path, 'wb') as output:
     #     pickle.dump(manager, output, pickle.HIGHEST_PROTOCOL)
 else:
@@ -372,39 +370,47 @@ class MyNet(torch.nn.Module):
         self.batchnorm1 = nn.BatchNorm1d(64)
 
 
-        self.conv2 = torch.nn.Conv1d(64, 32, kernel_size=12, stride=3, padding=0)
+        self.conv2 = torch.nn.Conv1d(64, 32, kernel_size=5, stride=1, padding=0)
         self.batchnorm2 = nn.BatchNorm1d(32)
 
-        self.conv3 = torch.nn.Conv1d(32, 16, kernel_size=50, stride=10, padding=0)
-        self.batchnorm3 = nn.BatchNorm1d(16)
+        self.conv3 = torch.nn.Conv1d(32, 32, kernel_size=12, stride=1, padding=0)
+        self.batchnorm3 = nn.BatchNorm1d(32)
+
+        self.conv4 = torch.nn.Conv1d(32, 16, kernel_size=20, stride=3, padding=0)
+        self.batchnorm4 = nn.BatchNorm1d(16)
 
         out_conv1_shape = int((nb_snps + 2 * 1 - 1 * (3 - 1) - 1)/ 3 + 1)
         out_conv1_shape = int((out_conv1_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
 
-        out_conv2_shape = int((out_conv1_shape + 2 * 0 - 1 * (12 - 1) - 1)/ 3 + 1)
+        out_conv2_shape = int((out_conv1_shape + 2 * 0 - 1 * (5 - 1) - 1)/ 1 + 1)
         out_conv2_shape = int((out_conv2_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
 
-        out_conv3_shape = int((out_conv2_shape + 2 * 0 - 1 * (50 - 1) - 1)/ 10 + 1)
-        self.input_linear_features = int((out_conv3_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
+        out_conv3_shape = int((out_conv2_shape + 2 * 0 - 1 * (12 - 1) - 1)/ 1 + 1)
+        out_conv3_shape = int((out_conv3_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
 
-        self.dropout = nn.Dropout(0.8)
+        out_conv4_shape = int((out_conv3_shape + 2 * 0 - 1 * (20 - 1) - 1)/ 3 + 1)
+        self.input_linear_features = int((out_conv4_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
+        
+        self.dropout_conv = nn.Dropout(0.2)
+        self.dropout_linear = nn.Dropout(0.5)
         self.linear = nn.Sequential(collections.OrderedDict([
             ("linear1", nn.Linear(16 * self.input_linear_features, 64)),
             ("activation1", nn.ReLU()),
             ("batchnorm1", nn.BatchNorm1d(64)),
-            ("dropout", self.dropout),
+            ("dropout", self.dropout_linear),
             ("linear2", nn.Linear(64, 32)),
             ("activation2", nn.Softplus()),
             ("batchnorm2", nn.BatchNorm1d(32)),
-            ("dropout", self.dropout),
+            ("dropout", self.dropout_linear),
             ("linear3", nn.Linear(32, 1))
         ]))
 
     def forward(self, x):
         x = x.view(x.shape[0], 1, x.shape[1])
-        x = self.batchnorm1(nn.ReLU()(self.maxpool(self.conv1(x))))
-        x = self.batchnorm2(nn.ReLU()(self.maxpool(self.conv2(x))))
-        x = self.batchnorm3(nn.ReLU()(self.maxpool(self.conv3(x))))
+        x = self.dropout_conv(self.batchnorm1(nn.ReLU()(self.maxpool(self.conv1(x)))))
+        x = self.dropout_conv(self.batchnorm2(nn.ReLU()(self.maxpool(self.conv2(x)))))
+        x = self.dropout_conv(self.batchnorm3(nn.ReLU()(self.maxpool(self.conv3(x)))))
+        x = self.dropout_conv(self.batchnorm4(nn.ReLU()(self.maxpool(self.conv4(x)))))
         out_conv = x.view(-1, 16 * self.input_linear_features)
         x = self.linear(out_conv)
         x = x.view(x.size(0))
@@ -464,21 +470,21 @@ def my_loss(x, y):
 cl = DeepLearningInterface(
     optimizer_name="Adam",
     #momentum=0.8,
-    learning_rate=5e-5,
+    learning_rate=1e-4,
     loss=my_loss,
     #loss_name="MSELoss",
     model=model,
     metrics=['binary_accuracy', 'binary_precision', 'binary_recall', 'f1_score'])
     #metrics=['accuracy'])
 
-cl.add_observer("regularizer", KernelRegularizer('linear[0]', 1))
-cl.add_observer("regularizer", KernelRegularizer('linear[4]', 1))
-cl.add_observer("regularizer", KernelRegularizer('linear[8]', 1))
+cl.add_observer("regularizer", KernelRegularizer('linear[0]', 0.1))
+cl.add_observer("regularizer", KernelRegularizer('linear[4]', 0.1))
+cl.add_observer("regularizer", KernelRegularizer('linear[8]', 0.1))
 #cl.add_observer("regularizer", linear1_l1_activity_regularizer)
 test_history, train_history = cl.training(
     manager=manager,
-    nb_epochs=30,
-    checkpointdir="/neurospin/brainomics/2020_corentin_smoking/training_checkpoints",
+    nb_epochs=40,
+    checkpointdir=os.path.join(data_path, "training_checkpoints"),
     fold_index=0,
     with_validation=True,
     early_stop=True,
