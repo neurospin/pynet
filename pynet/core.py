@@ -151,7 +151,7 @@ class Base(Observable):
         nb_epochs: int, default 100
             the number of epochs.
         checkpointdir: str, default None
-            a destination folder where intermediate models/historues will be
+            a destination folder where intermediate models/histories will be
             saved.
         fold_index: int, default None
             the index of the fold to use for the training, default use all the
@@ -183,7 +183,7 @@ class Base(Observable):
         folds = range(manager.number_of_folds)
         if fold_index is not None:
             folds = [fold_index]
-        
+
         for fold in folds:
             logger.debug("Running fold {0}...".format(fold))
             reset_weights(self.model, self.checkpoint)
@@ -191,7 +191,7 @@ class Base(Observable):
                 train=True,
                 validation=with_validation,
                 fold_index=fold)
-            
+
             if early_stop:
                 val_losses = []
                 wrong_since = 0
@@ -228,7 +228,7 @@ class Base(Observable):
                 if with_validation:
                     logger.debug("  validation.")
                     y_pred, loss, values = self.test(loaders.validation)
-                        
+
                     observers_kwargs["val_loss"] = loss
                     observers_kwargs.update(dict(
                         ("val_{0}".format(key), val)
@@ -244,23 +244,23 @@ class Base(Observable):
                             outdir=checkpointdir,
                             epoch=epoch,
                             fold=fold)
-                    
+
                     if early_stop:
                         val_losses.append(loss)
                         if (len(val_losses) >= 2 and
                             (np.abs(val_losses[-2]-val_losses[-1]) < early_stop_epsilon or
                             val_losses[-1] > val_losses[-2])):
-                            
+
                             wrong_since += 1
                             if wrong_since >= early_stop_lag:
-                                
+
                                 if checkpointdir is not None:
                                     best_loss_epoch = np.argmin(val_losses[::save_after_epochs]) * save_after_epochs
 
                                     model_state = torch.load(os.path.join(
                                         checkpointdir,
                                         'model_{}_epoch_{}.pth'.format(fold, best_loss_epoch)))['model']
-                                    
+
                                     self.model = self.model.__class__()
                                     self.model.load_state_dict(model_state)
 

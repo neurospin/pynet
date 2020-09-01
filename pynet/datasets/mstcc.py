@@ -23,6 +23,7 @@ import logging
 import numpy as np
 from collections import namedtuple
 import pandas as pd
+import numpy as np
 import sklearn
 from pynet.datasets import Fetchers
 from pandas_plink import read_plink
@@ -46,22 +47,23 @@ logger = logging.getLogger("pynet")
 
 
 @Fetchers.register
-def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
+def fetch_nicodep(file_name='nicodep_nd_aa',
+    datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
     visualize_labels=False, treat_nans='remove'):#p_value_filter=None, N_best=None):
     """ Fetch/prepare nicotine dependence dataset for pynet.
 
-    Matrix Y contains the average grain yield, column 1: Grain yield for
-    environment 1 and so on.
+    Matrix Y contains the phenotypes
     Matrix X contains marker genotypes.
 
     Parameters
     ----------
+    file_name: str, default 'nicodep_nd_aa'
+        prefix of the files containing the data
     datasetdir: str
         the dataset destination folder.
-    to_categorical: bool, default False
-        if set convert the observation to categories.
-    check: bool, default False
-        if set check results against the downloaded .check file data
+    visualize_labels: bool, default False
+        if set show a few histograms to see labels
+        distribution over the dataset
 
     Returns
     -------
@@ -72,11 +74,11 @@ def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
     logger.info("Loading nicotine dependence dataset.")
     if not os.path.isdir(datasetdir):
         os.mkdir(datasetdir)
-    desc_path = os.path.join(datasetdir, "pynet_aa_nicodep_labels.tsv")
-    input_path = os.path.join(datasetdir, "pynet_aa_nicodep_inputs.npy")
+    desc_path = os.path.join(datasetdir, "pynet_{}_labels.tsv".format(file_name))
+    input_path = os.path.join(datasetdir, "pynet_{}_inputs.npy".format(file_name))
     #file_todel = []
     if not os.path.isfile(desc_path) or not os.path.isfile(desc_path):
-        bim, fam, bed = read_plink(os.path.join(datasetdir, 'nicodep_nd_aa'))
+        bim, fam, bed = read_plink(os.path.join(datasetdir, file_name))
 
         data_x = np.transpose(bed.compute())
 
@@ -92,11 +94,9 @@ def fetch_aa_nicodep(datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
 
         data_y = fam.join(data_y, on=['fid', 'iid'])
         data_y.reset_index(inplace=True)
-        data_y.drop(['fid', 'iid', 'smoking_status', 'father', 'mother', 'tissue', 'i', 'ethnicity'], axis=1, inplace=True)
-        data_y.set_index('index', inplace=True)
-        data_y = data_y.astype({'trait': int})
-        data_y.rename(columns={'trait':'smoker'}, inplace=True)
-        data_y['smoker'].replace([2, 1], [1, 0], inplace=True)
+        data_y.drop(['fid', 'iid', 'tissue', 'mother', 'father', 'ethnicity', 'gender', 'trait', 'i', 'index'], axis=1, inplace=True)
+        data_y.replace({'smoker': {'Smoker': 1, 'Non-smoker': 0, 'Ex-smoker': 1}}, inplace=True)
+        data_y = data_y.astype({'smoker': int})
 
         if visualize_labels:
             for label in data_y.columns.tolist()[2:]:
