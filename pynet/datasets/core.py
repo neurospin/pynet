@@ -12,6 +12,7 @@ Module that provides core functions to load and split a dataset.
 """
 
 # Imports
+import os
 from collections import namedtuple, OrderedDict, Counter
 import progressbar
 import random
@@ -38,7 +39,7 @@ class DataManager(object):
     def __init__(self, input_path, metadata_path, output_path=None,
                  labels=None, stratify_label=None, custom_stratification=None,
                  projection_labels=None, number_of_folds=10, batch_size=1,
-                 sampler="random", input_transforms=None,
+                 sampler="random", input_transforms=None, feature_selector=None,
                  output_transforms=None, data_augmentation_transforms=None,
                  add_input=False, test_size=0.1, label_mapping=None,
                  patch_size=None, continuous_labels=False, sample_size=1,
@@ -141,7 +142,10 @@ class DataManager(object):
         logger.debug("Projection labels: {0}".format(projection_labels))
         logger.debug("Mask: {0}".format(mask))
         logger.debug("Mask indices: {0}".format(mask_indices))
-        self.inputs = np.load(input_path, mmap_mode='r')
+        if feature_selector is None:
+            self.inputs = np.load(input_path, mmap_mode='r')
+        else:
+            self.inputs = np.empty((df.shape[0], 0))
         logger.debug("Inputs: {0}".format(self.inputs.shape))
         self.outputs, self.labels = (None, None)
         if output_path is not None:
@@ -217,8 +221,30 @@ class DataManager(object):
         if test_indices is None:
             self.dataset["test"] = None
         else:
+            inputs = self.inputs
+
+            if feature_selector is not None:
+                file_name = input_path.split('/')[-1]
+                save_name = 'selected_{}_features_test_{}_{}.npy'.format(
+                    feature_selector.kbest, test_size, file_name)
+                save_path = os.path.join('/'.join(input_path.split('/')[:-1]),
+                    save_name)
+
+                if not os.path.exists(save_path):
+                    logger.debug("Feature selection")
+                    save_res_name = None
+                    if feature_selector.save_res_to:
+                        save_res_name = 'test'
+                    inputs = feature_selector.fit_transform(
+                        train_indices=train_indices,
+                        save_res_name=save_res_name,
+                        save_data_name=save_name,
+                        verbose=True)
+                else:
+                    inputs = np.load(save_path, mmap_mode='r')
+
             self.dataset["test"] = ArrayDataset(
-                self.inputs, test_indices, labels=self.labels,
+                inputs, test_indices, labels=self.labels,
                 outputs=self.outputs, add_input=self.add_input,
                 input_transforms=self.input_transforms,
                 output_transforms=self.output_transforms,
@@ -244,14 +270,37 @@ class DataManager(object):
             self.generator = kfold_splitter.split(dummy_train_like)
             self.generator = [(train_indices[train], train_indices[val])
                               for (train, val) in self.generator]
+        i = 0
         for fold_train_indices, fold_val_indices in self.generator:
             logger.debug("Fold train indices: {0}".format(fold_train_indices))
             logger.debug("Fold val indices: {0}".format(fold_val_indices))
             assert len(set(fold_val_indices) & set(fold_train_indices)) == 0
             assert (len(set(fold_val_indices)) + len(set(fold_train_indices))
                     == len(set(train_indices)))
+
+            inputs = self.inputs
+
+            if feature_selector is not None:
+                file_name = input_path.split('/')[-1]
+                save_name = 'selected_{}_features_train_fold_{}_of_{}_{}.npy'.format(
+                    feature_selector.kbest, i, self.number_of_folds, file_name)
+                save_path = os.path.join('/'.join(input_path.split('/')[:-1]),
+                    save_name)
+
+                if not os.path.exists(save_path):
+                    logger.debug("Feature selection")
+                    save_res_name = None
+                    if feature_selector.save_res_to:
+                        save_res_name = 'fold_{}'.format(i)
+                    inputs = feature_selector.fit_transform(
+                        train_indices=fold_train_indices,
+                        save_res_name=save_res_name,
+                        save_data_name=save_name)
+                else:
+                    inputs = np.load(save_path, mmap_mode='r')
+
             train_dataset = ArrayDataset(
-                self.inputs, fold_train_indices, labels=self.labels,
+                inputs, fold_train_indices, labels=self.labels,
                 outputs=self.outputs, add_input=self.add_input,
                 input_transforms=(self.input_transforms +
                                   self.data_augmentation_transforms),
@@ -260,7 +309,7 @@ class DataManager(object):
                 label_mapping=label_mapping,
                 patch_size=patch_size)
             val_dataset = ArrayDataset(
-                self.inputs, fold_val_indices, labels=self.labels,
+                inputs, fold_val_indices, labels=self.labels,
                 outputs=self.outputs, add_input=self.add_input,
                 input_transforms=self.input_transforms,
                 output_transforms=self.output_transforms,
@@ -268,6 +317,7 @@ class DataManager(object):
                 patch_size=patch_size)
             self.dataset["train"].append(train_dataset)
             self.dataset["validation"].append(val_dataset)
+            i += 1
 
     @classmethod
     def from_numpy(cls, test_inputs=None, test_outputs=None, test_labels=None,

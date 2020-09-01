@@ -26,7 +26,7 @@ class FeatureSelector(object):
         raise NotImplementedError('The class does not have a fit method yet.')
 
     def transform(self, **kwargs):
-        """ Transform the data by selecting the best feature with the model 
+        """ Transform the data by selecting the best feature with the model
         previously fitted.
 
         Must be implemented in the descendant class
@@ -46,7 +46,7 @@ class FeatureSelector(object):
         kwargs: dict
             contains named arguments
         """
-        
-        self.fit()
 
-        return self.transform()
+        self.fit(**kwargs)
+
+        return self.transform(**kwargs)

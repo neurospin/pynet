@@ -1,5 +1,5 @@
 import os
-from pynet.datasets import DataManager, fetch_aa_nicodep
+from pynet.datasets import DataManager, fetch_nicodep
 from pynet.utils import setup_logging
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,163 +17,59 @@ from time import time
 setup_logging(level="info")
 
 data_path = '/neurospin/brainomics/2020_corentin_smoking/'
-data_path = '/media/ca263211/Crucial X8/CEA/Stage/nicodep/data'
-manager_path = os.path.join(data_path, 'data_manager.pkl')
-if not os.path.exists(manager_path):
 
-    data = fetch_aa_nicodep(data_path, treat_nans=None)
+data = fetch_nicodep('nicodep_nd_aa', data_path, treat_nans=None)
 
-    labels = ['smoker']
+labels = ['smoker']
 
-    manager = DataManager(
-        input_path=data.input_path,
-        labels=labels,
-        stratify_label="smoker",
-        metadata_path=data.metadata_path,
-        number_of_folds=10,
-        batch_size=16,
-        test_size=0.02)
+manager = DataManager(
+    input_path=data.input_path,
+    labels=labels,
+    stratify_label="smoker",
+    metadata_path=data.metadata_path,
+    number_of_folds=10,
+    batch_size=16,
+    test_size=0.02)
 
-    visualize_pca = False
+visualize_pca = False
 
-    if visualize_pca:
+if visualize_pca:
 
-        train_dataset = manager["train"][0]
-        X_train = train_dataset.inputs[train_dataset.indices]
-        y_train = train_dataset.labels[train_dataset.indices]
-        test_dataset = manager["test"]
-        X_test = test_dataset.inputs[test_dataset.indices]
-        y_test = test_dataset.labels[test_dataset.indices]
+    train_dataset = manager["train"][0]
+    X_train = train_dataset.inputs[train_dataset.indices]
+    y_train = train_dataset.labels[train_dataset.indices]
+    test_dataset = manager["test"]
+    X_test = test_dataset.inputs[test_dataset.indices]
+    y_test = test_dataset.labels[test_dataset.indices]
 
-        plt.figure()
-        plt.title("Train / test data")
-        plt.hist(y_train, label="Train")
-        plt.hist(y_test, label="Test")
-        plt.legend(loc="best")
-        X = np.concatenate((X_train_no_na, X_test_no_na))
-        pca = PCA(n_components=2)
-        p = pca.fit(X).fit_transform(X)
-        Ntrain = X_train.shape[0]
-        plt.figure()
-        plt.title("PCA decomposition")
-        plt.scatter(p[0:Ntrain, 0], p[0:Ntrain, 1], label="Train")
-        plt.scatter(p[Ntrain:, 0], p[Ntrain:, 1], label="Test", color="orange")
-        plt.legend(loc="best")
-        plt.show()
+    plt.figure()
+    plt.title("Train / test data")
+    plt.hist(y_train, label="Train")
+    plt.hist(y_test, label="Test")
+    plt.legend(loc="best")
+    X = np.concatenate((X_train_no_na, X_test_no_na))
+    pca = PCA(n_components=2)
+    p = pca.fit(X).fit_transform(X)
+    Ntrain = X_train.shape[0]
+    plt.figure()
+    plt.title("PCA decomposition")
+    plt.scatter(p[0:Ntrain, 0], p[0:Ntrain, 1], label="Train")
+    plt.scatter(p[Ntrain:, 0], p[Ntrain:, 1], label="Test", color="orange")
+    plt.legend(loc="best")
+    plt.show()
 
 
-    def select_features(manager, n_features, data_name, label=None,
-        use_plink=True, plink_path=os.path.join(data_path, 'plink'),
-        plink_maf=0.01, plink_method='logistic',
-        pheno_path=os.path.join(data_path, 'nicodep.pheno')):
+def select_features(manager, n_features, data_name, label=None,
+    use_plink=True, plink_path=os.path.join(data_path, 'plink'),
+    plink_maf=0.01, plink_method='logistic',
+    pheno_path=os.path.join(data_path, 'nicodep.pheno')):
 
-        if not use_plink:
-            covariates = pd.read_csv(cov_file, sep=' ')
-            covariates.drop(['FID', 'IID'], axis=1, inplace=True)
-        for idx, train_dataset in enumerate(manager['train']):
+    if not use_plink:
+        covariates = pd.read_csv(cov_file, sep=' ')
+        covariates.drop(['FID', 'IID'], axis=1, inplace=True)
+    for idx, train_dataset in enumerate(manager['train']):
 
-            valid_dataset = manager["validation"][idx]
-
-            if use_plink:
-                if not os.path.isdir(os.path.join(data_path, 'tmp')):
-                    os.mkdir(os.path.join(data_path, 'tmp'))
-
-                bim, fam, _ = read_plink(os.path.join(data_path, 'nicodep_nd_aa'),
-                    verbose=False)
-
-                indiv_to_keep = fam[['fid', 'iid']].iloc[train_dataset.indices]
-                indiv_to_keep.to_csv(os.path.join(data_path, 'tmp', 'indivs.txt'),
-                    header=False, index=False, sep=' ')
-
-                mask_to_remove = np.isnan(train_dataset.inputs.sum(axis=0))
-                snp_to_remove = np.arange(train_dataset.inputs.shape[1])[mask_to_remove]
-
-                snp_to_remove = bim.loc[bim['i'].isin(snp_to_remove), 'snp']
-                snp_to_remove.to_csv(os.path.join(data_path, 'tmp', 'snps.txt'),
-                    header=False, index=False, sep='\n')
-
-                file_path = os.path.join(data_path, data_name)
-
-                print('Feature selection fold {}'.format(idx))
-
-                maf_list = []
-                if plink_maf != 0:
-                    maf_list = ['--maf', str(plink_maf)]
-                # with warnings.catch_warnings():
-                #     warnings.filterwarnings("ignore")
-                if not label:
-                    subprocess.run([
-                        os.path.join(plink_path, 'plink'),
-                        '--bfile', file_path,
-                        '--geno', str(0),
-                        '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
-                        '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
-                        '--{}'.format(plink_method), '--covar', file_path + '.cov',
-                        '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL)
-                else:
-                    subprocess.run([
-                        os.path.join(plink_path, 'plink'),
-                        '--bfile', file_path,
-                        '--geno', str(0),
-                        '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
-                        '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
-                        '--{}'.format(plink_method), '--covar', file_path + '.cov',
-                        '--pheno', pheno_path, '--pheno-name', label,
-                        '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL)
-                res = pd.read_csv(os.path.join(data_path, 'tmp', 'res.assoc.{}'.format(plink_method)), delim_whitespace=True)
-                res = res[res['TEST'] == 'ADD']
-
-                ordered_best_res = res.sort_values('P')
-                best_snp_rs = res['SNP'].iloc[:n_features]
-                snp_list = bim.loc[bim['snp'].isin(best_snp_rs), ['chrom', 'pos', 'i']]
-                snp_list = snp_list.sort_values(['chrom', 'pos'])['i'].tolist()
-            else:
-
-                X_train = train_dataset.inputs[train_dataset.indices]
-                y_train = train_dataset.labels[train_dataset.indices]
-                covariates_train = covariates.iloc[train_dataset.indices]
-
-                pbar = progressbar.ProgressBar(
-                        max_value=X_train.shape[1], redirect_stdout=True, prefix="Filtering snps fold {}".format(idx))
-
-                pvals = []
-                n_errors = 0
-                pbar.start()
-                for i in range(X_train.shape[1]):
-                    pbar.update(i+1)
-                    X = np.concatenate([
-                        X_train[:, i, np.newaxis],
-                        covariates_train.values], axis=1)
-
-                    X = sm.add_constant(X)
-
-                    model = sm.Logit(y_train, X, missing='drop')
-
-                    with warnings.catch_warnings():
-                        warnings.filterwarnings("ignore")
-                        try:
-                            results = model.fit(disp=0)
-                            pvals.append((results.pvalues[0]))
-                        except:
-                            pvals.append(1)
-                            n_errors += 1
-
-                pbar.finish()
-                print('Number of errors: {}'.format(n_errors))
-                pvals = np.array(pvals)
-
-                snp_list = np.sort(pvals.argsort()[:n_features].squeeze()).tolist()
-
-            manager['train'][idx].inputs = train_dataset.inputs[:, snp_list]
-
-            manager['validation'][idx].inputs = valid_dataset.inputs[:, snp_list]
-
-
-        test_dataset = manager['test']
+        valid_dataset = manager["validation"][idx]
 
         if use_plink:
             if not os.path.isdir(os.path.join(data_path, 'tmp')):
@@ -182,12 +78,12 @@ if not os.path.exists(manager_path):
             bim, fam, _ = read_plink(os.path.join(data_path, 'nicodep_nd_aa'),
                 verbose=False)
 
-            to_remove = fam[['fid', 'iid']].iloc[test_dataset.indices]
-            to_remove.to_csv(os.path.join(data_path, 'tmp', 'indivs.txt'),
+            indiv_to_keep = fam[['fid', 'iid']].iloc[train_dataset.indices]
+            indiv_to_keep.to_csv(os.path.join(data_path, 'tmp', 'indivs.txt'),
                 header=False, index=False, sep=' ')
 
-            mask_to_remove = np.isnan(test_dataset.inputs.sum(axis=0))
-            snp_to_remove = np.arange(test_dataset.inputs.shape[1])[mask_to_remove]
+            mask_to_remove = np.isnan(train_dataset.inputs.sum(axis=0))
+            snp_to_remove = np.arange(train_dataset.inputs.shape[1])[mask_to_remove]
 
             snp_to_remove = bim.loc[bim['i'].isin(snp_to_remove), 'snp']
             snp_to_remove.to_csv(os.path.join(data_path, 'tmp', 'snps.txt'),
@@ -195,7 +91,11 @@ if not os.path.exists(manager_path):
 
             file_path = os.path.join(data_path, data_name)
 
-            print('Feature selection for testing')
+            print('Feature selection fold {}'.format(idx))
+
+            maf_list = []
+            if plink_maf != 0:
+                maf_list = ['--maf', str(plink_maf)]
             # with warnings.catch_warnings():
             #     warnings.filterwarnings("ignore")
             if not label:
@@ -203,7 +103,7 @@ if not os.path.exists(manager_path):
                     os.path.join(plink_path, 'plink'),
                     '--bfile', file_path,
                     '--geno', str(0),
-                    '--remove', os.path.join(data_path, 'tmp', 'indivs.txt'),
+                    '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
                     '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
                     '--{}'.format(plink_method), '--covar', file_path + '.cov',
                     '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
@@ -221,39 +121,34 @@ if not os.path.exists(manager_path):
                     '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL)
-
             res = pd.read_csv(os.path.join(data_path, 'tmp', 'res.assoc.{}'.format(plink_method)), delim_whitespace=True)
             res = res[res['TEST'] == 'ADD']
 
             ordered_best_res = res.sort_values('P')
-            best_snp_rs = res['SNP'].iloc[:n_features]
+            best_snp_rs = ordered_best_res['SNP'].iloc[:n_features]
             snp_list = bim.loc[bim['snp'].isin(best_snp_rs), ['chrom', 'pos', 'i']]
             snp_list = snp_list.sort_values(['chrom', 'pos'])['i'].tolist()
-
         else:
-            train_dataset = manager['train'][0]
-            valid_dataset = manager['validation'][0]
 
-            full_train_indices = np.concatenate([train_dataset.indices, valid_dataset.indices])
-
-            covariates_full_train = covariates.iloc[full_train_indices]
-            full_X_train = test_dataset.inputs[full_train_indices]
-            full_y_train = test_dataset.labels[full_train_indices]
+            X_train = train_dataset.inputs[train_dataset.indices]
+            y_train = train_dataset.labels[train_dataset.indices]
+            covariates_train = covariates.iloc[train_dataset.indices]
 
             pbar = progressbar.ProgressBar(
-                    max_value=full_X_train.shape[1], redirect_stdout=True, prefix="Filtering snps test ")
+                    max_value=X_train.shape[1], redirect_stdout=True, prefix="Filtering snps fold {}".format(idx))
 
             pvals = []
             n_errors = 0
             pbar.start()
-            for idx in range(full_X_train.shape[1]):
-                pbar.update(idx+1)
+            for i in range(X_train.shape[1]):
+                pbar.update(i+1)
                 X = np.concatenate([
-                    full_X_train[:, idx, np.newaxis],
-                    covariates_full_train.values], axis=1)
+                    X_train[:, i, np.newaxis],
+                    covariates_train.values], axis=1)
+
                 X = sm.add_constant(X)
 
-                model = sm.Logit(full_y_train, X, missing='drop')
+                model = sm.Logit(y_train, X, missing='drop')
 
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore")
@@ -263,27 +158,121 @@ if not os.path.exists(manager_path):
                     except:
                         pvals.append(1)
                         n_errors += 1
+
             pbar.finish()
             print('Number of errors: {}'.format(n_errors))
             pvals = np.array(pvals)
 
             snp_list = np.sort(pvals.argsort()[:n_features].squeeze()).tolist()
-        manager['test'].inputs = test_dataset.inputs[:, snp_list]
 
-        if use_plink:
-            shutil.rmtree(os.path.join(data_path, 'tmp'), ignore_errors=True)
+        manager['train'][idx].inputs = train_dataset.inputs[:, snp_list]
 
-    print('Start feature selection')
+        manager['validation'][idx].inputs = valid_dataset.inputs[:, snp_list]
 
-    select_features(manager, 10000, 'nicodep_nd_aa', plink_maf=0)#, plink_method='linear', label='ftnd')
-    # with open(manager_path, 'wb') as output:
-    #     pickle.dump(manager, output, pickle.HIGHEST_PROTOCOL)
-else:
 
-    print('Loading data manager')
-    with open(manager_path, 'rb') as input:
-        manager = pickle.load(input)
+    test_dataset = manager['test']
 
+    if use_plink:
+        if not os.path.isdir(os.path.join(data_path, 'tmp')):
+            os.mkdir(os.path.join(data_path, 'tmp'))
+
+        bim, fam, _ = read_plink(os.path.join(data_path, 'nicodep_nd_aa'),
+            verbose=False)
+
+        to_remove = fam[['fid', 'iid']].iloc[test_dataset.indices]
+        to_remove.to_csv(os.path.join(data_path, 'tmp', 'indivs.txt'),
+            header=False, index=False, sep=' ')
+
+        mask_to_remove = np.isnan(test_dataset.inputs.sum(axis=0))
+        snp_to_remove = np.arange(test_dataset.inputs.shape[1])[mask_to_remove]
+
+        snp_to_remove = bim.loc[bim['i'].isin(snp_to_remove), 'snp']
+        snp_to_remove.to_csv(os.path.join(data_path, 'tmp', 'snps.txt'),
+            header=False, index=False, sep='\n')
+
+        file_path = os.path.join(data_path, data_name)
+
+        print('Feature selection for testing')
+        # with warnings.catch_warnings():
+        #     warnings.filterwarnings("ignore")
+        if not label:
+            subprocess.run([
+                os.path.join(plink_path, 'plink'),
+                '--bfile', file_path,
+                '--geno', str(0),
+                '--remove', os.path.join(data_path, 'tmp', 'indivs.txt'),
+                '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
+                '--{}'.format(plink_method), '--covar', file_path + '.cov',
+                '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL)
+        else:
+            subprocess.run([
+                os.path.join(plink_path, 'plink'),
+                '--bfile', file_path,
+                '--geno', str(0),
+                '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
+                '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
+                '--{}'.format(plink_method), '--covar', file_path + '.cov',
+                '--pheno', pheno_path, '--pheno-name', label,
+                '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL)
+
+        res = pd.read_csv(os.path.join(data_path, 'tmp', 'res.assoc.{}'.format(plink_method)), delim_whitespace=True)
+        res = res[res['TEST'] == 'ADD']
+
+        ordered_best_res = res.sort_values('P')
+        best_snp_rs = ordered_best_res['SNP'].iloc[:n_features]
+        snp_list = bim.loc[bim['snp'].isin(best_snp_rs), ['chrom', 'pos', 'i']]
+        snp_list = snp_list.sort_values(['chrom', 'pos'])['i'].tolist()
+
+    else:
+        train_dataset = manager['train'][0]
+        valid_dataset = manager['validation'][0]
+
+        full_train_indices = np.concatenate([train_dataset.indices, valid_dataset.indices])
+
+        covariates_full_train = covariates.iloc[full_train_indices]
+        full_X_train = test_dataset.inputs[full_train_indices]
+        full_y_train = test_dataset.labels[full_train_indices]
+
+        pbar = progressbar.ProgressBar(
+                max_value=full_X_train.shape[1], redirect_stdout=True, prefix="Filtering snps test ")
+
+        pvals = []
+        n_errors = 0
+        pbar.start()
+        for idx in range(full_X_train.shape[1]):
+            pbar.update(idx+1)
+            X = np.concatenate([
+                full_X_train[:, idx, np.newaxis],
+                covariates_full_train.values], axis=1)
+            X = sm.add_constant(X)
+
+            model = sm.Logit(full_y_train, X, missing='drop')
+
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                try:
+                    results = model.fit(disp=0)
+                    pvals.append((results.pvalues[0]))
+                except:
+                    pvals.append(1)
+                    n_errors += 1
+        pbar.finish()
+        print('Number of errors: {}'.format(n_errors))
+        pvals = np.array(pvals)
+
+        snp_list = np.sort(pvals.argsort()[:n_features].squeeze()).tolist()
+    manager['test'].inputs = test_dataset.inputs[:, snp_list]
+
+    if use_plink:
+        shutil.rmtree(os.path.join(data_path, 'tmp'), ignore_errors=True)
+
+print('Start feature selection')
+
+select_features(manager, 10000, 'nicodep_nd_aa', plink_maf=0)#, plink_method='linear', label='ftnd')
 
 import collections
 import torch
@@ -390,7 +379,7 @@ class MyNet(torch.nn.Module):
 
         out_conv4_shape = int((out_conv3_shape + 2 * 0 - 1 * (20 - 1) - 1)/ 3 + 1)
         self.input_linear_features = int((out_conv4_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
-        
+
         self.dropout_conv = nn.Dropout(0.2)
         self.dropout_linear = nn.Dropout(0.5)
         self.linear = nn.Sequential(collections.OrderedDict([

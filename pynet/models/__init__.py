@@ -8,7 +8,7 @@
 ##########################################################################
 
 """
-Module that privides common networks.
+Module that provides common networks.
 """
 
 
