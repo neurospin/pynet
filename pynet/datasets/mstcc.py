@@ -95,7 +95,7 @@ def fetch_nicodep(file_name='nicodep_nd_aa',
         data_y = fam.join(data_y, on=['fid', 'iid'])
         data_y.reset_index(inplace=True)
         data_y.drop(['fid', 'iid', 'tissue', 'mother', 'father', 'ethnicity', 'gender', 'trait', 'i', 'index'], axis=1, inplace=True)
-        data_y.replace({'smoker': {'Smoker': 1, 'Non-smoker': 0, 'Ex-smoker': 1}}, inplace=True)
+        data_y = data_y - 1
         data_y = data_y.astype({'smoker': int})
 
         if visualize_labels:
