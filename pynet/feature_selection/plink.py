@@ -113,7 +113,8 @@ class PlinkSelector(FeatureSelector):
                     '--bfile', self.file_path, '--allow-no-sex',
                     '--keep', os.path.join(self.data_path, 'tmp', 'indivs.txt'),
                     '--pheno', self.pheno_path, '--pheno-name', self.pheno_name,
-                    '--{}'.format(self.method), '--covar', self.cov_path,
+                    '--{}'.format(self.method), 'hide-covar',
+                    '--covar', self.cov_path,
                     '--out', os.path.join(
                         self.data_path,
                         self.save_res_to,
@@ -126,8 +127,12 @@ class PlinkSelector(FeatureSelector):
                 '--bfile', self.file_path, '--allow-no-sex',
                 '--keep', os.path.join(self.data_path, 'tmp', 'indivs.txt'),
                 '--pheno', self.pheno_path, '--pheno-name', self.pheno_name,
-                '--{}'.format(self.method), '--covar', self.cov_path,
-                '--out', os.path.join(self.data_path, 'tmp', 'res')]+list_args,
+                '--{}'.format(self.method), 'hide-covar',
+                '--covar', self.cov_path,
+                '--out', os.path.join(
+                    self.data_path,
+                    'tmp',
+                    'res')] + list_args,
                 stdout=out, stderr=out)
             res_path = os.path.join(self.data_path,
                 'tmp', 'res.assoc.{}'.format(self.method))
@@ -136,7 +141,7 @@ class PlinkSelector(FeatureSelector):
         res = res[res['TEST'] == 'ADD']
 
         ordered_best_res = res.sort_values('P')
-        best_snp_rs = res['SNP'].iloc[:self.kbest]
+        best_snp_rs = ordered_best_res['SNP'].iloc[:self.kbest]
 
         best_snps = bim.loc[bim['snp'].isin(best_snp_rs), ['chrom', 'pos', 'i']]
         best_snps = best_snps.sort_values(['chrom', 'pos'])['i'].tolist()
@@ -165,7 +170,7 @@ class PlinkSelector(FeatureSelector):
             the transformed data.
         """
         if len(self.feature_idx) == 0:
-            raise AttributeError('You must fit your model before transforming the data.')
+            raise AttributeError('No feature has been selected. You must fit your model before transforming the data.')
 
         bim, fam, bed = read_plink(self.file_path, verbose=verbose)
 
@@ -173,10 +178,14 @@ class PlinkSelector(FeatureSelector):
 
         data = np.transpose(bed.compute())
 
+        median_per_col = np.nanmedian(data, axis=0)
+        idx = np.where(np.isnan(data))
+        data[idx] = np.take(median_per_col, idx[1])
+
         if save_name is not None:
             save_path = os.path.join(self.data_path, save_name)
             np.save(save_path, data.astype(float))
-            return np.load(save_path, mmap_mode='r')
+            return np.load(save_path, mmap_mode='r+')
         return data
 
 

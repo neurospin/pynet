@@ -67,6 +67,44 @@ def pearson_correlation(y_pred, y):
     r_val = r_num / r_den
     return r_val
 
+@Metrics.register
+def r2(y_pred, y):
+    """ R2 coefficient.
+    """
+    # mean_y = torch.mean(y)
+    # ypredm = y_pred.sub(mean_y)
+    # ym = y.sub(mean_y)
+    # sst = torch.norm(ym, 2)
+    # ssreg = torch.norm(ypredm, 2)
+    #
+    # r_val =  ssreg / sst
+    mean_y = torch.mean(y)
+    sst = torch.norm(y.sub(mean_y), 2)
+
+    ssres = torch.norm(y-y_pred, 2)
+
+    r_val = 1 - ssres/sst
+
+    return r_val
+
+@Metrics.register
+def r2_bis(y_pred, y):
+    """ R2 coefficient.
+    """
+    mean_y = torch.mean(y)
+    ypredm = y_pred.sub(mean_y)
+    ym = y.sub(mean_y)
+    sst = torch.norm(ym, 2)
+    ssreg = torch.norm(ypredm, 2)
+
+    r_val =  ssreg / sst
+
+    return r_val
+
+@Metrics.register
+def r2_score(y_pred, y):
+    return sk_metrics.r2_score(y, y_pred.detach().numpy())
+
 
 class BinaryClassificationMetrics(object):
     """ Computes and stores the average and current value.
@@ -175,6 +213,5 @@ for name in ("accuracy", "average_precision_score", "cohen_kappa_score",
              "true_positive_rate"):
     Metrics.register(
         SKMetrics(name), name="sk_{0}".format(name))
-
 Metrics.register(SKMetrics("fbeta_score", beta=1), name="f1_score")
 Metrics.register(SKMetrics("fbeta_score", beta=2), name="f2_score")

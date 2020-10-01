@@ -18,7 +18,10 @@ setup_logging(level="info")
 
 data_path = '/neurospin/brainomics/2020_corentin_smoking/'
 
-data = fetch_nicodep('nicodep_nd_aa', data_path, treat_nans=None)
+file_name = 'nicodep_nd_aa'
+file_name = 'nicodep-aa-impute-filtered'
+
+data = fetch_nicodep(file_name, data_path, treat_nans=None)
 
 labels = ['smoker']
 
@@ -27,9 +30,10 @@ manager = DataManager(
     labels=labels,
     stratify_label="smoker",
     metadata_path=data.metadata_path,
-    number_of_folds=10,
+    number_of_folds=5,
     batch_size=16,
-    test_size=0.02)
+    test_size=0.02,
+    cv_random_state=1000)
 
 visualize_pca = False
 
@@ -59,37 +63,46 @@ if visualize_pca:
     plt.show()
 
 
-def select_features(manager, n_features, data_name, label=None,
+def select_features(manager, n_features, file_name, label=None,
     use_plink=True, plink_path=os.path.join(data_path, 'plink'),
     plink_maf=0.01, plink_method='logistic',
-    pheno_path=os.path.join(data_path, 'nicodep.pheno')):
+    pheno_path=os.path.join(data_path, 'nicodep.pheno'),
+    cov_path=os.path.join(data_path, 'nicodep_nd_aa.cov'),
+    verbose=False):
 
     if not use_plink:
         covariates = pd.read_csv(cov_file, sep=' ')
         covariates.drop(['FID', 'IID'], axis=1, inplace=True)
+    if use_plink:
+        out = None
+        if not verbose:
+            out = subprocess.DEVNULL
+
+        if not os.path.isdir(os.path.join(data_path, 'tmp')):
+            os.mkdir(os.path.join(data_path, 'tmp'))
+
+        bim, fam, _ = read_plink(os.path.join(data_path, file_name),
+            verbose=verbose)
+
+
     for idx, train_dataset in enumerate(manager['train']):
 
         valid_dataset = manager["validation"][idx]
 
         if use_plink:
-            if not os.path.isdir(os.path.join(data_path, 'tmp')):
-                os.mkdir(os.path.join(data_path, 'tmp'))
-
-            bim, fam, _ = read_plink(os.path.join(data_path, 'nicodep_nd_aa'),
-                verbose=False)
 
             indiv_to_keep = fam[['fid', 'iid']].iloc[train_dataset.indices]
             indiv_to_keep.to_csv(os.path.join(data_path, 'tmp', 'indivs.txt'),
                 header=False, index=False, sep=' ')
 
-            mask_to_remove = np.isnan(train_dataset.inputs.sum(axis=0))
-            snp_to_remove = np.arange(train_dataset.inputs.shape[1])[mask_to_remove]
+            # mask_to_remove = np.isnan(train_dataset.inputs.sum(axis=0))
+            # snp_to_remove = np.arange(train_dataset.inputs.shape[1])[mask_to_remove]
+            #
+            # snp_to_remove = bim.loc[bim['i'].isin(snp_to_remove), 'snp']
+            # snp_to_remove.to_csv(os.path.join(data_path, 'tmp', 'snps.txt'),
+            #     header=False, index=False, sep='\n')
 
-            snp_to_remove = bim.loc[bim['i'].isin(snp_to_remove), 'snp']
-            snp_to_remove.to_csv(os.path.join(data_path, 'tmp', 'snps.txt'),
-                header=False, index=False, sep='\n')
-
-            file_path = os.path.join(data_path, data_name)
+            file_path = os.path.join(data_path, file_name)
 
             print('Feature selection fold {}'.format(idx))
 
@@ -105,10 +118,10 @@ def select_features(manager, n_features, data_name, label=None,
                     '--geno', str(0),
                     '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
                     '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
-                    '--{}'.format(plink_method), '--covar', file_path + '.cov',
+                    '--{}'.format(plink_method), '--covar', cov_path,
+                    '--allow-no-sex',
                     '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL)
+                    stdout=out, stderr=out)
             else:
                 subprocess.run([
                     os.path.join(plink_path, 'plink'),
@@ -116,11 +129,11 @@ def select_features(manager, n_features, data_name, label=None,
                     '--geno', str(0),
                     '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
                     '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
-                    '--{}'.format(plink_method), '--covar', file_path + '.cov',
+                    '--{}'.format(plink_method), '--covar', cov_path,
                     '--pheno', pheno_path, '--pheno-name', label,
+                    '--allow-no-sex',
                     '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL)
+                    stdout=out, stderr=out)
             res = pd.read_csv(os.path.join(data_path, 'tmp', 'res.assoc.{}'.format(plink_method)), delim_whitespace=True)
             res = res[res['TEST'] == 'ADD']
 
@@ -173,24 +186,19 @@ def select_features(manager, n_features, data_name, label=None,
     test_dataset = manager['test']
 
     if use_plink:
-        if not os.path.isdir(os.path.join(data_path, 'tmp')):
-            os.mkdir(os.path.join(data_path, 'tmp'))
 
-        bim, fam, _ = read_plink(os.path.join(data_path, 'nicodep_nd_aa'),
-            verbose=False)
+        # to_remove = fam[['fid', 'iid']].iloc[test_dataset.indices]
+        # to_remove.to_csv(os.path.join(data_path, 'tmp', 'indivs.txt'),
+        #     header=False, index=False, sep=' ')
+        #
+        # mask_to_remove = np.isnan(test_dataset.inputs.sum(axis=0))
+        # snp_to_remove = np.arange(test_dataset.inputs.shape[1])[mask_to_remove]
+        #
+        # snp_to_remove = bim.loc[bim['i'].isin(snp_to_remove), 'snp']
+        # snp_to_remove.to_csv(os.path.join(data_path, 'tmp', 'snps.txt'),
+        #     header=False, index=False, sep='\n')
 
-        to_remove = fam[['fid', 'iid']].iloc[test_dataset.indices]
-        to_remove.to_csv(os.path.join(data_path, 'tmp', 'indivs.txt'),
-            header=False, index=False, sep=' ')
-
-        mask_to_remove = np.isnan(test_dataset.inputs.sum(axis=0))
-        snp_to_remove = np.arange(test_dataset.inputs.shape[1])[mask_to_remove]
-
-        snp_to_remove = bim.loc[bim['i'].isin(snp_to_remove), 'snp']
-        snp_to_remove.to_csv(os.path.join(data_path, 'tmp', 'snps.txt'),
-            header=False, index=False, sep='\n')
-
-        file_path = os.path.join(data_path, data_name)
+        file_path = os.path.join(data_path, file_name)
 
         print('Feature selection for testing')
         # with warnings.catch_warnings():
@@ -199,25 +207,25 @@ def select_features(manager, n_features, data_name, label=None,
             subprocess.run([
                 os.path.join(plink_path, 'plink'),
                 '--bfile', file_path,
-                '--geno', str(0),
+                # '--geno', str(0),
                 '--remove', os.path.join(data_path, 'tmp', 'indivs.txt'),
-                '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
-                '--{}'.format(plink_method), '--covar', file_path + '.cov',
+                # '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
+                '--{}'.format(plink_method), '--covar', cov_path,
+                '--allow-no-sex',
                 '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL)
+                stdout=out, stderr=out)
         else:
             subprocess.run([
                 os.path.join(plink_path, 'plink'),
                 '--bfile', file_path,
-                '--geno', str(0),
+                # '--geno', str(0),
                 '--keep', os.path.join(data_path, 'tmp', 'indivs.txt'),
-                '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
-                '--{}'.format(plink_method), '--covar', file_path + '.cov',
+                # '--exclude', os.path.join(data_path, 'tmp', 'snps.txt'),
+                '--{}'.format(plink_method), '--covar', cov_path,
                 '--pheno', pheno_path, '--pheno-name', label,
+                '--allow-no-sex',
                 '--out', os.path.join(data_path, 'tmp', 'res')] + maf_list,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL)
+                stdout=out, stderr=out)
 
         res = pd.read_csv(os.path.join(data_path, 'tmp', 'res.assoc.{}'.format(plink_method)), delim_whitespace=True)
         res = res[res['TEST'] == 'ADD']
@@ -272,7 +280,7 @@ def select_features(manager, n_features, data_name, label=None,
 
 print('Start feature selection')
 
-select_features(manager, 10000, 'nicodep_nd_aa', plink_maf=0)#, plink_method='linear', label='ftnd')
+select_features(manager, 1000, file_name, plink_maf=0, label=labels[0], verbose=True)#, plink_method='linear', label='ftnd')
 
 import collections
 import torch
@@ -359,29 +367,38 @@ class MyNet(torch.nn.Module):
         self.batchnorm1 = nn.BatchNorm1d(64)
 
 
-        self.conv2 = torch.nn.Conv1d(64, 32, kernel_size=5, stride=1, padding=0)
-        self.batchnorm2 = nn.BatchNorm1d(32)
+        self.conv2 = torch.nn.Conv1d(64, 16, kernel_size=5, stride=1, padding=0)
+        self.batchnorm2 = nn.BatchNorm1d(16)
+        # self.conv1 = torch.nn.Conv1d(1, 64, kernel_size=3, stride=3, padding=1)
+        # self.maxpool = torch.nn.MaxPool1d(kernel_size=2)
+        #
+        # self.batchnorm1 = nn.BatchNorm1d(64)
+        #
+        #
+        # self.conv2 = torch.nn.Conv1d(64, 32, kernel_size=5, stride=1, padding=0)
+        # self.batchnorm2 = nn.BatchNorm1d(32)
 
-        self.conv3 = torch.nn.Conv1d(32, 32, kernel_size=12, stride=1, padding=0)
-        self.batchnorm3 = nn.BatchNorm1d(32)
-
-        self.conv4 = torch.nn.Conv1d(32, 16, kernel_size=20, stride=3, padding=0)
-        self.batchnorm4 = nn.BatchNorm1d(16)
+        # self.conv3 = torch.nn.Conv1d(32, 32, kernel_size=12, stride=1, padding=0)
+        # self.batchnorm3 = nn.BatchNorm1d(32)
+        #
+        # self.conv4 = torch.nn.Conv1d(32, 16, kernel_size=20, stride=3, padding=0)
+        # self.batchnorm4 = nn.BatchNorm1d(16)
 
         out_conv1_shape = int((nb_snps + 2 * 1 - 1 * (3 - 1) - 1)/ 3 + 1)
         out_conv1_shape = int((out_conv1_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
 
         out_conv2_shape = int((out_conv1_shape + 2 * 0 - 1 * (5 - 1) - 1)/ 1 + 1)
-        out_conv2_shape = int((out_conv2_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
-
-        out_conv3_shape = int((out_conv2_shape + 2 * 0 - 1 * (12 - 1) - 1)/ 1 + 1)
-        out_conv3_shape = int((out_conv3_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
-
-        out_conv4_shape = int((out_conv3_shape + 2 * 0 - 1 * (20 - 1) - 1)/ 3 + 1)
-        self.input_linear_features = int((out_conv4_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
+        self.input_linear_features = int((out_conv2_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
+        # out_conv2_shape = int((out_conv2_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
+        #
+        # out_conv3_shape = int((out_conv2_shape + 2 * 0 - 1 * (12 - 1) - 1)/ 1 + 1)
+        # out_conv3_shape = int((out_conv3_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
+        #
+        # out_conv4_shape = int((out_conv3_shape + 2 * 0 - 1 * (20 - 1) - 1)/ 3 + 1)
+        # self.input_linear_features = int((out_conv4_shape + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1)
 
         self.dropout_conv = nn.Dropout(0.2)
-        self.dropout_linear = nn.Dropout(0.5)
+        self.dropout_linear = nn.Dropout(0.7)
         self.linear = nn.Sequential(collections.OrderedDict([
             ("linear1", nn.Linear(16 * self.input_linear_features, 64)),
             ("activation1", nn.ReLU()),
@@ -398,8 +415,8 @@ class MyNet(torch.nn.Module):
         x = x.view(x.shape[0], 1, x.shape[1])
         x = self.dropout_conv(self.batchnorm1(nn.ReLU()(self.maxpool(self.conv1(x)))))
         x = self.dropout_conv(self.batchnorm2(nn.ReLU()(self.maxpool(self.conv2(x)))))
-        x = self.dropout_conv(self.batchnorm3(nn.ReLU()(self.maxpool(self.conv3(x)))))
-        x = self.dropout_conv(self.batchnorm4(nn.ReLU()(self.maxpool(self.conv4(x)))))
+        # x = self.dropout_conv(self.batchnorm3(nn.ReLU()(self.maxpool(self.conv3(x)))))
+        # x = self.dropout_conv(self.batchnorm4(nn.ReLU()(self.maxpool(self.conv4(x)))))
         out_conv = x.view(-1, 16 * self.input_linear_features)
         x = self.linear(out_conv)
         x = x.view(x.size(0))
@@ -463,7 +480,7 @@ cl = DeepLearningInterface(
     loss=my_loss,
     #loss_name="MSELoss",
     model=model,
-    metrics=['binary_accuracy', 'binary_precision', 'binary_recall', 'f1_score'])
+    metrics=['binary_accuracy', 'f1_score'])
     #metrics=['accuracy'])
 
 cl.add_observer("regularizer", KernelRegularizer('linear[0]', 0.1))

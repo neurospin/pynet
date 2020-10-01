@@ -31,7 +31,7 @@ from pynet.utils import checkpoint
 from pynet.history import History
 from pynet.observable import Observable
 from pynet.utils import Metrics
-from pynet.utils import reset_weights
+from pynet.utils import reset_weights, reset_optimizer
 
 
 # Global parameters
@@ -187,6 +187,10 @@ class Base(Observable):
         for fold in folds:
             logger.debug("Running fold {0}...".format(fold))
             reset_weights(self.model, self.checkpoint)
+            reset_optimizer(
+                self.optimizer,
+                self.model,
+                self.checkpoint)
             loaders = manager.get_dataloader(
                 train=True,
                 validation=with_validation,
@@ -261,7 +265,6 @@ class Base(Observable):
                                         checkpointdir,
                                         'model_{}_epoch_{}.pth'.format(fold, best_loss_epoch)))['model']
 
-                                    self.model = self.model.__class__()
                                     self.model.load_state_dict(model_state)
 
                                 logger.info("Training stopped by early stopping")

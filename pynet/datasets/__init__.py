@@ -31,7 +31,7 @@ from .echocardiography import fetch_echocardiography
 from .gradcam import fetch_gradcam
 from .genomic import fetch_genomic_pred
 from .registration import fetch_registration
-from .ukb import fetch_height_biobank
+from .ukb import fetch_height_biobank, fetch_data_from_plink
 from .impac import fetch_impac
 from .connectome import fetch_connectome
 from .hcp import fetch_hcp_brain

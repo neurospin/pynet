@@ -379,3 +379,23 @@ def reset_weights(model, checkpoint=None):
             model.load_state_dict(checkpoint["model"])
         else:
             model.load_state_dict(checkpoint)
+
+def reset_optimizer(optimizer, model, checkpoint=None):
+    """ Reset all the weights of a model. If a checkpoint is given, restore
+    the checkpoint weights.
+
+    Parameters
+    ----------
+    model: Net
+        the network model.
+    checkpoint: dict
+        the saved model weights
+    """
+    if isinstance(checkpoint, dict) and "optimizer" in checkpoint:
+        optimizer.load_state_dict(
+            checkpoint["optimizer"])
+    else:
+        state_dict = optimizer.state_dict()
+        state_dict['state'] = dict()
+        state_dict['param_groups'] = [state_dict['param_groups'][0]]
+        optimizer.load_state_dict(state_dict)
