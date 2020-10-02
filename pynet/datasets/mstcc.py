@@ -49,7 +49,7 @@ logger = logging.getLogger("pynet")
 @Fetchers.register
 def fetch_nicodep(file_name='nicodep_nd_aa',
     datasetdir='/neurospin/brainomics/2020_corentin_smoking/',
-    visualize_labels=False, treat_nans='remove'):#p_value_filter=None, N_best=None):
+    visualize_labels=False, treat_nans='remove'):
     """ Fetch/prepare nicotine dependence dataset for pynet.
 
     Matrix Y contains the phenotypes
@@ -76,7 +76,7 @@ def fetch_nicodep(file_name='nicodep_nd_aa',
         os.mkdir(datasetdir)
     desc_path = os.path.join(datasetdir, "pynet_{}_labels.tsv".format(file_name))
     input_path = os.path.join(datasetdir, "pynet_{}_inputs.npy".format(file_name))
-    #file_todel = []
+
     if not os.path.isfile(desc_path) or not os.path.isfile(desc_path):
         bim, fam, bed = read_plink(os.path.join(datasetdir, file_name))
 

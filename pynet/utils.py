@@ -380,14 +380,14 @@ def reset_weights(model, checkpoint=None):
         else:
             model.load_state_dict(checkpoint)
 
-def reset_optimizer(optimizer, model, checkpoint=None):
-    """ Reset all the weights of a model. If a checkpoint is given, restore
-    the checkpoint weights.
+def reset_optimizer(optimizer, checkpoint=None):
+    """ Reset all the optimizer's parameters. If a checkpoint is given,
+    restore the checkpoint parameters.
 
     Parameters
     ----------
-    model: Net
-        the network model.
+    optimizer: Optimizer
+        the network optimizer.
     checkpoint: dict
         the saved model weights
     """
