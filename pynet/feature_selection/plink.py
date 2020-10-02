@@ -197,19 +197,17 @@ class PlinkSelector(FeatureSelector):
             for i in iterator:
                 memmap[:,i] = data[i]
 
-        t = time()
+
         median_per_col = np.nanmedian(memmap, axis=0)
         idx = np.where(np.isnan(memmap))
         memmap[idx] = np.take(median_per_col, idx[1])
-        print(time() - t)
+        
         if save_name is not None:
-        #     save_path = os.path.join(self.data_path, save_name)
-        #     np.save(save_path, data.astype(float))
-            # shutil.rmtree(os.path.join(self.data_path, 'tmp'), ignore_errors=True)
+            shutil.rmtree(os.path.join(self.data_path, 'tmp'), ignore_errors=True)
             return np.load(save_path, mmap_mode='r+')
         else:
             data = np.load(save_path)
-            # shutil.rmtree(os.path.join(self.data_path, 'tmp'), ignore_errors=True)
+            shutil.rmtree(os.path.join(self.data_path, 'tmp'), ignore_errors=True)
             return data
 
 

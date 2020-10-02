@@ -28,8 +28,6 @@ from pynet.datasets import Fetchers
 from pandas_plink import read_plink
 import h5py
 from numpy.lib.format import open_memmap
-from tqdm import tqdm
-import time
 
 
 # Global parameters
@@ -59,8 +57,7 @@ logger = logging.getLogger("pynet")
 def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
     """ Fetch/prepare the height biobank prediction dataset for pynet.
 
-    Matrix Y contains the average grain yield, column 1: Grain yield for
-    environment 1 and so on.
+    Matrix Y contains the different phenotypes.
     Matrix X contains marker genotypes.
 
     Parameters
@@ -178,21 +175,24 @@ def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
 
 @Fetchers.register
 def fetch_data_from_plink(datasetdir, data_file, pheno_file,
-    n_individuals, seed=42, check=False):
-    """ Fetch/prepare the height biobank prediction dataset for pynet.
+    n_individuals, seed=42):
+    """ Fetch/prepare all the markers for subset of individuals from ukb data.
 
-    Matrix Y contains the average grain yield, column 1: Grain yield for
-    environment 1 and so on.
+    Matrix Y contains the different phenotypes.
     Matrix X contains marker genotypes.
 
     Parameters
     ----------
     datasetdir: str
         the dataset destination folder.
-    to_categorical: bool, default False
-        if set convert the observation to categories.
-    check: bool, default False
-        if set check results against the downloaded .check file data
+    data_file: str
+        prefix of the files containing the data (bim, fam, bed)
+    data_file: str
+        name of the file containing the phenotypes
+    n_individuals: int
+        number of individuals randomly sampled from the dataset
+    seed: int
+        random seed for sampling the individuals
 
     Returns
     -------
@@ -209,7 +209,6 @@ def fetch_data_from_plink(datasetdir, data_file, pheno_file,
     file_todel = []
     if not os.path.isfile(desc_path) or not os.path.isfile(input_path):
 
-        # Get data_x, read from the chunk #7 nan filteredout
         bim, fam, bed = read_plink(os.path.join(datasetdir, data_file))
 
         np.random.seed(seed)
@@ -228,7 +227,7 @@ def fetch_data_from_plink(datasetdir, data_file, pheno_file,
         
         with h5py.File(os.path.join(datasetdir, 'data.hdf5'), 'r') as f:
             data = f['data']
-            for i in tqdm(range(shape[1])):
+            for i in range(shape[1]):
                 memmap[i] = data[:,i]
         os.remove(os.path.join(datasetdir, 'data.hdf5'))
 
@@ -237,7 +236,9 @@ def fetch_data_from_plink(datasetdir, data_file, pheno_file,
 
         fam = fam.astype({'iid': int, 'fid': int})
 
-        data_y = data_y.join(fam[['fid', 'iid', 'i']].set_index(['fid', 'iid']), on=['FID', 'IID'])
+        data_y = data_y.join(
+            fam[['fid', 'iid', 'i']].set_index(['fid', 'iid']),
+            on=['FID', 'IID'])
 
         data_y = data_y[data_y['i'].isin(individuals)].sort_values('i')
         data_y.drop(['FID', 'IID', 'i'], axis=1, inplace=True)
