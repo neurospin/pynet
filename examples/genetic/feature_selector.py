@@ -9,7 +9,7 @@ from collections import namedtuple
 
 setup_logging(level="info")
 
-data_path = 'neurospin/brainomics/2020_corentin_smoking'
+data_path = '/neurospin/brainomics/2020_corentin_smoking'
 
 data_file = 'nicodep_nd_aa'
 
@@ -23,13 +23,13 @@ labels = pd.read_csv(os.path.join(data_path, 'nicodep.pheno'), sep='\t')
 
 labels = fam[['FID', 'IID']].join(labels.set_index(['FID', 'IID']), on=['FID', 'IID'])
 
-# data_y.drop(['fid', 'iid', 'tissue', 'mother', 'father', 'ethnicity', 'gender', 'trait', 'i', 'index'], axis=1, inplace=True
-print(labels.head())
-labels['smoker'] = labels['smoker'] - 1
+labels.drop(['tissue', 'ethnicity', 'gender'], axis=1, inplace=True)
+
+labels.to_csv(os.path.join(data_path, 'nicodep_aa.pheno'), sep='\t', index=False)
 
 data = Item(input_path=os.path.join(data_path, data_file),
     output_path=None, labels=None,
-    metadata_path=os.path.join(data_path, 'nicodep.pheno'))
+    metadata_path=os.path.join(data_path, 'nicodep_aa.pheno'))
 
 labels = ['smoker']
 
@@ -41,8 +41,8 @@ feature_selector = PlinkSelector(
     kbest=n_features, data_path=data_path, data_file=data_file,
     pheno_file='nicodep.pheno', cov_file='nicodep_nd_aa.cov',
     pheno_name=labels[0], save_res_to='nicodep_res_assoc_{}_{}_{}_folds_test_{}'.format(
-        data_file, labels[0], n_folds, test_size,
-    ))
+        data_file, labels[0], n_folds, test_size), method='logistic'
+    )
 
 manager = DataManager(
     input_path=data.input_path,

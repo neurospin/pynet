@@ -187,10 +187,7 @@ class Base(Observable):
         for fold in folds:
             logger.debug("Running fold {0}...".format(fold))
             reset_weights(self.model, self.checkpoint)
-            reset_optimizer(
-                self.optimizer,
-                self.model,
-                self.checkpoint)
+            reset_optimizer(self.optimizer, self.checkpoint)
             loaders = manager.get_dataloader(
                 train=True,
                 validation=with_validation,
