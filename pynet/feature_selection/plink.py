@@ -5,7 +5,10 @@ import numpy as np
 import pandas as pd
 from pandas_plink import read_plink
 from pynet.feature_selection import FeatureSelector
-
+from time import time
+from tqdm import tqdm
+from numpy.lib.format import open_memmap
+import h5py
 
 class PlinkSelector(FeatureSelector):
     def __init__(self, kbest, data_path, data_file,
@@ -108,6 +111,7 @@ class PlinkSelector(FeatureSelector):
             res_path =  os.path.join(self.data_path,
                 self.save_res_to, '{}.assoc.{}'.format(save_name, self.method))
             if not os.path.exists(res_path):
+                print('starting plink')
                 subprocess.run([
                     self.plink_path,
                     '--bfile', self.file_path, '--allow-no-sex',
@@ -175,18 +179,39 @@ class PlinkSelector(FeatureSelector):
         bim, fam, bed = read_plink(self.file_path, verbose=verbose)
 
         bed = bed[self.feature_idx]
+        shape = bed.shape
+        #
+        if not os.path.isdir(os.path.join(self.data_path, 'tmp')):
+            os.mkdir(os.path.join(self.data_path, 'tmp'))
 
-        data = np.transpose(bed.compute())
+        bed.to_hdf5(os.path.join(self.data_path, 'tmp', 'data.hdf5'), '/data')
 
-        median_per_col = np.nanmedian(data, axis=0)
-        idx = np.where(np.isnan(data))
-        data[idx] = np.take(median_per_col, idx[1])
-
+        save_path = os.path.join(self.data_path, 'tmp', 'data.npy')
         if save_name is not None:
             save_path = os.path.join(self.data_path, save_name)
-            np.save(save_path, data.astype(float))
+        memmap = open_memmap(save_path, dtype='float32', mode='w+', shape=shape[::-1])
+
+        with h5py.File(os.path.join(self.data_path, 'tmp', 'data.hdf5'), 'r') as f:
+            data = f['data']
+            iterator = tqdm(range(shape[0])) if verbose else range(shape[0])
+            for i in iterator:
+                memmap[:,i] = data[i]
+
+        t = time()
+        median_per_col = np.nanmedian(memmap, axis=0)
+        idx = np.where(np.isnan(memmap))
+        memmap[idx] = np.take(median_per_col, idx[1])
+        print(time() - t)
+        if save_name is not None:
+        #     save_path = os.path.join(self.data_path, save_name)
+        #     np.save(save_path, data.astype(float))
+            # shutil.rmtree(os.path.join(self.data_path, 'tmp'), ignore_errors=True)
             return np.load(save_path, mmap_mode='r+')
-        return data
+        else:
+            data = np.load(save_path)
+            # shutil.rmtree(os.path.join(self.data_path, 'tmp'), ignore_errors=True)
+            return data
+
 
 
     def fit_transform(self, train_indices, save_res_name=None,

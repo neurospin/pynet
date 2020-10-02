@@ -52,7 +52,7 @@ data = Item(input_path=os.path.join(data_path, data_file),
 labels = ['height']
 
 test_size = 0.2
-n_folds = 2
+n_folds = 5
 n_features = 10000
 
 feature_selector = PlinkSelector(
