@@ -12,6 +12,7 @@ A module with common functions.
 """
 
 # System import
+import collections
 import shutil
 import logging
 import tempfile
@@ -293,7 +294,7 @@ def get_named_layers(model, allowed_layers=ALLOWED_LAYERS, resume=False):
 
 
 def layer_at(model, layer_name, x, allowed_layers=ALLOWED_LAYERS):
-    """ Access intermediate layers of pretrined network.
+    """ Access intermediate layers of pretrained network.
 
     Parameters
     ----------
@@ -308,34 +309,61 @@ def layer_at(model, layer_name, x, allowed_layers=ALLOWED_LAYERS):
 
     Returns
     -------
-    hook_x: torch.Tensor
+    layer_data: torch.Tensor or list
         the tensor generated at the requested location.
     weight: torch.Tensor
         the layer associated weight.
     """
     layers = get_named_layers(model)
-    layer = layers[layer_name]
+    try:
+        layer = layers[layer_name]
+    except:
+        layer = model._modules.get(layer_name)
     global hook_x
 
     def hook(module, inp, out):
         """ Define hook.
         """
+        if isinstance(inp, collections.Sequence):
+            inp_size = [item.data.size() for item in inp]
+            inp_dtype = [item.data.type() for item in inp]
+        else:
+            inp_size = inp.data.size()
+            inp_dtype = inp.data.type()
+        if isinstance(out, collections.Sequence):
+            out_size = [item.data.size() for item in out]
+            out_dtype = [item.data.type() for item in out]
+            out_data = [item.data for item in out]
+        else:
+            out_size = out.data.size()
+            out_dtype = out.data.type()
+            out_data = out.data
         print(
             "layer:", type(module),
             "\ninput:", type(inp),
             "\n   len:", len(inp),
-            "\n   type:", type(inp[0]),
-            "\n   data size:", inp[0].data.size(),
-            "\n   data type:", inp[0].data.type(),
+            "\n   data size:", inp_size,
+            "\n   data type:", inp_dtype,
             "\noutput:", type(out),
-            "\n   data size:", out.data.size(),
-            "\n   data type:", out.data.type())
+            "\n   data size:", out_size,
+            "\n   data type:", out_dtype)
         global hook_x
-        hook_x = out.data
+        hook_x = out_data
+
     _hook = layer.register_forward_hook(hook)
     _ = model(x)
     _hook.remove()
-    return hook_x.numpy(), layer.weight.detach().numpy()
+
+    if isinstance(hook_x, collections.Sequence):
+        layer_data = [item.cpu().numpy() for item in hook_x]
+    else:
+        layer_data = hook_x.cpu().numpy()
+
+    layer_weight = None
+    if hasattr(layer, "weight"):
+        layer_weight = layer.weight.cpu().numpy()
+
+    return layer_data, layer_weight
 
 
 def freeze_layers(model, layer_names):
