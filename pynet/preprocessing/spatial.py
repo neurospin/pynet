@@ -410,8 +410,9 @@ def check_version(package_name):
     exitcode = process.returncode
     if exitcode != 0:
         logger.debug("Version {0}: {1}".format(package_name, stderr))
-        raise ValueError(
+        logger.info(
             "Impossible to check package '{0}' version.".format(package_name))
+        return
     versions = re.findall("Version: .*$", stdout, re.MULTILINE)
     version = "|".join(versions)
     logger.info("{0} - {1}".format(package_name, version))
