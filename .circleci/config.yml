@@ -36,6 +36,7 @@ jobs:
           name: Running CircleCI tests
           command: |
             . venv/bin/activate
+            pip install torchvision==0.5.0
             pip install torchviz
             pip install talos==0.6.6
             pip install joblib
