@@ -280,6 +280,10 @@ class EncoderBlock(nn.Module):
         out += residual
         return out
 
+    def debug(self, name, tensor):
+        logger.debug("  {3}: {0} - {1} - {2}".format(
+            tensor.shape, tensor.get_device(), tensor.dtype, name))
+
 
 class LinearUpSampling(nn.Module):
     """ Interpolate to upsample.
