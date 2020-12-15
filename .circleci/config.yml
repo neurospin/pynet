@@ -37,7 +37,7 @@ jobs:
           command: |
             . venv/bin/activate
             pip install torchviz
-            pip install talos
+            pip install talos==0.6.6
             pip install joblib
             pip install -e .
             python .circleci/test_script.py
