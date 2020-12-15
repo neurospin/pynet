@@ -361,7 +361,7 @@ def layer_at(model, layer_name, x, allowed_layers=ALLOWED_LAYERS):
 
     layer_weight = None
     if hasattr(layer, "weight"):
-        layer_weight = layer.weight.cpu().numpy()
+        layer_weight = layer.weight.detach().numpy()
 
     return layer_data, layer_weight
 
