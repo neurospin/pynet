@@ -12,7 +12,9 @@ Module that privides common networks.
 """
 
 
+from .sononet import SonoNet
 from .unet import UNet
+from .vae import VUNet, VanillaNet
 from .nvnet import NvNet
 from .voxelmorphnet import VoxelMorphNet
 from .vtnet import VTNet, ADDNet
