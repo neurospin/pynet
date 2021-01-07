@@ -24,4 +24,6 @@ from .deeplabnet import DeepLabNet
 from .pspnet import PSPNet
 from .braingengan import (
     BGDiscriminator, BGEncoder, BGCodeDiscriminator, BGGenerator)
+from .resnet import ResAENet
+from .attention import STAAENet
 from .torchvisnet import *
