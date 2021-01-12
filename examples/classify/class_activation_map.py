@@ -6,8 +6,10 @@ Credit: A Grigis
 
 Based on:
 
-- https://medium.com/@stepanulyanin/implementing-grad-cam-in-pytorch-ea0937c31e82
-- http://snappishproductions.com/blog/2018/01/03/class-activation-mapping-in-pytorch.html
+- https://medium.com/@stepanulyanin/
+  implementing-grad-cam-in-pytorch-ea0937c31e82
+- http://snappishproductions.com/blog/2018/01/03/
+  class-activation-mapping-in-pytorch.html
 - https://github.com/jacobgil/pytorch-grad-cam
 
 A class activation map for a particular category indicates the discriminative
