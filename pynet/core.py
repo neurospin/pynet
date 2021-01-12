@@ -20,7 +20,6 @@ import logging
 from collections import OrderedDict
 
 # Third party import
-from torchvision import models
 import torch
 import torch.nn.functional as func
 import progressbar
