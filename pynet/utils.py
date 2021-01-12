@@ -393,7 +393,7 @@ def reset_weights(model, checkpoint=None):
     model: Net
         the network model.
     checkpoint: dict
-        the saved model weights
+        the saved model weights.
     """
     def weight_reset(m):
         if hasattr(m, "reset_parameters"):
