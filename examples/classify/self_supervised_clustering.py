@@ -44,8 +44,8 @@ BATCH_SIZE = 5
 N_EPOCHS = 20
 N_CLUSTERS = 2
 N_SAMPLES = 40
-AVOID_EMPTY_CLUSTERS = True
-UNIFORM_SAMPLING = False
+AVOID_EMPTY_CLUSTERS = False
+UNIFORM_SAMPLING = True
 setup_logging(level="info")
 
 
@@ -77,50 +77,25 @@ labels = np.asarray(labels)
 print("dataset: x {0} - y {1}".format(data.shape, labels.shape))
 
 
-# Create data manager
-manager = DataManager.from_numpy(
-    train_inputs=data, train_labels=np.zeros(labels.shape),
-    batch_size=BATCH_SIZE)
-
-
-class FKmeans(object):
-    def __init__(self, n_clusters):
-        self.n_clusters = n_clusters
-
-    def fit(self, data):
-        n_data, d = data.shape
-        self.clus = faiss.Kmeans(d, self.n_clusters)
-        self.clus.seed = np.random.randint(1234)
-        self.clus.niter = 20
-        self.clus.max_points_per_centroid = 10000000
-        self.clus.train(data)
-
-    def predict(self, data):
-        _, I = self.clus.index.search(data, 1)
-        losses = self.clus.obj
-        print("k-means loss evolution: {0}".format(losses))
-        return np.asarray([int(n[0]) for n in I])
-
-
 class UniformLabelSampler(Sampler):
     """ Samples elements uniformely accross pseudo labels.
     """
-    def __init__(self, data_loader):
+    def __init__(self, data_array):
         """ Init class.
 
         Parameters
         ----------
-        data_loader: DataLoader
-            the train data loader that contains the pseudo labels.
+        data_array: ArrayDataset
+            the train data array that contains the pseudo labels.
         """
-        self.n_samples = len(train_loader)
-        self.data_loader = data_loader
+        self.n_samples = len(data_array)
+        self.data_array = data_array
         self.indexes = self.generate_indexes_epoch()
 
     def generate_indexes_epoch(self):
         """ Generate sampling indexes.
         """
-        labels = self.data_loader.dataset.labels
+        labels = self.data_array.labels
         clusters_to_images = self.get_clusters(labels)
         n_non_empty_clusters = len(clusters_to_images)
         size_per_pseudolabel = int(self.n_samples / n_non_empty_clusters) + 1
@@ -152,6 +127,35 @@ class UniformLabelSampler(Sampler):
         return len(self.indexes)
 
 
+# Create data manager
+if UNIFORM_SAMPLING:
+    sampler = UniformLabelSampler
+else:
+    sampler = "random"
+manager = DataManager.from_numpy(
+    train_inputs=data, train_labels=np.zeros(labels.shape),
+    batch_size=BATCH_SIZE, sampler=sampler)
+
+
+class FKmeans(object):
+    def __init__(self, n_clusters):
+        self.n_clusters = n_clusters
+
+    def fit(self, data):
+        n_data, d = data.shape
+        self.clus = faiss.Kmeans(d, self.n_clusters)
+        self.clus.seed = np.random.randint(1234)
+        self.clus.niter = 20
+        self.clus.max_points_per_centroid = 10000000
+        self.clus.train(data)
+
+    def predict(self, data):
+        _, I = self.clus.index.search(data, 1)
+        losses = self.clus.obj
+        print("k-means loss evolution: {0}".format(losses))
+        return np.asarray([int(n[0]) for n in I])
+
+
 def my_loss(x, y):
     criterion = nn.CrossEntropyLoss()
     print("  x: {0} - {1}".format(x.shape, x.dtype))
@@ -163,9 +167,6 @@ def my_loss(x, y):
 
 # Create model
 train_loader = manager.get_dataloader(train=True, fold_index=0).train
-if UNIFORM_SAMPLING:
-    sampler = UniformLabelSampler(train_loader)
-    raise ValueError("Uniform data sampling option not yet supported.")
 if AVOID_EMPTY_CLUSTERS:
     kmeans = FKmeans(n_clusters=N_CLUSTERS)
 else:
