@@ -26,4 +26,5 @@ from .braingengan import (
     BGDiscriminator, BGEncoder, BGCodeDiscriminator, BGGenerator)
 from .resnet import ResAENet
 from .attention import STAAENet
+from .deepcluster import DeepCluster
 from .torchvisnet import *
