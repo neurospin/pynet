@@ -70,7 +70,7 @@ class UNet(nn.Module):
         up_mode: string, default 'transpose'
             type of upconvolution. Choices: 'transpose' for transpose
             convolution, 'upsample' for nearest neighbour upsampling.
-        merge_mode: str, defatul 'concat'
+        merge_mode: str, default 'concat'
             the skip connections merging strategy.
         batchnorm: bool, default False
             normalize the inputs of the activation function.
