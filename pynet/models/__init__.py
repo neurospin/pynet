@@ -27,4 +27,5 @@ from .braingengan import (
 from .resnet import ResAENet
 from .attention import STAAENet
 from .deepcluster import DeepCluster
+from .spherical import SphericalUNet
 from .torchvisnet import *
