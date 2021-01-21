@@ -43,7 +43,8 @@ class SphericalUNet(nn.Module):
     Spherical U-Net on Cortical Surfaces: Methods and Applications
     """
     def __init__(self, in_order, in_channels, out_channels, depth=5,
-                 start_filts=32, n_ring=1, up_mode="interp", cachedir=None):
+                 start_filts=32, conv_mode="1ring", up_mode="interp",
+                 cachedir=None):
         """ Initialize the Spherical UNet.
 
         Parameters
@@ -58,8 +59,8 @@ class SphericalUNet(nn.Module):
             number of layers in the UNet.
         start_filts: int, default 32
             number of convolutional filters for the first conv.
-        n_ring: int, default 1
-            the size of the spherical convolution filter.
+        conv_mode: strt, default '1ring'
+            the size of the spherical convolution filter: '1ring' or '2ring'.
         up_mode: str, default 'interp'
             type of upsampling: 'transpose' for transpose
             convolution, 'interp' for nearest neighbor linear interpolation,
@@ -73,7 +74,8 @@ class SphericalUNet(nn.Module):
         self.memory = Memory(cachedir, verbose=0)
         self.in_order = in_order
         self.depth = depth
-        self.n_ring = n_ring
+        self.conv_mode = conv_mode
+        n_ring = int(conv_mode[0])
         self.in_vertices = number_of_ico_vertices(order=in_order)
         self.in_channels = in_channels
         self.out_channels = out_channels

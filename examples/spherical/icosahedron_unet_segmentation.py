@@ -91,8 +91,8 @@ net_params = pynet.NetParameters(
     out_channels=N_CLASSES,
     depth=3,
     start_filts=32,
-    n_ring=1,
-    up_mode="maxpad",
+    conv_mode="1ring",
+    up_mode="transpose",
     cachedir=os.path.join(OUTDIR, "cache"))
 model = SphericalUNetEncoder(
     net_params,

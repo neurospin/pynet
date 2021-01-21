@@ -17,7 +17,6 @@ import numpy as np
 from math import sqrt, degrees
 from sklearn.neighbors import BallTree
 import networkx as nx
-from scipy.spatial.transform import Rotation
 
 
 def interpolate(vertices, target_vertices, target_triangles):
@@ -80,34 +79,52 @@ def neighbors(vertices, triangles, depth=1, direct_neighbor=False):
     Returns
     --------
     neighs: dict
-        a dictionary with vertices row index as keys and a list of neighbors
-        vertices row indexes as values.
+        a dictionary with vertices row index as keys and a dictionary of
+        neighbors vertices row indexes organized by rungs as values.
     """
     graph = vertex_adjacency_graph(vertices, triangles)
     neighs = collections.OrderedDict()
     for node in sorted(graph.nodes):
-        if depth == 1:
-            node_neighs = [idx for idx in graph.neighbors(node)]
-        else:
-            node_neighs = {}
-            for neigh, ring in nx.single_source_shortest_path_length(
-                    graph, node, cutoff=depth).items():
-                if ring == 0:
-                    continue
-                node_neighs.setdefault(ring, []).append(neigh)
+        node_neighs = {}
+        # node_neighs = [idx for idx in graph.neighbors(node)]
+        for neigh, ring in nx.single_source_shortest_path_length(
+                graph, node, cutoff=depth).items():
+            if ring == 0:
+                continue
+            node_neighs.setdefault(ring, []).append(neigh)
         if direct_neighbor:
-            if depth != 1:
-                raise ValueError("DiNe not yet implemented for depth > 1.")
-            angles = [get_angle_with_xaxis(vertices[node], vec)
-                      for vec in vertices[node_neighs]]
-            node_neighs = [x for _, x in sorted(
-                zip(angles, node_neighs), key=lambda pair: pair[0])]
-            if len(node_neighs) == 5:
-                node_neighs.extend([node, node])
-            elif len(node_neighs) == 6:
-                node_neighs.append(node)
+            _node_neighs = []
+            if depth == 1:
+                delta = np.pi / 4
+            elif depth == 2:
+                delta = np.pi / 8
             else:
-                raise RuntimeError("The input mesh is not an icosahedron.")
+                raise ValueError("Direct neighbors implemented only for "
+                                 "depth <= 2.")
+            for ring, ring_neighs in node_neighs.items():
+                angles = np.asarray([
+                    get_angle_with_xaxis(vertices[node], vertices[node], vec)
+                    for vec in vertices[ring_neighs]])
+                angles += delta
+                angles = np.degrees(np.mod(angles, 2 * np.pi))
+                ring_neighs = [x for _, x in sorted(
+                    zip(angles, ring_neighs), key=lambda pair: pair[0])]
+                if depth == 1 and ring == 1:
+                    if len(ring_neighs) == 5:
+                        ring_neighs.append(node)
+                    elif len(ring_neighs) != 6:
+                        raise ValueError("Mesh is not an icosahedron.")
+                if depth == 2 and ring == 2:
+                    ring_neighs = ring_neighs[1::2]
+                    if len(_node_neighs) + len(ring_neighs) == 10:
+                        ring_neighs.extend([node] * 2)
+                    elif len(_node_neighs) + len(ring_neighs) == 11:
+                        ring_neighs.append(node)
+                    elif len(_node_neighs) + len(ring_neighs) != 12:
+                        raise ValueError("Mesh is not an icosahedron.")
+                _node_neighs.extend(ring_neighs)
+            _node_neighs.append(node)
+            node_neighs = _node_neighs
         neighs[node] = node_neighs
 
     return neighs
@@ -153,17 +170,52 @@ def vertex_adjacency_graph(vertices, triangles):
     return graph
 
 
-def get_angle_with_xaxis(orig, point):
-    vector = np.asarray(point) - np.asarray(orig)
-    unit_vector = vector / np.linalg.norm(vector)
-    x_vector = np.array([1, 0, 0])
-    cos_theta = np.dot(unit_vector, x_vector)
-    axis = np.cross(unit_vector, x_vector)
+def get_angle_with_xaxis(center, normal, point):
+    """ Project a point to the sphere tangent plane and compute the angle
+    with the x-axis.
+
+    Parameters
+    ----------
+    center: array (3, )
+        a point in the plane.
+    normal: array (3, )
+        the normal to the plane.
+    points: array (3, )
+        the points to be projected.
+    """
+    # Assert is array
+    center = np.asarray(center)
+    normal = np.asarray(normal)
+    point = np.asarray(point)
+
+    # Project points to plane
+    vector = point - center
+    dist = np.dot(vector, normal)
+    projection = point - normal * dist
+
+    # Compute normal of the new projected x-axis and y-axis
+    if center[0] != 0 or center[1] != 0:
+        nx = np.cross(np.array([0, 0, 1]), center)
+        ny = np.cross(center, nx)
+    else:
+        nx = np.array([1, 0, 0])
+        ny = np.array([0, 1, 0])
+
+    # Compute the angle between projected points and the x-axis
+    vector = projection - center
+    unit_vector = vector
+    if np.linalg.norm(vector) != 0:
+        unit_vector = unit_vector / np.linalg.norm(vector)
+    unit_nx = nx / np.linalg.norm(nx)
+    cos_theta = np.dot(unit_vector, unit_nx)
+    if cos_theta > 1.:
+        cos_theta = 1.
+    elif cos_theta < -1.:
+        cos_theta = -1.
     angle = np.arccos(cos_theta)
-    rot = Rotation.from_rotvec(unit_vector * angle)
-    angle = rot.as_euler("zxy", degrees=True)[2]
-    if angle < 0:
-        angle = 180 + np.abs(angle)
+    if np.dot(unit_vector, ny) < 0:
+        angle = 2 * np.pi - angle
+
     return angle
 
 
@@ -337,6 +389,11 @@ def number_of_ico_vertices(order=3):
 
 if __name__ == "__main__":
 
+    print(get_angle_with_xaxis((0, 0, 0), (0, 1, 0), (1, 0, 0)))
+    print(get_angle_with_xaxis((0, 0, 0), (0, 1, 0), (0, 1, 0)))
+    print(get_angle_with_xaxis((0, 0, 0), (0, 1, 0), (-1, 0, 0)))
+    print(get_angle_with_xaxis((0, 0, 0), (0, 1, 0), (0, -1, 0)))
+
     for order in range(5):
         vertices, triangles = icosahedron(order=order)
         print(vertices.shape, triangles.shape)
@@ -348,12 +405,8 @@ if __name__ == "__main__":
     print(vertices.shape, triangles.shape)
     neighs = neighbors(vertices, triangles, depth=1, direct_neighbor=True)
     print(len(neighs))
-    pprint(neighs)
-
-    print(get_angle_with_xaxis((0, 0, 0), (1, 0, 0)))
-    print(get_angle_with_xaxis((0, 0, 0), (0, 1, 0)))
-    print(get_angle_with_xaxis((0, 0, 0), (-1, 0, 0)))
-    print(get_angle_with_xaxis((0, 0, 0), (0, -1, 0)))
+    print([len(elem) for elem in neighs.values()])
+    print(neighs)
 
     target_vertices, _ = icosahedron(order=0)
     down_indexes = downsample(vertices, target_vertices)
@@ -365,9 +418,19 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import axes3d
 
-    vertices, triangles = icosahedron(order=1)
+    vertices, triangles = icosahedron(order=2)
+    neighs = neighbors(vertices, triangles, depth=2, direct_neighbor=True)
+    colors = ["red", "green", "blue", "orange", "purple", "brown", "pink",
+              "gray", "olive", "cyan", "yellow", "tan", "salmon", "violet",
+              "steelblue", "lime", "navy"]
     x, y, z = vertices[:, 0], vertices[:, 1], vertices[:, 2]
     fig, ax = plt.subplots(1, 1, subplot_kw={
         "projection": "3d", "aspect": "equal"}, figsize=(10, 10))
-    ax.plot_trisurf(x, y, z, triangles=triangles)
+    ax.plot_trisurf(x, y, z, triangles=triangles, alpha=0., edgecolor="black",
+                    facecolors="None", linewidth=0.1)
+    for vidx in (0, 4):  # 13, 42, 0, 4
+        for cnt, idx in enumerate(neighs[vidx]):
+            point = vertices[idx]
+            ax.scatter(point[0], point[1], point[2], marker="o", c=colors[cnt],
+                        s=100)
     plt.show()
