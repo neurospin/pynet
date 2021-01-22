@@ -273,6 +273,95 @@ def downsample(vertices, target_vertices):
     return nearest_idx.squeeze()
 
 
+def neighbors_rec(vertices, triangles, size=5, zoom=5):
+    """ Build rectangular grid neighbors and weights.
+
+    Parameters
+    ----------
+    vertices: array (N, 3)
+        the icosahedron vertices.
+    triangles: array (N, 3)
+        the icosahedron triangles.
+    size: int, default 5
+        the rectangular grid size.
+    zoom: int, default 5
+        scale factor applied on the unit sphere to control the neighborhood
+        density.
+
+    Returns
+    --------
+    neighs: array (N, size**2, 3)
+        grid samples neighbors for each vertex.
+    weights: array (N, size**2, 3)
+        grid samples weights with neighbors for each vertex.
+    grid_in_sphere: array (N, size**2, 3)
+        zoomed rectangular grid on the sphere vertices.
+    """
+    grid_in_sphere = np.zeros((len(vertices), size**2, 3), dtype=float)
+    neighs = np.zeros((len(vertices), size**2, 3), dtype=int)
+    weights = np.zeros((len(vertices), size**2, 3), dtype=float)
+    for idx1, node in enumerate(vertices):
+        grid_in_sphere[idx1], _ = get_rectangular_projection(
+            node, size=size, zoom=zoom)
+        for idx2, point in enumerate(grid_in_sphere[idx1]):
+            dist = np.linalg.norm(vertices - point, axis=1)
+            ordered_neighs = np.argsort(dist)
+            neighs[idx1, idx2] = ordered_neighs[:3]
+            weights[idx1, idx2] = dist[neighs[idx1, idx2]]
+    return neighs, weights, grid_in_sphere
+
+
+def get_rectangular_projection(node, size=5, zoom=5):
+    """ Project rectangular grid in 2D sapce into 3D spherical space.
+
+    Parameters
+    ----------
+    node: array (3, )
+        a point in the sphere.
+    size: int, default 5
+        the rectangular grid size.
+    zoom: int, default 5
+        scale factor applied on the unit sphere to control the neighborhood
+        density.
+
+    Returns
+    -------
+    grid_in_sphere: array (size**2, 3)
+        zoomed rectangular grid on the sphere.
+    grid_in_tplane: array (size**2, 3)
+        zoomed rectangular grid in the tangent space.
+    """
+    # Check kernel size
+    if (size % 2) == 0:
+        raise ValueError("An odd kernel size is expected.")
+    midsize = size // 2
+
+    # Compute normal of the new projected x-axis and y-axis
+    node = node.copy() * zoom
+    if node[0] != 0 or node[1] != 0:
+        nx = np.cross(np.array([0, 0, 1]), node)
+        ny = np.cross(node, nx)
+    else:
+        nx = np.array([1, 0, 0])
+        ny = np.array([0, 1, 0])
+    nx = nx / np.linalg.norm(nx)
+
+    ny = ny / np.linalg.norm(ny)
+
+    # Caculate the grid coordinate in tangent plane and project back on sphere
+    grid_in_tplane = np.zeros((size ** 2, 3))
+    grid_in_sphere = np.zeros((size ** 2, 3))
+    corner = node - midsize * nx + midsize * ny
+    for row in range(size):
+        for column in range(size):
+            point = corner - row * ny + column * nx
+            grid_in_tplane[row * size + column, :] = point
+            grid_in_sphere[row * size + column, :] = (
+                point / np.linalg.norm(point) * zoom)
+
+    return grid_in_sphere, grid_in_tplane
+
+
 def icosahedron(order=3):
     """ Define an icosahedron mesh of any order.
 
@@ -389,31 +478,38 @@ def number_of_ico_vertices(order=3):
 
 if __name__ == "__main__":
 
-    print(get_angle_with_xaxis((0, 0, 0), (0, 1, 0), (1, 0, 0)))
-    print(get_angle_with_xaxis((0, 0, 0), (0, 1, 0), (0, 1, 0)))
-    print(get_angle_with_xaxis((0, 0, 0), (0, 1, 0), (-1, 0, 0)))
-    print(get_angle_with_xaxis((0, 0, 0), (0, 1, 0), (0, -1, 0)))
-
-    for order in range(5):
-        vertices, triangles = icosahedron(order=order)
-        print(vertices.shape, triangles.shape)
-        print(number_of_ico_vertices(order=order))
-
     from pprint import pprint
 
-    vertices, triangles = icosahedron(order=1)
-    print(vertices.shape, triangles.shape)
-    neighs = neighbors(vertices, triangles, depth=1, direct_neighbor=True)
-    print(len(neighs))
-    print([len(elem) for elem in neighs.values()])
-    print(neighs)
+    for order in range(5):
+        print("=" * 5)
+        print("ico", order)
+        vertices, triangles = icosahedron(order=order)
+        print("verts", vertices.shape, "tris", triangles.shape)
+        print("n_verts", number_of_ico_vertices(order=order))
 
+    print("=" * 5)
+    vertices, triangles = icosahedron(order=1)
+    print("verts", vertices.shape, "tris", triangles.shape)
+    neighs = neighbors(vertices, triangles, depth=1, direct_neighbor=True)
+    print("n_neighs", len(neighs))
+    print("size_neighs", [len(elem) for elem in neighs.values()])
+    print("neighs", neighs)
+
+    print("=" * 5)
     target_vertices, _ = icosahedron(order=0)
     down_indexes = downsample(vertices, target_vertices)
-    print(down_indexes.shape)
+    print("down 1 -> 0", down_indexes.shape)
 
+    print("=" * 5)
     interp = interpolate(target_vertices, vertices, triangles)
+    print("interp 0 -> 1")
     pprint(interp)
+
+    print("=" * 5)
+    neighs, weights, grid_in_sphere = neighbors_rec(
+        vertices, triangles, size=5, zoom=5)
+    print("rec_neighs", neighs.shape, "rec_weights", weights.shape,
+          "rec_grid_shpere", grid_in_sphere.shape)
 
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import axes3d
@@ -422,7 +518,7 @@ if __name__ == "__main__":
     neighs = neighbors(vertices, triangles, depth=2, direct_neighbor=True)
     colors = ["red", "green", "blue", "orange", "purple", "brown", "pink",
               "gray", "olive", "cyan", "yellow", "tan", "salmon", "violet",
-              "steelblue", "lime", "navy"]
+              "steelblue", "lime", "navy"] * 5
     x, y, z = vertices[:, 0], vertices[:, 1], vertices[:, 2]
     fig, ax = plt.subplots(1, 1, subplot_kw={
         "projection": "3d", "aspect": "equal"}, figsize=(10, 10))
@@ -432,5 +528,25 @@ if __name__ == "__main__":
         for cnt, idx in enumerate(neighs[vidx]):
             point = vertices[idx]
             ax.scatter(point[0], point[1], point[2], marker="o", c=colors[cnt],
-                        s=100)
+                       s=100)
+
+    zoom = 5
+    fig, ax = plt.subplots(1, 1, subplot_kw={
+            "projection": "3d", "aspect": "equal"}, figsize=(10, 10))
+    ax.plot_trisurf(x * zoom, y * zoom, z * zoom, triangles=triangles,
+                    alpha=0., edgecolor="black", facecolors="None",
+                    linewidth=0.2)
+    for idx in (13, 40):
+        node = vertices[idx]
+        node_rec_neighs, node_tplane_neighs = get_rectangular_projection(
+            node, size=3, zoom=zoom)
+        ax.scatter(node[0] * zoom, node[1] * zoom, node[2] * zoom, marker="^",
+                   c=colors[0], s=100)
+        for cnt, point in enumerate(node_tplane_neighs):
+            ax.scatter(point[0], point[1], point[2], marker="o",
+                       c=colors[cnt + 1], s=5)
+        for cnt, point in enumerate(node_rec_neighs):
+            ax.scatter(point[0], point[1], point[2], marker="o",
+                       c=colors[cnt + 1], s=20)
+
     plt.show()
