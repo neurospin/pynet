@@ -28,7 +28,7 @@ class RePaIcoConvLayer(nn.Module):
     """ Define the convolutional layer on icosahedron discretized sphere using
     rectagular filter in tangent plane.
     """
-    def __init__(self, in_feats, out_feats, neigh_indices, neigh_weights):
+    def __init__(self, in_feats, out_feats, neighs):
         """ Init.
 
         Parameters
@@ -37,17 +37,18 @@ class RePaIcoConvLayer(nn.Module):
             input features/channels.
         out_feats: int
             output features/channels.
-        neigh_indices: array (N, k)
-            the neighbors indices.
-        neigh_weights: array (N, k)
-            the neighbors distances.
+        neighs: 2-uplet
+            neigh_indices: array (N, k, 3) - the neighbors indices.
+            neigh_weights: array (N, k, 3) - the neighbors distances.
         """
-        super(RePaConvLayer, self).__init__()
+        super(RePaIcoConvLayer, self).__init__()
         self.in_feats = in_feats
         self.out_feats = out_feats
-        self.neigh_indices = neigh_indices
-        self.neigh_weights = neigh_weights
-        self.n_vertices, self.neigh_size = neigh_indices.shape
+        self.neigh_indices, self.neigh_weights = neighs
+        self.n_vertices, self.neigh_size, _ = self.neigh_indices.shape
+        self.neigh_indices = self.neigh_indices.reshape(self.n_vertices, -1)
+        self.neigh_weights = torch.from_numpy(
+            self.neigh_weights.reshape(self.n_vertices, -1).astype(np.float32))
         self.weight = nn.Linear(self.neigh_size * in_feats, out_feats)
 
     def forward(self, x):
@@ -58,17 +59,20 @@ class RePaIcoConvLayer(nn.Module):
             self.neigh_indices.shape))
         logger.debug(" neighbors weights: {0}".format(
             self.neigh_weights.shape))
+        n_samples = len(x)
         mat = x[:, :, self.neigh_indices.reshape(-1)].view(
-            len(x), self.in_feats, self.n_vertices, self.neigh_size)
+            n_samples, self.in_feats, self.n_vertices, self.neigh_size * 3)
         debug("neighors", mat)
-        assert(mat.size() == self.neigh_weights.size())
-        x = torch.mul(mat, self.neigh_weights)
-        debug("weighted neighors", mat)
+        x = torch.mul(mat, self.neigh_weights).view(
+            n_samples, self.in_feats, self.n_vertices, self.neigh_size, 3)
+        debug("weighted neighors", x)
+        x = torch.sum(x, dim=4)
+        debug("sum", x)
         x = x.permute(0, 2, 1, 3)
-        x = x.reshape(len(x) * self.n_vertices,
+        x = x.reshape(n_samples * self.n_vertices,
                       self.in_feats * self.neigh_size)
         out = self.weight(x)
-        out = out.view(len(x), self.n_vertices, self.out_feats)
+        out = out.view(n_samples, self.n_vertices, self.out_feats)
         out = out.permute(0, 2, 1)
         debug("output", out)
         return out
@@ -190,22 +194,24 @@ class IcoUpConvLayer(nn.Module):
         self.n_vertices, self.neigh_size = self.up_neigh_indices.shape
 
         self.flat_neigh_indices = self.neigh_indices.reshape(-1)
-        argsort_neigh_indices = np.argsort(self.flat_neigh_indices)
-        sorted_neigh_indices = self.flat_neigh_indices[argsort_neigh_indices]
-        assert(np.unique(sorted_neigh_indices).tolist() ==
+        self.argsort_neigh_indices = np.argsort(self.flat_neigh_indices)
+        self.sorted_neigh_indices = self.flat_neigh_indices[
+            self.argsort_neigh_indices]
+        assert(np.unique(self.sorted_neigh_indices).tolist() ==
                list(range(self.n_vertices)))
-        self.sorted_2occ_12neigh_indices = sorted_neigh_indices[:24]
+
+        self.sorted_2occ_12neigh_indices = self.sorted_neigh_indices[:24]
         self._check_occurence(self.sorted_2occ_12neigh_indices, occ=2)
-        self.sorted_1occ_neigh_indices = sorted_neigh_indices[
+        self.sorted_1occ_neigh_indices = self.sorted_neigh_indices[
             24: len(down_indices) + 12]
         self._check_occurence(self.sorted_1occ_neigh_indices, occ=1)
-        self.sorted_2occ_neigh_indices = sorted_neigh_indices[
+        self.sorted_2occ_neigh_indices = self.sorted_neigh_indices[
             len(down_indices) + 12:]
         self._check_occurence(self.sorted_2occ_neigh_indices, occ=2)
-        self.argsort_2occ_12neigh_indices = argsort_neigh_indices[:24]
-        self.argsort_1occ_neigh_indices = argsort_neigh_indices[
+        self.argsort_2occ_12neigh_indices = self.argsort_neigh_indices[:24]
+        self.argsort_1occ_neigh_indices = self.argsort_neigh_indices[
             24: len(down_indices) + 12]
-        self.argsort_2occ_neigh_indices = argsort_neigh_indices[
+        self.argsort_2occ_neigh_indices = self.argsort_neigh_indices[
             len(down_indices) + 12:]
 
         self.weight = nn.Linear(in_feats, self.neigh_size * out_feats)
@@ -244,6 +250,77 @@ class IcoUpConvLayer(nn.Module):
         x = x.permute(0, 2, 1)
         debug("output", x)
         return x
+
+
+class IcoGenericUpConvLayer(nn.Module):
+    """ The transposed convolution layer on icosahedron discretized sphere
+    using n-ring filter (slow).
+    """
+    def __init__(self, in_feats, out_feats, up_neigh_indices, down_indices):
+        """ Init.
+
+        Parameters
+        ----------
+        in_feats: int
+            input features/channels.
+        out_feats: int
+            output features/channels.
+        up_neigh_indices: array
+            upsampling neighborhood indices at sampling i + 1.
+        down_indices: array
+            downsampling indices at sampling i
+        """
+        super(IcoUpConvLayer, self).__init__()
+        self.in_feats = in_feats
+        self.out_feats = out_feats
+        self.up_neigh_indices = up_neigh_indices
+        self.neigh_indices = up_neigh_indices[down_indices]
+        self.down_indices = down_indices
+        self.n_vertices, self.neigh_size = self.up_neigh_indices.shape
+
+        self.flat_neigh_indices = self.neigh_indices.reshape(-1)
+        self.argsort_neigh_indices = np.argsort(self.flat_neigh_indices)
+        self.sorted_neigh_indices = self.flat_neigh_indices[
+            self.argsort_neigh_indices]
+        assert(np.unique(self.sorted_neigh_indices).tolist() ==
+               list(range(self.n_vertices)))
+        count = collections.Counter(self.sorted_neigh_indices)
+        self.count = sorted(count.items(), key=lambda item: item[0])
+
+        self.weight = nn.Linear(in_feats, self.neigh_size * out_feats)
+
+    def _check_occurence(self, data, occ):
+        count = collections.Counter(data)
+        unique_count = np.unique(list(count.values()))
+        assert len(unique_count) == 1
+        assert unique_count[0] == occ
+
+    def forward(self, x):
+        logger.debug("UpSampleLayer: transpose conv...")
+        debug("input", x)
+        n_samples, n_feats, n_vertices = x.size()
+        logger.debug(" weight: {0}".format(self.weight))
+        logger.debug(" neighbors indices: {0}".format(
+            self.neigh_indices.shape))
+        x = x.permute(0, 2, 1)
+        x = x.reshape(n_samples * n_vertices, n_feats)
+        debug("input", x)
+        x = self.weight(x)
+        debug("weighted input", x)
+        x = x.view(n_samples, n_vertices, self.neigh_size, self.out_feats)
+        debug("weighted input", x)
+        x = x.view(n_samples, n_vertices * self.neigh_size, self.out_feats)
+        out = torch.zeros(n_samples, self.out_feats, self.n_vertices)
+        start = 0
+        for idx in range(self.n_vertices):
+            _idx, _count = self.count[idx]
+            assert(_idx == idx)
+            stop = start + _count
+            _x = x[:, self.argsort_neigh_indices[start: stop]]
+            out[..., idx] = torch.mean(_x, dim=1)
+            start = stop
+        debug("output", out)
+        return out
 
 
 class IcoUpSampleLayer(nn.Module):

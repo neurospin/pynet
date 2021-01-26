@@ -19,10 +19,11 @@ import numpy as np
 import torch.nn as nn
 from joblib import Memory
 from .sampling import (
-    icosahedron, neighbors, number_of_ico_vertices, downsample, interpolate)
+    icosahedron, neighbors, number_of_ico_vertices, downsample, interpolate,
+    neighbors_rec)
 from .layers import (
     IcoUpConvLayer, IcoUpSampleMaxIndexLayer, IcoUpSampleFixIndexLayer,
-    IcoUpSampleLayer, IcoPoolLayer, DiNeIcoConvLayer)
+    IcoUpSampleLayer, IcoPoolLayer, DiNeIcoConvLayer, RePaIcoConvLayer)
 from .utils import debug
 from pynet.interfaces import DeepLearningDecorator
 from pynet.utils import Networks
@@ -31,7 +32,8 @@ from pynet.utils import Networks
 # Global parameters
 logger = logging.getLogger("pynet")
 Ico = namedtuple("Ico", ["order", "vertices", "triangles", "neighbor_indices",
-                         "down_indices", "up_indices"])
+                         "down_indices", "up_indices",
+                         "conv_neighbor_indices"])
 
 
 @Networks.register
@@ -59,13 +61,14 @@ class SphericalUNet(nn.Module):
             number of layers in the UNet.
         start_filts: int, default 32
             number of convolutional filters for the first conv.
-        conv_mode: strt, default '1ring'
+        conv_mode: str, default '1ring'
             the size of the spherical convolution filter: '1ring' or '2ring'.
+            Can also use rectangular grid projection: 'repa'.
         up_mode: str, default 'interp'
             type of upsampling: 'transpose' for transpose
-            convolution, 'interp' for nearest neighbor linear interpolation,
-            'maxpad' for max pooling shifted zero padding, and 'zeropad' for
-            classical zero padding.
+            convolution (1 ring), 'interp' for nearest neighbor linear
+            interpolation, 'maxpad' for max pooling shifted zero padding,
+            and 'zeropad' for classical zero padding.
         cachedir: str, default None
             set tthis folder tu use smart caching speedup.
         """
@@ -75,7 +78,6 @@ class SphericalUNet(nn.Module):
         self.in_order = in_order
         self.depth = depth
         self.conv_mode = conv_mode
-        n_ring = int(conv_mode[0])
         self.in_vertices = number_of_ico_vertices(order=in_order)
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -83,18 +85,38 @@ class SphericalUNet(nn.Module):
         self.ico = {}
         icosahedron_cached = self.memory.cache(icosahedron)
         neighbors_cached = self.memory.cache(neighbors)
+        neighbors_rec_cached = self.memory.cache(neighbors_rec)
         for order in range(1, in_order + 1):
             vertices, triangles = icosahedron_cached(order=order)
             logger.debug("- ico {0}: verts {1} - tris {2}".format(
                 order, vertices.shape, triangles.shape))
             neighs = neighbors_cached(
-                vertices, triangles, depth=n_ring, direct_neighbor=True)
+                vertices, triangles, depth=1, direct_neighbor=True)
             neighs = np.asarray(list(neighs.values()))
             logger.debug("- neighbors {0}: {1}".format(
                 order, neighs.shape))
+            if conv_mode == "1ring":
+                conv_neighs = neighs
+                logger.debug("- neighbors {0}: {1}".format(
+                    order, conv_neighs.shape))
+            elif conv_mode == "2ring":
+                conv_neighs = neighbors_cached(
+                    vertices, triangles, depth=2, direct_neighbor=True)
+                conv_neighs = np.asarray(list(conv_neighs.values()))
+                logger.debug("- neighbors {0}: {1}".format(
+                    order, conv_neighs.shape))
+            elif conv_mode == "repa":
+                conv_neighs, conv_weights, _ = neighbors_rec_cached(
+                    vertices, triangles, size=5, zoom=5)
+                logger.debug("- neighbors {0}: {1} - {2}".format(
+                    order, conv_neighs.shape, conv_weights.shape))
+                conv_neighs = (conv_neighs, conv_weights)
+            else:
+                raise ValueError("Unexptected convolution mode.")
             self.ico[order] = Ico(
                 order=order, vertices=vertices, triangles=triangles,
-                neighbor_indices=neighs, down_indices=None, up_indices=None)
+                neighbor_indices=neighs, down_indices=None, up_indices=None,
+                conv_neighbor_indices=conv_neighs)
         downsample_cached = self.memory.cache(downsample)
         for order in range(in_order, 1, -1):
             down_indices = downsample_cached(
@@ -114,7 +136,10 @@ class SphericalUNet(nn.Module):
         self.filts = [in_channels] + [
             start_filts * 2 ** idx for idx in range(depth)]
         logger.debug("- filters: {0}".format(self.filts))
-        self.sconv = DiNeIcoConvLayer
+        if conv_mode == "repa":
+            self.sconv = RePaIcoConvLayer
+        else:
+            self.sconv = DiNeIcoConvLayer
 
         for idx in range(depth):
             order = self.in_order - idx
@@ -130,7 +155,7 @@ class SphericalUNet(nn.Module):
                 conv_layer=self.sconv,
                 in_ch=self.filts[idx],
                 out_ch=self.filts[idx + 1],
-                neigh_indices=self.ico[order].neighbor_indices,
+                conv_neigh_indices=self.ico[order].conv_neighbor_indices,
                 down_neigh_indices=(
                     None if idx == 0
                     else self.ico[order + 1].neighbor_indices),
@@ -151,6 +176,7 @@ class SphericalUNet(nn.Module):
                 conv_layer=self.sconv,
                 in_ch=self.filts[idx + 1],
                 out_ch=self.filts[idx],
+                conv_neigh_indices=self.ico[order + 1].conv_neighbor_indices,
                 neigh_indices=self.ico[order + 1].neighbor_indices,
                 up_neigh_indices=self.ico[order].up_indices,
                 down_indices=self.ico[order + 1].down_indices,
@@ -201,7 +227,7 @@ class DownBlock(nn.Module):
     """ Downsampling block in spherical UNet:
     mean pooling => (conv => BN => ReLU) * 2
     """
-    def __init__(self, conv_layer, in_ch, out_ch, neigh_indices,
+    def __init__(self, conv_layer, in_ch, out_ch, conv_neigh_indices,
                  down_neigh_indices, down_indices, pool_mode="mean",
                  first=False):
         """ Init.
@@ -214,7 +240,7 @@ class DownBlock(nn.Module):
             input features/channels.
         out_ch: int
             output features/channels.
-        neigh_indices: array
+        conv_neigh_indices: array
             conv layer's filters' neighborhood indices at sampling i.
         down_neigh_indices: array
             conv layer's filters' neighborhood indices at sampling i + 1.
@@ -231,11 +257,11 @@ class DownBlock(nn.Module):
             self.pooling = IcoPoolLayer(
                 down_neigh_indices, down_indices, pool_mode)
         self.block = nn.Sequential(
-            conv_layer(in_ch, out_ch, neigh_indices),
+            conv_layer(in_ch, out_ch, conv_neigh_indices),
             nn.BatchNorm1d(out_ch, momentum=0.15, affine=True,
                            track_running_stats=False),
             nn.LeakyReLU(0.2, inplace=True),
-            conv_layer(out_ch, out_ch, neigh_indices),
+            conv_layer(out_ch, out_ch, conv_neigh_indices),
             nn.BatchNorm1d(out_ch, momentum=0.15, affine=True,
                            track_running_stats=False),
             nn.LeakyReLU(0.2, inplace=True))
@@ -258,8 +284,8 @@ class UpBlock(nn.Module):
     """ Define the upsamping block in spherical UNet:
     upconv => (conv => BN => ReLU) * 2
     """
-    def __init__(self, conv_layer, in_ch, out_ch, neigh_indices,
-                 up_neigh_indices, down_indices, up_mode):
+    def __init__(self, conv_layer, in_ch, out_ch, conv_neigh_indices,
+                 neigh_indices, up_neigh_indices, down_indices, up_mode):
         """ Init.
 
         Parameters
@@ -270,8 +296,10 @@ class UpBlock(nn.Module):
             input features/channels.
         out_ch: int
             output features/channels.
-        neigh_indices: tensor, int
+        conv_neigh_indices: tensor, int
             conv layer's filters' neighborhood indices at sampling i.
+        neigh_indices: tensor, int
+            neighborhood indices at sampling i.
         up_neigh_indices: array
             upsampling neighborhood indices at sampling i + 1.
         down_indices: array
@@ -297,11 +325,11 @@ class UpBlock(nn.Module):
         else:
             raise ValueError("Invalid upsampling method.")
         self.double_conv = nn.Sequential(
-             conv_layer(in_ch, out_ch, neigh_indices),
+             conv_layer(in_ch, out_ch, conv_neigh_indices),
              nn.BatchNorm1d(out_ch, momentum=0.15, affine=True,
                             track_running_stats=False),
              nn.LeakyReLU(0.2, inplace=True),
-             conv_layer(out_ch, out_ch, neigh_indices),
+             conv_layer(out_ch, out_ch, conv_neigh_indices),
              nn.BatchNorm1d(out_ch, momentum=0.15, affine=True,
                             track_running_stats=False),
              nn.LeakyReLU(0.2, inplace=True))
