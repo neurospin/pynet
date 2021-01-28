@@ -53,6 +53,9 @@ class RePaIcoConvLayer(nn.Module):
 
     def forward(self, x):
         logger.debug("RePaIcoConvLayer...")
+        device = x.get_device()
+        if self.neigh_weights.get_device() != device:
+            self.neigh_weights = self.neigh_weights.to(device)
         debug("input", x)
         logger.debug(" weight: {0}".format(self.weight))
         logger.debug(" neighbors indices: {0}".format(
