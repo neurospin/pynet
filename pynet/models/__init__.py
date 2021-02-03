@@ -12,7 +12,9 @@ Module that provides common networks.
 """
 
 
+from .sononet import SonoNet
 from .unet import UNet
+from .vae import VUNet, VanillaNet
 from .nvnet import NvNet
 from .voxelmorphnet import VoxelMorphNet
 from .vtnet import VTNet, ADDNet
@@ -20,4 +22,10 @@ from .rcnet import RCNet
 from .brainnetcnn import BrainNetCNN
 from .deeplabnet import DeepLabNet
 from .pspnet import PSPNet
+from .braingengan import (
+    BGDiscriminator, BGEncoder, BGCodeDiscriminator, BGGenerator)
+from .resnet import ResAENet
+from .attention import STAAENet
+from .deepcluster import DeepCluster
+from .spherical import SphericalUNet
 from .torchvisnet import *

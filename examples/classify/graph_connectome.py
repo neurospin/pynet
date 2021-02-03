@@ -98,7 +98,7 @@ model = interfaces["BrainNetCNNGraph"](
     net_params,
     optimizer_name="Adam",
     learning_rate=0.01,
-    weight_decay= 0.0005,
+    weight_decay=0.0005,
     loss_name="MSELoss")
 model.board = Board(port=8097, host="http://localhost", env="main")
 model.add_observer("after_epoch", update_board)
@@ -151,6 +151,7 @@ def regression_metrics(pred_labels, true_labels):
         met["corr_0"] = r
         met["p_0"] = p
     return met
+
 
 print("E2E prediction results:")
 test_metrics_0 = regression_metrics(y_pred_0, y_true_0)

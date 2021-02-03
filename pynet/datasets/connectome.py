@@ -34,7 +34,7 @@ logger = logging.getLogger("pynet")
 
 
 @Fetchers.register
-def fetch_connectome(datasetdir):
+def fetch_connectome(datasetdir, n_samples=112, seed=333):
     """ Fetch/prepare the Connectome injury dataset for pynet.
 
     Refactoring of ann4brains.synthetic.injury.ConnectomeInjury.
@@ -50,6 +50,10 @@ def fetch_connectome(datasetdir):
     ----------
     datasetdir: str
         the dataset destination folder.
+    n_samples: int, default 112
+        the number of samples.
+    seed: int, default None
+        use an int to make the randomness deterministic.
 
     Returns
     -------
@@ -68,14 +72,14 @@ def fetch_connectome(datasetdir):
             shutil.copyfileobj(response.raw, out_file)
         del response
     injury = ConnectomeInjury(
-        base_filename=cfile, n_injuries=2, signature_seed=333)
-    np.random.seed(seed=333)
+        base_filename=cfile, n_injuries=2, signature_seed=seed)
+    np.random.seed(seed=seed)
     x_train, y_train = injury.generate_injury(
-        n_samples=112, noise_weight=0.125)
+        n_samples=n_samples, noise_weight=0.125)
     x_test, y_test = injury.generate_injury(
-        n_samples=56, noise_weight=0.125)
+        n_samples=(n_samples // 2), noise_weight=0.125)
     x_valid, y_valid = injury.generate_injury(
-        n_samples=56, noise_weight=0.125)
+        n_samples=(n_samples // 2), noise_weight=0.125)
     return injury, x_train, y_train, x_test, y_test, x_valid, y_valid
 
 

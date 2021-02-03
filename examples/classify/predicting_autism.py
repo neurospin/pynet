@@ -43,10 +43,10 @@ setup_logging(level="info")
 logger = logging.getLogger("pynet")
 
 use_toy = False
-dtype = "all"
+dtype = "fmri"
 
 data = fetch_impac(
-    datasetdir="/tmp/impac",
+    datasetdir="/neurospin/nsap/datasets/impac",
     mode="train",
     dtype=dtype)
 nb_features = data.nb_features
@@ -54,10 +54,10 @@ manager = DataManager(
     input_path=data.input_path,
     labels=["participants_asd"],
     metadata_path=data.metadata_path,
-    number_of_folds=3,
+    number_of_folds=10,
     batch_size=128,
     sampler="random",
-    test_size=2,
+    test_size=0,
     sample_size=1)
 
 if use_toy:
@@ -161,7 +161,7 @@ scheduler = lr_scheduler.ReduceLROnPlateau(
     eps=1e-8)
 test_history, train_history = cl.training(
     manager=manager,
-    nb_epochs=200,
+    nb_epochs=50,
     checkpointdir=None,
     fold_index=0,
     scheduler=scheduler,
@@ -209,19 +209,6 @@ metrics = pd.DataFrame.from_dict(metrics)
 print(classification_report(y_true, y_pred >= 0.4))
 print(metrics)
 # plot_metric_rank_correlations(metrics)
-fpr, tpr, _ = roc_curve(y_true, y_pred)
-roc_auc = auc(fpr, tpr)
-plt.figure()
-plt.plot(fpr, tpr, color="darkorange", lw=2,
-         label="ROC curve (area = %0.2f)" % roc_auc)
-plt.plot([0, 1], [0, 1], color="navy", lw=2, linestyle="--")
-plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
-plt.xlabel("False Positive Rate")
-plt.ylabel("True Positive Rate")
-plt.title("Receiver operating characteristic")
-plt.legend(loc="lower right")
-
 fpr, tpr, _ = roc_curve(y_true, y_pred)
 roc_auc = auc(fpr, tpr)
 plt.figure()

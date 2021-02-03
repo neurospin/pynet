@@ -70,7 +70,7 @@ class UNet(nn.Module):
         up_mode: string, default 'transpose'
             type of upconvolution. Choices: 'transpose' for transpose
             convolution, 'upsample' for nearest neighbour upsampling.
-        merge_mode: str, defatul 'concat'
+        merge_mode: str, default 'concat'
             the skip connections merging strategy.
         batchnorm: bool, default False
             normalize the inputs of the activation function.
@@ -239,7 +239,6 @@ def UpConv(in_channels, out_channels, dim, mode="transpose", shape=None):
         return convt_fn(
             in_channels, out_channels, kernel_size=2, stride=2)
     else:
-        # out_channels is always going to be the same as in_channels
         if shape is None:
             return nn.Sequential(collections.OrderedDict([
                 ("up", nn.Upsample(mode="nearest", scale_factor=2)),
@@ -289,16 +288,22 @@ class Up(nn.Module):
                  up_mode="transpose", batchnorm=True, shape=None):
         super(Up, self).__init__()
         self.merge_mode = merge_mode
-        self.upconv = UpConv(
-            in_channels, out_channels, dim, shape=shape, mode=up_mode)
+        if merge_mode in ("concat", "add"):
+            self.upconv = UpConv(
+                in_channels, out_channels, dim, shape=shape, mode=up_mode)
+        else:
+            self.upconv = UpConv(
+                in_channels, in_channels, dim, shape=shape, mode=up_mode)
         self.doubleconv = DoubleConv(
             in_channels, out_channels, dim, batchnorm=batchnorm)
 
-    def forward(self, x_down, x_up):
+    def forward(self, x_down, x_up=None):
         x_down = self.upconv(x_down)
         if self.merge_mode == "concat":
             x = torch.cat((x_up, x_down), dim=1)
-        else:
+        elif self.merge_mode == "add":
             x = x_up + x_down
+        else:
+            x = x_down
         x = self.doubleconv(x)
         return x

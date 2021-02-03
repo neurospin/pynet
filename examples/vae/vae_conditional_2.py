@@ -60,6 +60,7 @@ manager = DataManager(
 # ---------
 #
 # The model is composed of three sub-networks:
+#
 # 1. Given x (image), encode it into a distribution over the latent space -
 #    referred to as Q(z|x).
 # 2. Given z in latent space (code representation of an image), decode it into
@@ -85,6 +86,7 @@ manager = DataManager(
 # of the digit information.
 #
 # There are two ways to provide the model with a one hot encoding vector:
+#
 # 1. Add it as an input to the model.
 # 2. Add it as a label so the model will have to predict it by itself: add
 #    another sub-network that predicts a vector of size 10 where the loss is
@@ -92,6 +94,7 @@ manager = DataManager(
 #
 # We'll go with the second option. Why? Well, in test time we can use the model
 # in two ways:
+#
 # 1. Provide an image as input, and infer a latent vector.
 # 2. Provide a latent vector as input, and generate an image.
 #
@@ -254,6 +257,7 @@ class CVAE(nn.Module):
 # ----
 #
 # VAE consists of three loss functions:
+#
 # 1. Reconstruction loss: how well we can reconstruct the image
 # 2. KL divergence: how off the distribution over the latent space is 
 #    from the prior. Given the prior is a standard Gaussian and the inferred
@@ -328,6 +332,7 @@ class ClassificationLoss(object):
 # At the end of every epoch we'll sample latent vectors and decode them into
 # images, so we can visualize how the generative power of the model improves
 # over the epochs. The sampling method is as follows:
+#
 # 1. Deterministically set the dimensions which are used for digit
 #    classification according to the digit we want to generate an image for.
 #    If for example we want to generate an image of the digit 2, these

@@ -38,6 +38,7 @@ from .hcp import fetch_hcp_brain
 from .metastasis import fetch_metastasis
 from .toy import fetch_toy
 from .tcga_lgg_tif import fetch_tcga_lgg_tif
+from .primede import fetch_primede
 from .minst import fetch_minst
 from .mstcc import fetch_nicodep
 
@@ -85,7 +86,6 @@ def get_data_manager(fetcher_name, datasetdir, static_fold=0, slicevol=False,
         raise ValueError("Available fetchers are: {0}".format(
             list(fetchers.keys())))
     data = fetcher(datasetdir)
-    inputs = {}
     if not hasattr(data, "metadata_path"):
         raise ValueError("One metadata path is expected.")
     if not hasattr(data, "input_path"):

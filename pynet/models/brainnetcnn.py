@@ -139,7 +139,7 @@ class BrainNetCNN(nn.Module):
             if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
                 logger.debug("Init weights of {0}...".format(module))
                 torch.nn.init.xavier_uniform_(module.weight)
-                torch.nn.init.constant(module.bias, 0)
+                torch.nn.init.constant_(module.bias, 0)
         self.apply(weights_init)
 
     def forward(self, x):
@@ -155,13 +155,13 @@ class BrainNetCNN(nn.Module):
         out = self.n2g(out)
         logger.debug("  n2g: {0} - {1} - {2}".format(
             out.shape, out.get_device(), out.dtype))
-        out = out.view(out.size(0), -1)
+        features = out.view(out.size(0), -1)
         logger.debug("  view: {0} - {1} - {2}".format(
-            out.shape, out.get_device(), out.dtype))
-        out = self.dense_layers(out)
+            features.shape, features.get_device(), features.dtype))
+        out = self.dense_layers(features)
         logger.debug("  dense: {0} - {1} - {2}".format(
             out.shape, out.get_device(), out.dtype))
-        return out
+        return out, {"features": features}
 
 
 class Edge2Edge(nn.Module):

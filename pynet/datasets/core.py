@@ -15,13 +15,15 @@ Module that provides core functions to load and split a dataset.
 import os
 from collections import namedtuple, OrderedDict, Counter
 import progressbar
+import inspect
 import random
 import logging
 import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import (
-    Dataset, DataLoader, WeightedRandomSampler, RandomSampler)
+    Dataset, DataLoader, WeightedRandomSampler, RandomSampler,
+    SequentialSampler, Sampler)
 from sklearn.model_selection import (
     KFold, StratifiedKFold, ShuffleSplit, StratifiedShuffleSplit)
 from skimage.util.shape import view_as_blocks
@@ -86,10 +88,11 @@ class DataManager(object):
         feature_selector: FeatureSelector, default None
             specify a feature selector if you need to do independent feature
             selection over the folds and for the full training dataset
-        sampler: str, default 'random'
-            whether we use a random or weighted random sampler (to deal with
-            imbalanced classes issue) during the generation of the
-            mini-batches: None, 'random', or 'weighted_random'.
+        sampler: str or Sampler, default 'random'
+            whether we use a sequential, random or weighted random sampler
+            (to deal with imbalanced classes issue) during the generation of
+            the mini-batches: None, 'random', 'weighted_random' or a custom
+            Sampler class.
         input_transforms, output_transforms: list of callable, default None
             transforms a list of samples with pre-defined transformations.
         data_augmentation_transforms: list of callable, default None
@@ -117,7 +120,8 @@ class DataManager(object):
         # Checks
         if stratify_label is not None and custom_stratification is not None:
             raise ValueError("You specified two stratification strategies.")
-        if sampler not in (None, "random", "weighted_random"):
+        if ((inspect.isclass(sampler) and not issubclass(sampler, Sampler)) and
+                sampler not in (None, "random", "weighted_random")):
             raise ValueError("Unsupported sampler.")
         if sampler == "weighted_random" and stratify_label is None:
             raise ValueError(
@@ -326,9 +330,10 @@ class DataManager(object):
     def from_numpy(cls, test_inputs=None, test_outputs=None, test_labels=None,
                    train_inputs=None, train_outputs=None, train_labels=None,
                    validation_inputs=None, validation_outputs=None,
-                   validation_labels=None, batch_size=1, input_transforms=None,
-                   output_transforms=None, data_augmentation_transforms=None,
-                   add_input=False, label_mapping=None, patch_size=None,
+                   validation_labels=None, batch_size=1, sampler="random",
+                   input_transforms=None, output_transforms=None,
+                   data_augmentation_transforms=None, add_input=False,
+                   label_mapping=None, patch_size=None,
                    continuous_labels=False):
         """ Create a data manger from numpy arrays.
 
@@ -338,6 +343,11 @@ class DataManager(object):
             the training data.
         batch_size: int, default 1
             the size of each mini-batch.
+        sampler: str or Sampler, default 'random'
+            whether we use a sequential, random or weighted random sampler
+            (to deal with imbalanced classes issue) during the generation of
+            the mini-batches: None, 'random', 'weighted_random' or a custom
+            Sampler class.
         input_transforms, output_transforms: list of callable, default None
             transforms a list of samples with pre-defined transformations.
         data_augmentation_transforms: list of callable, default None
@@ -402,7 +412,7 @@ class DataManager(object):
             dataset["validation"] = [validation_dataset]
         return cls(input_path=dataset,
                    metadata_path=None,
-                   sampler="random",
+                   sampler=sampler,
                    batch_size=batch_size,
                    number_of_folds=1,
                    continuous_labels=continuous_labels)
@@ -474,7 +484,9 @@ class DataManager(object):
         if train:
             # weights is a list of weights per data point in the data set we
             # are drawing from, NOT a weight per class.
-            if self.sampler == "weighted_random":
+            if inspect.isclass(self.sampler):
+                sampler = self.sampler(self.dataset["train"][fold_index])
+            elif self.sampler == "weighted_random":
                 if self.sampler_weights is None:
                     raise ValueError(
                         "Weighted random not yet supported with your input "

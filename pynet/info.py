@@ -82,9 +82,10 @@ REQUIRES = [
     "visdom>=0.1.8.8",
     "h5py>=2.10.0",
     "boto3>=1.12.27",
-    "scipy>=0.19.1",
-    "statsmodels>=0.11.1",
     "pandas-plink>=2.0.4"
+    "scipy>=0.19.1, <1.6.0",
+    "statsmodels>=0.11.1",
+    "lxml>=4.5.2"
 ]
 EXTRA_REQUIRES = {
 }

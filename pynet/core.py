@@ -14,13 +14,13 @@ Core classes.
 # System import
 import re
 import os
+import copy
 import types
 import warnings
 import logging
 from collections import OrderedDict
 
 # Third party import
-from torchvision import models
 import torch
 import torch.nn.functional as func
 import progressbar
@@ -31,7 +31,6 @@ from pynet.utils import checkpoint
 from pynet.history import History
 from pynet.observable import Observable
 from pynet.utils import Metrics
-from pynet.utils import reset_weights, reset_optimizer
 
 
 # Global parameters
@@ -183,14 +182,16 @@ class Base(Observable):
         folds = range(manager.number_of_folds)
         if fold_index is not None:
             folds = [fold_index]
-
+        init_optim_state = copy.deepcopy(self.optimizer.state_dict())
+        init_model_state = copy.deepcopy(self.model.state_dict())
+        if scheduler is not None:
+            init_scheduler_state = copy.deepcopy(scheduler.state_dict())
         for fold in folds:
             logger.debug("Running fold {0}...".format(fold))
-            reset_weights(self.model, self.checkpoint)
-            reset_optimizer(
-                self.optimizer,
-                self.model,
-                self.checkpoint)
+            self.optimizer.load_state_dict(init_optim_state)
+            self.model.load_state_dict(init_model_state)
+            if scheduler is not None:
+                scheduler.load_state_dict(init_scheduler_state)
             loaders = manager.get_dataloader(
                 train=True,
                 validation=with_validation,
@@ -212,6 +213,7 @@ class Base(Observable):
                 if scheduler is not None:
                     logger.debug("  update scheduler.")
                     scheduler.step(loss)
+                    logger.debug("  - lr: {0}".format(scheduler.get_lr()))
                 logger.debug("  update train history.")
                 train_history.log((fold, epoch), loss=loss, **values)
                 train_history.summary()

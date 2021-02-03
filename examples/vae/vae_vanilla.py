@@ -13,7 +13,7 @@ implementation in pynet.
 After reading this tutorial, you'll understand the technical details needed to
 implement VAE.
 
-Let’s begin with importing stuffs:
+Let's begin with importing stuffs:
 """
 
 import os
@@ -56,6 +56,7 @@ manager = DataManager(
 # ---------
 #
 # The model is composed of two sub-networks:
+#
 # 1. Given x (image), encode it into a distribution over the latent space -
 #    referred to as Q(z|x).
 # 2. Given z in latent space (code representation of an image), decode it into
@@ -64,7 +65,7 @@ manager = DataManager(
 class Encoder(nn.Module):
     """ This the encoder part of VAE.
     """
-    def __init__(self, input_dim, hidden_dim, latent_dim):
+    def __init__(self, input_dim, hidden_dim, latent_dim, dropout):
         """ Init class.
 
         Parameters
@@ -75,22 +76,26 @@ class Encoder(nn.Module):
             the size of hidden dimension.
         latent_dim: int
             the latent dimension.
+        dropout: float
+            the dropout rate (trick for missing data).
         """
         super(Encoder, self).__init__()
         self.linear = nn.Linear(input_dim, hidden_dim)
         self.mu = nn.Linear(hidden_dim, latent_dim)
-        self.var = nn.Linear(hidden_dim, latent_dim)
+        self.logvar = nn.Linear(hidden_dim, latent_dim)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         # x is of shape [batch_size, input_dim]
-        hidden = func.relu(self.linear(x))
+        hidden = func.relu(self.linear(self.dropout(x)))
         # hidden is of shape [batch_size, hidden_dim]
         z_mu = self.mu(hidden)
         # z_mu is of shape [batch_size, latent_dim]
-        z_var = self.var(hidden)
-        # z_var is of shape [batch_size, latent_dim]
+        z_var = self.logvar(hidden)
+        # z_var is of shape [batch_size, latent_dim]: this is log(var)
 
         return z_mu, z_var
+
 
 class Decoder(nn.Module):
     """ This the decoder part of VAE.
@@ -120,10 +125,11 @@ class Decoder(nn.Module):
 
         return predicted
 
+
 class VAE(nn.Module):
     """ This the VAE, which takes an encoder and a decoder.
     """
-    def __init__(self, input_dim, hidden_dim, latent_dim):
+    def __init__(self, input_dim, hidden_dim, latent_dim, dropout=0):
         """ Init class.
 
         Parameters
@@ -134,10 +140,21 @@ class VAE(nn.Module):
             the size of hidden dimension.
         latent_dim: int
             the latent dimension.
+        dropout: float, default 0.1
+            the dropout rate (trick for missing data).
         """
         super(VAE, self).__init__()
-        self.encorder = Encoder(input_dim, hidden_dim, latent_dim)
+        self.latent_dim = latent_dim
+        self.dropout = dropout
+        self.encorder = Encoder(input_dim, hidden_dim, latent_dim, dropout)
         self.decorder = Decoder(latent_dim, hidden_dim, input_dim)
+
+    def reparameterization(self, mu, logvar):
+        # sample a latent vector from the latent space - using the
+        # reparameterization trick
+        std = torch.exp(0.5 * logvar)
+        eps = torch.rand_like(std)
+        return mu + eps * std
 
     def forward(self, x):
         # encode an image into a distribution over the latent space
@@ -145,9 +162,7 @@ class VAE(nn.Module):
         # sample a latent vector from the latent space - using the
         # reparameterization trick
         # sample from the distribution having latent parameters z_mu, z_var
-        std = torch.exp(z_var / 2)
-        eps = torch.randn_like(std)
-        x_sample = eps.mul(std).add_(z_mu)
+        x_sample = reparameterization(z_mu, z_var)
         # decode the latent vector 
         predicted = self.decorder(x_sample)
 
@@ -159,6 +174,7 @@ class VAE(nn.Module):
 # ----
 #
 # VAE consists of two loss functions:
+#
 # 1. Reconstruction loss: how well we can reconstruct the image
 # 2. KL divergence loss: how off the distribution over the latent space is 
 #    from the prior. Given the prior is a standard Gaussian and the inferred
@@ -166,9 +182,10 @@ class VAE(nn.Module):
 #    the KL-divergence becomes analytically solvable.
 
 class DecodeLoss(object):
-    def __init__(self):
+    def __init__(self, mse=False):
         super(DecodeLoss, self).__init__()
         self.layer_outputs = None
+        self.mse = mse
 
     def __call__(self, x_sample, x):
         if self.layer_outputs is None:
@@ -177,9 +194,12 @@ class DecodeLoss(object):
         z_mu = self.layer_outputs["z_mu"]
         z_var = self.layer_outputs["z_var"]
         # reconstruction loss
-        recon_loss = func.binary_cross_entropy(x_sample, x, reduction="sum")
+        if self.mse:
+            recon_loss = func.mse_loss(x_sample, x, reduction="sum")
+        else:
+            recon_loss = func.binary_cross_entropy(x_sample, x, reduction="sum")
         # KL divergence loss
-        kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
+        kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu ** 2 - 1.0 - z_var)
 
         return recon_loss + kl_loss
 
@@ -205,7 +225,7 @@ def sampling(signal):
     model = signal.object.model
     board = signal.object.board
     # sample and generate a image
-    z = torch.randn(1, 20).to(device)
+    z = torch.randn(1, model.latent_dim).to(device)
     # run only the decoder
     reconstructed_img = model.decorder(z)
     img = reconstructed_img.view(28, 28).detach().numpy()
@@ -221,7 +241,7 @@ def sampling(signal):
             "caption": "sampling"},
         win="sampling")    
 
-model = VAE(input_dim=(28 * 28), hidden_dim=128, latent_dim=20)
+model = VAE(input_dim=(28 * 28), hidden_dim=128, latent_dim=20, dropout=0.5)
 interface = DeepLearningInterface(
     model=model,
     optimizer_name="Adam",
@@ -234,7 +254,7 @@ interface.add_observer("after_epoch", update_board)
 interface.add_observer("after_epoch", sampling)
 test_history, train_history = interface.training(
     manager=manager,
-    nb_epochs=10,
+    nb_epochs=50,
     checkpointdir=None,
     fold_index=0,
     with_validation=True)
