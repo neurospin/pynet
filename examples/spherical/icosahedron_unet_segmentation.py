@@ -36,7 +36,7 @@ ICO_ORDER = 4
 SAMPLES = {
     0: [(0, 1), (4, 2)],
     1: [(2, 2), (2, 1)]}
-setup_logging(level="info")
+setup_logging(level="debug")
 
 
 def gaussian_sdist(vertices, triangles, n_maps, scales):
