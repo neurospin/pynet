@@ -13,6 +13,7 @@ Heterogeneous Data.
 """
 
 # Imports
+import time
 import logging
 import torch
 import torch.nn as nn
@@ -40,7 +41,7 @@ class MCVAE(nn.Module):
     """
     def __init__(self, latent_dim, n_channels, n_feats,
                  noise_init_logvar=-3, noise_fixed=False, sparse=False,
-                 vae_model="dense", vae_kwargs=None, nodecoding=False):
+                 vae_model="dense", vae_kwargs={}, nodecoding=False):
         """ Init class.
 
         Parameters
@@ -74,7 +75,7 @@ class MCVAE(nn.Module):
             self.vae_class = DVAENet
         else:
             raise ValueError("unknown VAE model.")
-        self.vae_kwargs = vae_kwargs or {}
+        self.vae_kwargs = vae_kwargs
         self.nodecoding = nodecoding
         self.init_vae()
 
@@ -82,6 +83,7 @@ class MCVAE(nn.Module):
         """ Create one VAE model per channel.
         """
         if self.sparse:
+            print('here')
             self.log_alpha = torch.nn.Parameter(
                 torch.FloatTensor(1, self.latent_dim).normal_(0, 0.01))
         else:
@@ -93,10 +95,11 @@ class MCVAE(nn.Module):
                 self.vae_class(
                     latent_dim=self.latent_dim,
                     input_dim=self.n_feats[c_idx],
-                    # noise_init_logvar=self.noise_init_logvar,
-                    # noise_fixed=self.noise_fixed,
-                    # sparse=self.sparse,
-                    # log_alpha=self.log_alpha,
+                    noise_init_logvar=self.noise_init_logvar,
+                    noise_fixed=self.noise_fixed,
+                    sparse=self.sparse,
+                    log_alpha=self.log_alpha,
+                    use_distributions=True,
                     **self.vae_kwargs))
         self.vae = torch.nn.ModuleList(vae)
 
@@ -142,14 +145,27 @@ class MCVAE(nn.Module):
     def forward(self, x):
         """ Forward pass.
         """
-        q = self.encode(x)
-        z = [self.vae[c_idx].reparameterize(*q[c_idx])
-             for c_idx in range(self.n_channels)]
+        t_encode = time.time()
+        qs = self.encode(x)
+        t_encode = time.time() - t_encode
+        t_sample = time.time()
+        z = [q.rsample() for q in qs]
+        t_sample = time.time()-t_sample
         if self.nodecoding:
-            return z, {"q": q}
+            return z, {"q": qs}
         else:
+            t_decode = time.time()
             p = self.decode(z)
-            return p, {"q": q}
+            t_decode = time.time()-t_decode
+            # print('times encode: {}, sample: {}, decode: {}'.format(t_encode, t_sample, t_decode))
+            return p, {"q": qs}
+    @property
+    def dropout(self):
+        if self.sparse:
+            alpha = torch.exp(self.log_alpha.detach())
+            return alpha / (alpha + 1)
+        else:
+            raise NotImplementedError
 
 
 class MCVAELoss(object):
@@ -200,13 +216,8 @@ class MCVAELoss(object):
         self.n_dec_channels = len(self.dec_channels)
         self.nodecoding = nodecoding
 
-        # ToDo: fix
-        tmp_noise_par = torch.FloatTensor(1, 4).fill_(-3)
-        self.pi_logvar = torch.nn.Parameter(
-            data=tmp_noise_par, requires_grad=False)
-        del tmp_noise_par
-
-    def __call__(self, x_pred, x_true, q):
+    
+    def __call__(self, x_true, p, q):
         """ Compute loss.
 
         Parameters
@@ -220,11 +231,10 @@ class MCVAELoss(object):
         """
         if self.nodecoding:
             return -1
-        q = [Normal(loc=mu, scale=logvar.exp().pow(0.5)) for mu, logvar in q]
         kl = self.compute_kl(q, self.beta)
-        ll = self.compute_ll(p=x_pred, x=x_true)
-        print(kl.shape)
-        print(ll.shape)
+        ll = self.compute_ll(p, x_true)
+        # print(ll.shape)
+        # print(kl.shape)
         total = kl - ll
         return total
 
@@ -233,34 +243,34 @@ class MCVAELoss(object):
         if not self.sparse:
             for c_idx, qi in enumerate(q):
                 if c_idx in self.enc_channels:
-                    kl += kl_divergence(qi, Normal(0, 1))
+                    kl += kl_divergence(qi, Normal(
+                        0, 1)).sum(-1, keepdim=True).mean(0)
         else:
             for c_idx, qi in enumerate(q):
                 if c_idx in self.enc_channels:
-                    kl += _kl_log_uniform(
-                        mu=qi.loc, logvar=qi.scale.pow(2).log()).sum(
-                            1, keepdims=True).mean(0)
+                    kl += _kl_log_uniform(qi).sum(
+                            -1, keepdim=True).mean(0)
         return beta * kl / self.n_enc_channels
 
     def compute_ll(self, p, x):
         # p[x][z]: p(x|z)
         ll = 0
-        self.pi_logvar = self.pi_logvar.to(x[0].get_device())
         for c_idx1 in range(self.n_channels):
             for c_idx2 in range(self.n_channels):
                 if c_idx1 in self.dec_channels and c_idx2 in self.enc_channels:
-                    pi = Normal(loc=p[c_idx1][c_idx2],
-                                scale=self.pi_logvar.exp().pow(0.5))
-                    # average ll per observation
-                    ll += _compute_ll(p=pi, x=x[c_idx1]).mean(0)
+                    ll += _compute_ll(p=p[c_idx1][c_idx2], x=x[c_idx1]).mean(0)
         return ll / self.n_enc_channels / self.n_dec_channels
 
 
+def compute_log_alpha(mu, logvar):
+	# clamp because dropout rate p in 0-99%, where p = alpha/(alpha+1)
+	return (logvar - 2 * torch.log(torch.abs(mu) + 1e-8)).clamp(min=-8, max=8)
+
 def _compute_ll(p, x):
-    return p.log_prob(x).sum(1, keepdims=True)
+    return p.log_prob(x.unsqueeze(1)).sum(-1, keepdim=True)
 
 
-def _kl_log_uniform(mu, logvar):
+def _kl_log_uniform(normal):
     """
     Paragraph 4.2 from:
     Variational Dropout Sparsifies Deep Neural Networks
@@ -269,6 +279,8 @@ def _kl_log_uniform(mu, logvar):
     https://github.com/senya-ashukha/variational-dropout-sparsifies-dnn/
     blob/master/KL%20approximation.ipynb
     """
+    mu = normal.loc
+    logvar = normal.scale.pow(2).log()
     log_alpha = compute_log_alpha(mu, logvar)
     k1, k2, k3 = 0.63576, 1.8732, 1.48695
     neg_kl = (k1 * torch.sigmoid(k2 + k3 * log_alpha) - 0.5 *
