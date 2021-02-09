@@ -38,7 +38,7 @@ true_lat_dims = 2
 fit_lat_dims = 5
 snr = 10
 adam_lr = 2e-3
-epochs = 20000
+epochs = 5000
 
 
 # Create synthetic data
@@ -176,7 +176,6 @@ print("- models:", models)
 def train_model(model, dataloaders, criterion, optimizer,# scheduler,
                 num_epochs=25):
     # Parameters
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     best_model_wts = copy.deepcopy(model.state_dict())
     best_loss = 0.0
@@ -185,6 +184,7 @@ def train_model(model, dataloaders, criterion, optimizer,# scheduler,
     # Loop over epochs
     for epoch in range(num_epochs):
         # Each epoch has a training and validation phase
+        since = time.time()
         for phase in image_datasets.keys():
             if phase == "train":
                 model.train()
@@ -238,25 +238,27 @@ def train_model(model, dataloaders, criterion, optimizer,# scheduler,
                     phase, epoch, num_epochs - 1, epoch_loss, epoch_kl, epoch_ll))
 
             # Save weights of the best model
-            # if phase == "val" and epoch_loss < best_loss:
-            #     best_loss = epoch_loss
-            #     best_model_wts = copy.deepcopy(model.state_dict())
+            if phase == "val" and epoch_loss < best_loss:
+                best_loss = epoch_loss
+                best_model_wts = copy.deepcopy(model.state_dict())
 
     time_elapsed = time.time() - since
     print("Training complete in {:.0f}m {:.0f}s".format(
         time_elapsed // 60, time_elapsed % 60))
-    # print("Best val Acc: {:4f}".format(best_acc))
 
     # Load best model weights
-    # model.load_state_dict(best_model_wts)
+    if 'val' in image_datasets.keys():
+        model.load_state_dict(best_model_wts)
 
     return model
 
 
 dataloaders = {
     x: torch.utils.data.DataLoader(
-        image_datasets[x], batch_size=100, shuffle=True, num_workers=0)
+        image_datasets[x], batch_size=n_samples, shuffle=True, num_workers=0)
               for x in image_datasets.keys()}
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 for model_name, model in models.items():
     

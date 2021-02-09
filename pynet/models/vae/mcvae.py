@@ -256,12 +256,12 @@ class MCVAELoss(object):
             for c_idx, qi in enumerate(q):
                 if c_idx in self.enc_channels:
                     kl += kl_divergence(qi, Normal(
-                        0, 1)).sum(-1, keepdims=True).mean(0)
+                        0, 1)).sum(-1,keepdim=True).mean(0)
         else:
             for c_idx, qi in enumerate(q):
                 if c_idx in self.enc_channels:
                     kl += _kl_log_uniform(qi).sum(
-                            -1, keepdims=True).mean(0)
+                            -1, keepdim=True).mean(0)
         return beta * kl / self.n_enc_channels
 
     def compute_ll(self, p, x):
@@ -279,7 +279,7 @@ def compute_log_alpha(mu, logvar):
 	return (logvar - 2 * torch.log(torch.abs(mu) + 1e-8)).clamp(min=-8, max=8)
 
 def _compute_ll(p, x):
-    return p.log_prob(x).sum(-1, keepdims=True)
+    return p.log_prob(x).sum(-1, keepdim=True)
 
 
 def _kl_log_uniform(normal):
