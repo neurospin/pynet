@@ -150,7 +150,7 @@ ds_val = SyntheticDataset(
     snr=snr)
 image_datasets = {
     "train": ds_train,
-    # "val": ds_val
+    "val": ds_val
 }
 print("- datasets:", image_datasets)
 
@@ -158,8 +158,8 @@ print("- datasets:", image_datasets)
 # Create models
 models = {}
 torch.manual_seed(42)
-vae_kwargs = {
-    "hidden_dims": [10]}
+vae_kwargs = {}
+#     "hidden_dims": [10]}
 models["mcvae"] = MCVAE(
     latent_dim=fit_lat_dims, n_channels=n_channels,
     n_feats=[n_feats] * n_channels, vae_model="dense", vae_kwargs=vae_kwargs)
@@ -178,7 +178,7 @@ def train_model(model, dataloaders, criterion, optimizer,# scheduler,
     # Parameters
     model = model.to(device)
     best_model_wts = copy.deepcopy(model.state_dict())
-    best_loss = 0.0
+    best_loss = 1e8
 
 
     # Loop over epochs
