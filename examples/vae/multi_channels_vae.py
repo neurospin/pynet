@@ -114,8 +114,6 @@ class SyntheticDataset(Dataset):
 
     @property
     def shape(self):
-        print(len(self.X))
-        print(len(self.X[0]))
         return (len(self), len(self.X))
 
 def preprocess_and_add_noise(x, snr, seed=0):
@@ -321,7 +319,6 @@ plt.legend(['Sparse', 'Non sparse'])
 plt.title(r'Generative parameters $\mathbf{\theta} = \{\mathbf{\theta}_1 \ldots \mathbf{\theta}_C\}$')
 plt.xlabel('Value')
 
-print(models['smcvae'].dropout)
 do = np.sort(models['smcvae'].dropout.detach().numpy().reshape(-1))
 plt.figure()
 plt.bar(range(len(do)), do)

@@ -172,8 +172,9 @@ for name in ("accuracy", "average_precision_score", "cohen_kappa_score",
              "precision_score", "false_discovery_rate", "false_negative_rate",
              "false_positive_rate", "negative_predictive_value",
              "positive_predictive_value", "true_negative_rate",
-             "true_positive_rate", "r2_score"):
+             "true_positive_rate"):
     Metrics.register(
         SKMetrics(name), name="sk_{0}".format(name))
+
 Metrics.register(SKMetrics("fbeta_score", beta=1), name="f1_score")
 Metrics.register(SKMetrics("fbeta_score", beta=2), name="f2_score")

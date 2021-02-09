@@ -25,11 +25,6 @@ from collections import namedtuple
 import pandas as pd
 import sklearn
 from pynet.datasets import Fetchers
-from pandas_plink import read_plink
-import h5py
-from numpy.lib.format import open_memmap
-from tqdm import tqdm
-import time
 
 
 # Global parameters
@@ -173,78 +168,5 @@ def fetch_height_biobank(datasetdir, to_categorical=False, check=False):
         desc_path = desc_categorical_path if to_categorical else desc_path
         for f in file_todel:
             os.remove(f)
-    return Item(input_path=input_path, output_path=None,
-                metadata_path=desc_path, labels=None)
-
-@Fetchers.register
-def fetch_data_from_plink(datasetdir, data_file, pheno_file,
-    n_individuals, seed=42, check=False):
-    """ Fetch/prepare the height biobank prediction dataset for pynet.
-
-    Matrix Y contains the average grain yield, column 1: Grain yield for
-    environment 1 and so on.
-    Matrix X contains marker genotypes.
-
-    Parameters
-    ----------
-    datasetdir: str
-        the dataset destination folder.
-    to_categorical: bool, default False
-        if set convert the observation to categories.
-    check: bool, default False
-        if set check results against the downloaded .check file data
-
-    Returns
-    -------
-    item: namedtuple
-        a named tuple containing 'input_path', 'output_path', and
-        'metadata_path'.
-        logger.info("Loading UK BioBank height dataset.")
-    """
-    if not os.path.isdir(datasetdir):
-        os.mkdir(datasetdir)
-
-    desc_path = os.path.join(datasetdir, data_file + '_{}_samples_metadata.tsv'.format(n_individuals))
-    input_path = os.path.join(datasetdir, data_file + '_{}_samples_inputs.npy'.format(n_individuals))
-    file_todel = []
-    if not os.path.isfile(desc_path) or not os.path.isfile(input_path):
-
-        # Get data_x, read from the chunk #7 nan filteredout
-        bim, fam, bed = read_plink(os.path.join(datasetdir, data_file))
-
-        np.random.seed(seed)
-        individuals = np.random.choice(
-            fam['i'].values,
-            size=min(n_individuals, fam.shape[0]),
-            replace=False)
-
-        individuals = np.sort(individuals)
-        X = bed[:, individuals]
-        shape = X.shape
-
-        X.to_hdf5(os.path.join(datasetdir, 'data.hdf5'), '/data')
-        
-        memmap = open_memmap(input_path, dtype='float32', mode='w+', shape=shape[::-1])
-        
-        with h5py.File(os.path.join(datasetdir, 'data.hdf5'), 'r') as f:
-            data = f['data']
-            for i in tqdm(range(shape[1])):
-                memmap[i] = data[:,i]
-        os.remove(os.path.join(datasetdir, 'data.hdf5'))
-
-        data_y = pd.read_csv(
-            os.path.join(datasetdir, pheno_file), sep="\t")
-
-        fam = fam.astype({'iid': int, 'fid': int})
-
-        data_y = data_y.join(fam[['fid', 'iid', 'i']].set_index(['fid', 'iid']), on=['FID', 'IID'])
-
-        data_y = data_y[data_y['i'].isin(individuals)].sort_values('i')
-        data_y.drop(['FID', 'IID', 'i'], axis=1, inplace=True)
-        logger.info("Data Y: {0}".format(data_y.shape))
-
-
-        data_y.to_csv(desc_path, sep="\t", index=False)
-        
     return Item(input_path=input_path, output_path=None,
                 metadata_path=desc_path, labels=None)

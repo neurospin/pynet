@@ -31,7 +31,7 @@ from .echocardiography import fetch_echocardiography
 from .gradcam import fetch_gradcam
 from .genomic import fetch_genomic_pred
 from .registration import fetch_registration
-from .ukb import fetch_height_biobank, fetch_data_from_plink
+from .ukb import fetch_height_biobank
 from .impac import fetch_impac
 from .connectome import fetch_connectome
 from .hcp import fetch_hcp_brain
@@ -40,7 +40,6 @@ from .toy import fetch_toy
 from .tcga_lgg_tif import fetch_tcga_lgg_tif
 from .primede import fetch_primede
 from .minst import fetch_minst
-from .mstcc import fetch_nicodep
 
 
 # Global parameters

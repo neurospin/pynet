@@ -140,7 +140,7 @@ class Base(Observable):
 
     def training(self, manager, nb_epochs, checkpointdir=None, fold_index=None,
                  scheduler=None, with_validation=True, save_after_epochs=1,
-                 add_labels=False, early_stop=False, early_stop_lag=5, early_stop_epsilon=1e-4):
+                 add_labels=False):
         """ Train the model.
 
         Parameters
@@ -196,11 +196,6 @@ class Base(Observable):
                 train=True,
                 validation=with_validation,
                 fold_index=fold)
-
-            if early_stop:
-                val_losses = []
-                wrong_since = 0
-
             for epoch in range(nb_epochs):
                 logger.debug("Running epoch {0}:".format(fold))
                 logger.debug("  notify observers with signal 'before_epoch'.")
@@ -234,7 +229,6 @@ class Base(Observable):
                 if with_validation:
                     logger.debug("  validation.")
                     y_pred, loss, values = self.test(loaders.validation)
-
                     observers_kwargs["val_loss"] = loss
                     observers_kwargs.update(dict(
                         ("val_{0}".format(key), val)
@@ -250,29 +244,6 @@ class Base(Observable):
                             outdir=checkpointdir,
                             epoch=epoch,
                             fold=fold)
-
-                    if early_stop:
-                        val_losses.append(loss)
-                        if (len(val_losses) >= 2 and
-                            (np.abs(val_losses[-2]-val_losses[-1]) < early_stop_epsilon or
-                            val_losses[-1] > val_losses[-2])):
-
-                            wrong_since += 1
-                            if wrong_since >= early_stop_lag:
-
-                                if checkpointdir is not None:
-                                    best_loss_epoch = np.argmin(val_losses[::save_after_epochs]) * save_after_epochs
-
-                                    model_state = torch.load(os.path.join(
-                                        checkpointdir,
-                                        'model_{}_epoch_{}.pth'.format(fold, best_loss_epoch)))['model']
-
-                                    self.model.load_state_dict(model_state)
-
-                                logger.info("Training stopped by early stopping")
-                                break
-                        else:
-                            wrong_since = 0
                 logger.debug("  notify observers with signal 'after_epoch'.")
                 self.notify_observers("after_epoch", epoch=epoch, fold=fold,
                                       **observers_kwargs)

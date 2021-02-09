@@ -242,7 +242,7 @@ def checkpoint(model, epoch, fold, outdir, optimizer=None, scheduler=None,
         others parameters to save.
     """
     outfile = os.path.join(
-        outdir, "model_{0}_epoch_{1}.pth".format(fold, int(epoch)))
+        outdir, "model_{0}_epoch_{1}.pth".format(fold, epoch))
     if optimizer is not None:
         kwargs.update(optimizer=optimizer.state_dict())
     if scheduler is not None:
@@ -407,23 +407,3 @@ def reset_weights(model, checkpoint=None):
             model.load_state_dict(checkpoint["model"])
         else:
             model.load_state_dict(checkpoint)
-
-def reset_optimizer(optimizer, checkpoint=None):
-    """ Reset all the optimizer's parameters. If a checkpoint is given,
-    restore the checkpoint parameters.
-
-    Parameters
-    ----------
-    optimizer: Optimizer
-        the network optimizer.
-    checkpoint: dict
-        the saved model weights
-    """
-    if isinstance(checkpoint, dict) and "optimizer" in checkpoint:
-        optimizer.load_state_dict(
-            checkpoint["optimizer"])
-    else:
-        state_dict = optimizer.state_dict()
-        state_dict['state'] = dict()
-        state_dict['param_groups'] = [state_dict['param_groups'][0]]
-        optimizer.load_state_dict(state_dict)
