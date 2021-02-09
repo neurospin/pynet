@@ -78,7 +78,7 @@ REQUIRES = [
     "Pillow==6.2.1",
     "PySide2>=5.13.2",
     "scikit-learn>=0.21.3",
-    # "scikit-image==0.15.0",
+    "scikit-image==0.15.0",
     "visdom>=0.1.8.8",
     "h5py>=2.10.0",
     "boto3>=1.12.27",

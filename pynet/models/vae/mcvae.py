@@ -13,14 +13,13 @@ Heterogeneous Data.
 """
 
 # Imports
-import time
 import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
 from torch.distributions import Normal, kl_divergence
 from pynet.interfaces import DeepLearningDecorator
-from pynet.utils import Networks
+from pynet.utils import Networks, Losses
 import numpy as np
 from .vanillanet import DVAENet
 
@@ -29,10 +28,10 @@ from .vanillanet import DVAENet
 logger = logging.getLogger("pynet")
 
 
-# @Networks.register
-# @DeepLearningDecorator(family=("encoder", "vae"))
+@Networks.register
+@DeepLearningDecorator(family=("encoder", "vae"))
 class MCVAE(nn.Module):
-    """ Sparse Multi-Channel Variational Autoencoderfor (sMCVAE).
+    """ Sparse Multi-Channel Variational Autoencoder (sMCVAE).
 
     Sparse Multi-Channel Variational Autoencoder for the Joint Analysis of
     Heterogeneous Data, Luigi Antelmi, Nicholas Ayache, Philippe Robert,
@@ -83,14 +82,12 @@ class MCVAE(nn.Module):
         """ Create one VAE model per channel.
         """
         if self.sparse:
-            print('here')
             self.log_alpha = torch.nn.Parameter(
                 torch.FloatTensor(1, self.latent_dim).normal_(0, 0.01))
         else:
             self.log_alpha = None
         vae = []
         for c_idx in range(self.n_channels):
-            # ToDo: adapt VAE class - init + sparse
             vae.append(
                 self.vae_class(
                     latent_dim=self.latent_dim,
@@ -118,7 +115,7 @@ class MCVAE(nn.Module):
             each channel distribution parameters mu (mean of the latent
             Gaussian) and logvar (standard deviation of the latent Gaussian).
         """
-        return [self.vae[c_idx].encode(x[c_idx].unsqueeze(1))
+        return [self.vae[c_idx].encode(x[c_idx])
                 for c_idx in range(self.n_channels)]
 
     def decode(self, z):
@@ -145,20 +142,32 @@ class MCVAE(nn.Module):
     def forward(self, x):
         """ Forward pass.
         """
-        t_encode = time.time()
         qs = self.encode(x)
-        t_encode = time.time() - t_encode
-        t_sample = time.time()
         z = [q.rsample() for q in qs]
-        t_sample = time.time()-t_sample
         if self.nodecoding:
-            return z, {"q": qs}
+            return {'z': z, 'q': qs}
         else:
-            t_decode = time.time()
             p = self.decode(z)
-            t_decode = time.time()-t_decode
-            # print('times encode: {}, sample: {}, decode: {}'.format(t_encode, t_sample, t_decode))
-            return p, {"q": qs}
+            return {'p': p, 'q': qs}
+
+    def apply_threshold(self, z, threshold, keep_dims=True, reorder=False):
+        # print(f'Applying dropout threshold of {threshold}')
+        assert(threshold <= 1.0)
+        order = torch.argsort(self.dropout).squeeze()
+        keep = (self.dropout < threshold).squeeze()
+        z_keep = []
+        for _ in z:
+            if keep_dims:
+                _[:, ~keep] = 0
+            else:
+                _ = _[:, keep]
+                order = torch.argsort(self.dropout[self.dropout < threshold]).squeeze()
+            if reorder:
+                _ = _[:, order]
+            z_keep.append(_)
+            del _
+        return z_keep
+
     @property
     def dropout(self):
         if self.sparse:
@@ -167,7 +176,7 @@ class MCVAE(nn.Module):
         else:
             raise NotImplementedError
 
-
+@Losses.register
 class MCVAELoss(object):
     """ MCVAE consists of two loss functions:
 
@@ -217,7 +226,7 @@ class MCVAELoss(object):
         self.nodecoding = nodecoding
 
     
-    def __call__(self, x_true, p, q):
+    def __call__(self, fwd_ret, x_true):
         """ Compute loss.
 
         Parameters
@@ -231,12 +240,15 @@ class MCVAELoss(object):
         """
         if self.nodecoding:
             return -1
-        kl = self.compute_kl(q, self.beta)
-        ll = self.compute_ll(p, x_true)
-        # print(ll.shape)
-        # print(kl.shape)
+        kl = self.compute_kl(fwd_ret['q'], self.beta)
+        ll = self.compute_ll(fwd_ret['p'], x_true)
+        
         total = kl - ll
-        return total
+        return {
+            'total':total,
+            'kl': kl,
+            'll': ll
+        }
 
     def compute_kl(self, q, beta):
         kl = 0
@@ -244,12 +256,12 @@ class MCVAELoss(object):
             for c_idx, qi in enumerate(q):
                 if c_idx in self.enc_channels:
                     kl += kl_divergence(qi, Normal(
-                        0, 1)).sum(-1, keepdim=True).mean(0)
+                        0, 1)).sum(-1, keepdims=True).mean(0)
         else:
             for c_idx, qi in enumerate(q):
                 if c_idx in self.enc_channels:
                     kl += _kl_log_uniform(qi).sum(
-                            -1, keepdim=True).mean(0)
+                            -1, keepdims=True).mean(0)
         return beta * kl / self.n_enc_channels
 
     def compute_ll(self, p, x):
@@ -267,7 +279,7 @@ def compute_log_alpha(mu, logvar):
 	return (logvar - 2 * torch.log(torch.abs(mu) + 1e-8)).clamp(min=-8, max=8)
 
 def _compute_ll(p, x):
-    return p.log_prob(x.unsqueeze(1)).sum(-1, keepdim=True)
+    return p.log_prob(x).sum(-1, keepdims=True)
 
 
 def _kl_log_uniform(normal):

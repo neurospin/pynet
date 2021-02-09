@@ -272,11 +272,12 @@ class DVAENet(BaseVAE):
 
         # Build Decoder
         if self.use_distributions:
-            tmp_noise_par = torch.FloatTensor(1, input_dim).fill_(self.noise_init_logvar)
+            tmp_noise_par = torch.FloatTensor(1, self.input_dim).fill_(self.noise_init_logvar)
             if self.noise_fixed:
                 self.W_out_logvar = torch.nn.Parameter(data=tmp_noise_par, requires_grad=False)
             else:
                 self.W_out_logvar = torch.nn.Parameter(data=tmp_noise_par, requires_grad=True)
+            del tmp_noise_par
        
         if hidden_dims is not None:
             modules = []
