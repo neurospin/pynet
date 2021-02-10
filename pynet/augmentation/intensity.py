@@ -329,7 +329,7 @@ def add_motion(arr, rotation=10, translation=10, n_transforms=2,
     for cnt in range(n_transforms):
         random_rotations = Rotation.from_euler(
             "xyz", random_rotations[cnt], degrees=True)
-        random_rotations = random_rotations.as_dcm()
+        random_rotations = random_rotations.as_matrix()
         zoom = [1, 1, 1]
         affine = compose(random_translations[cnt], random_rotations, zoom)
         flow = affine_flow(affine, shape)
