@@ -14,13 +14,13 @@ Heterogeneous Data.
 
 # Imports
 import logging
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
 from torch.distributions import Normal, kl_divergence
 from pynet.interfaces import DeepLearningDecorator
-from pynet.utils import Networks
-import numpy as np
+from pynet.utils import Networks, Losses
 from .vanillanet import DVAENet
 
 
@@ -28,11 +28,10 @@ from .vanillanet import DVAENet
 logger = logging.getLogger("pynet")
 
 
-# @Networks.register
-# @DeepLearningDecorator(family=("encoder", "vae"))
+@Networks.register
+@DeepLearningDecorator(family=("encoder", "vae"))
 class MCVAE(nn.Module):
-    """ Sparse Multi-Channel Variational Autoencoderfor (sMCVAE).
-
+    """ Sparse Multi-Channel Variational Autoencoder (sMCVAE).
     Sparse Multi-Channel Variational Autoencoder for the Joint Analysis of
     Heterogeneous Data, Luigi Antelmi, Nicholas Ayache, Philippe Robert,
     Marco Lorenzi Proceedings of the 36th International Conference on Machine
@@ -52,7 +51,9 @@ class MCVAE(nn.Module):
         n_feats: list of int
             each channel input dimensions.
         noise_init_logvar: float, default -3
+            default noise parameters values.
         noise_fixed: bool, default False
+            if set not set do not required gradients on noise parameters.
         sparse: bool, default False
             use sparsity contraint.
         vae_model: str, default "dense"
@@ -82,21 +83,21 @@ class MCVAE(nn.Module):
         """ Create one VAE model per channel.
         """
         if self.sparse:
-            self.log_alpha = torch.nn.Parameter(
+            self.log_alpha = nn.Parameter(
                 torch.FloatTensor(1, self.latent_dim).normal_(0, 0.01))
         else:
             self.log_alpha = None
         vae = []
         for c_idx in range(self.n_channels):
-            # ToDo: adapt VAE class - init + sparse
             vae.append(
                 self.vae_class(
                     latent_dim=self.latent_dim,
                     input_dim=self.n_feats[c_idx],
-                    # noise_init_logvar=self.noise_init_logvar,
-                    # noise_fixed=self.noise_fixed,
-                    # sparse=self.sparse,
-                    # log_alpha=self.log_alpha,
+                    noise_init_logvar=self.noise_init_logvar,
+                    noise_fixed=self.noise_fixed,
+                    sparse=self.sparse,
+                    log_alpha=self.log_alpha,
+                    use_distributions=True,
                     **self.vae_kwargs))
         self.vae = torch.nn.ModuleList(vae)
 
@@ -115,7 +116,7 @@ class MCVAE(nn.Module):
             each channel distribution parameters mu (mean of the latent
             Gaussian) and logvar (standard deviation of the latent Gaussian).
         """
-        return [self.vae[c_idx].encode(x[c_idx].unsqueeze(1))
+        return [self.vae[c_idx].encode(x[c_idx])
                 for c_idx in range(self.n_channels)]
 
     def decode(self, z):
@@ -140,27 +141,67 @@ class MCVAE(nn.Module):
         return p
 
     def forward(self, x):
-        """ Forward pass.
-        """
-        q = self.encode(x)
-        z = [self.vae[c_idx].reparameterize(*q[c_idx])
-             for c_idx in range(self.n_channels)]
+        qs = self.encode(x)
+        z = [q.rsample() for q in qs]
         if self.nodecoding:
-            return z, {"q": q}
+            return {"z": z, "q": qs}
         else:
             p = self.decode(z)
-            return p, {"q": q}
+            return {"p": p, "q": qs}
+
+    def apply_threshold(self, z, threshold, keep_dims=True, reorder=False):
+        """ Apply dropout threshold.
+
+        Parameters
+        ----------
+        z: Tensor
+            distribution samples.
+        threshold: float
+            dropout threshold.
+        keep_dims: bool default True
+            dropout lower than threshold is set to 0.
+        reorder: bool default False
+            reorder dropout rates.
+
+        Returns
+        -------
+        z_keep: list
+            dropout rates.
+        """
+        assert(threshold <= 1.0)
+        order = torch.argsort(self.dropout).squeeze()
+        keep = (self.dropout < threshold).squeeze()
+        z_keep = []
+        for drop in z:
+            if keep_dims:
+                drop[:, ~keep] = 0
+            else:
+                drop = drop[:, keep]
+                order = torch.argsort(
+                    self.dropout[self.dropout < threshold]).squeeze()
+            if reorder:
+                drop = drop[:, order]
+            z_keep.append(drop)
+            del drop
+        return z_keep
+
+    @property
+    def dropout(self):
+        if self.sparse:
+            alpha = torch.exp(self.log_alpha.detach())
+            return alpha / (alpha + 1)
+        else:
+            raise NotImplementedError
 
 
+@Losses.register
 class MCVAELoss(object):
     """ MCVAE consists of two loss functions:
-
     1. KL divergence loss: how off the distribution over the latent space is
        from the prior. Given the prior is a standard Gaussian and the inferred
        distribution is a Gaussian with a diagonal covariance matrix,
        the KL-divergence becomes analytically solvable.
     2. log-likelihood LL
-
     loss = beta * KL_loss + LL_loss.
     """
     def __init__(self, n_channels, beta=1., enc_channels=None,
@@ -200,13 +241,7 @@ class MCVAELoss(object):
         self.n_dec_channels = len(self.dec_channels)
         self.nodecoding = nodecoding
 
-        # ToDo: fix
-        tmp_noise_par = torch.FloatTensor(1, 4).fill_(-3)
-        self.pi_logvar = torch.nn.Parameter(
-            data=tmp_noise_par, requires_grad=False)
-        del tmp_noise_par
-
-    def __call__(self, x_pred, x_true, q):
+    def __call__(self, fwd_ret, x_true):
         """ Compute loss.
 
         Parameters
@@ -220,47 +255,46 @@ class MCVAELoss(object):
         """
         if self.nodecoding:
             return -1
-        q = [Normal(loc=mu, scale=logvar.exp().pow(0.5)) for mu, logvar in q]
-        kl = self.compute_kl(q, self.beta)
-        ll = self.compute_ll(p=x_pred, x=x_true)
-        print(kl.shape)
-        print(ll.shape)
+        kl = self.compute_kl(fwd_ret['q'], self.beta)
+        ll = self.compute_ll(fwd_ret['p'], x_true)
+
         total = kl - ll
-        return total
+        return {"total": total, "kl": kl, "ll": ll}
 
     def compute_kl(self, q, beta):
         kl = 0
         if not self.sparse:
             for c_idx, qi in enumerate(q):
                 if c_idx in self.enc_channels:
-                    kl += kl_divergence(qi, Normal(0, 1))
+                    kl += kl_divergence(qi, Normal(
+                        0, 1)).sum(-1, keepdim=True).mean(0)
         else:
             for c_idx, qi in enumerate(q):
                 if c_idx in self.enc_channels:
-                    kl += _kl_log_uniform(
-                        mu=qi.loc, logvar=qi.scale.pow(2).log()).sum(
-                            1, keepdims=True).mean(0)
+                    kl += _kl_log_uniform(qi).sum(
+                            -1, keepdim=True).mean(0)
         return beta * kl / self.n_enc_channels
 
     def compute_ll(self, p, x):
         # p[x][z]: p(x|z)
         ll = 0
-        self.pi_logvar = self.pi_logvar.to(x[0].get_device())
         for c_idx1 in range(self.n_channels):
             for c_idx2 in range(self.n_channels):
                 if c_idx1 in self.dec_channels and c_idx2 in self.enc_channels:
-                    pi = Normal(loc=p[c_idx1][c_idx2],
-                                scale=self.pi_logvar.exp().pow(0.5))
-                    # average ll per observation
-                    ll += _compute_ll(p=pi, x=x[c_idx1]).mean(0)
+                    ll += _compute_ll(p=p[c_idx1][c_idx2], x=x[c_idx1]).mean(0)
         return ll / self.n_enc_channels / self.n_dec_channels
 
 
+def compute_log_alpha(mu, logvar):
+    # clamp because dropout rate p in 0-99%, where p = alpha/(alpha+1)
+    return (logvar - 2 * torch.log(torch.abs(mu) + 1e-8)).clamp(min=-8, max=8)
+
+
 def _compute_ll(p, x):
-    return p.log_prob(x).sum(1, keepdims=True)
+    return p.log_prob(x).sum(-1, keepdim=True)
 
 
-def _kl_log_uniform(mu, logvar):
+def _kl_log_uniform(normal):
     """
     Paragraph 4.2 from:
     Variational Dropout Sparsifies Deep Neural Networks
@@ -269,6 +303,8 @@ def _kl_log_uniform(mu, logvar):
     https://github.com/senya-ashukha/variational-dropout-sparsifies-dnn/
     blob/master/KL%20approximation.ipynb
     """
+    mu = normal.loc
+    logvar = normal.scale.pow(2).log()
     log_alpha = compute_log_alpha(mu, logvar)
     k1, k2, k3 = 0.63576, 1.8732, 1.48695
     neg_kl = (k1 * torch.sigmoid(k2 + k3 * log_alpha) - 0.5 *

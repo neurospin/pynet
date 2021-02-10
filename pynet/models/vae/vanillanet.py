@@ -16,6 +16,7 @@ import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
+from torch.distributions import Normal, Bernoulli
 from pynet.interfaces import DeepLearningDecorator
 from pynet.utils import Networks
 import numpy as np
@@ -31,14 +32,13 @@ logger = logging.getLogger("pynet")
 class VanillaNet(BaseVAE):
     """
     The model is composed of two sub-networks:
-
     1. Given x (image), encode it into a distribution over the latent space -
        referred to as Q(z|x).
     2. Given z in latent space (code representation of an image), decode it
        into the image it represents - referred to as f(z).
     """
     def __init__(self, latent_dim, in_channels, hidden_dims, input_shape,
-                 num_classes=None):
+                 num_classes=None, **kwargs):
         """ Init class.
 
         Parameters
@@ -55,7 +55,7 @@ class VanillaNet(BaseVAE):
         num_classes: int, default None
             the number of classes for the conditioning.
         """
-        super(VanillaNet, self).__init__()
+        super(VanillaNet, self).__init__(**kwargs)
         self.latent_dim = latent_dim
         self.in_channels = in_channels
         self.shapes = self.downsample_shape(
@@ -137,6 +137,8 @@ class VanillaNet(BaseVAE):
         z_logvar = self.fc_var(x)
         self.debug("z_mu", z_mu)
         self.debug("z_logvar", z_logvar)
+        if self.use_distributions:
+            return Normal(z_mu, z_logvar.exp().pow(0.5))
         return z_mu, z_logvar
 
     def decode(self, x_sample):
@@ -200,18 +202,18 @@ class VanillaNet(BaseVAE):
 class DVAENet(BaseVAE):
     """
     Dense Variational AutoEncoder (DVAE).
-
     DEEP VARIATIONAL AUTOENCODER FOR MODELING FUNCTIONAL BRAIN NETWORKS AND
     ADHD IDENTIFICATION, ISBI 2020.
 
     The model is composed of two sub-networks:
-
     1. Given x (image), encode it into a distribution over the latent space -
        referred to as Q(z|x).
     2. Given z in latent space (code representation of an image), decode it
        into the image it represents - referred to as f(z).
     """
-    def __init__(self, latent_dim, input_dim, hidden_dims, nodecoding=False):
+    def __init__(self, latent_dim, input_dim, hidden_dims=None,
+                 noise_init_logvar=-3, noise_fixed=False, sparse=False,
+                 log_alpha=None, nodecoding=False, **kwargs):
         """ Init class.
 
         Parameters
@@ -220,51 +222,82 @@ class DVAENet(BaseVAE):
             the latent dimension.
         input_dim: int
             the input dimension.
-        hidden_dims: list of int
+        hidden_dims: list of int, default None
             the model hidden dimensions.
+        noise_init_logvar: float, default -3
+            default noise parameters values.
+        noise_fixed: bool, default False
+            if set not set do not required gradients on noise parameters.
+        sparse: bool, default False
+            use sparsity contraint.
+        log_alpha: nn.Parameter, default None
+            dropout estimate.
         nodecoding: bool, default False
             if set do not apply the decoding.
         """
-        super(DVAENet, self).__init__()
+        super(DVAENet, self).__init__(**kwargs)
         self.latent_dim = latent_dim
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
         self.nodecoding = nodecoding
+        self.sparse = sparse
+        self.noise_fixed = noise_fixed
+        self.noise_init_logvar = noise_init_logvar
+        self.log_alpha = log_alpha
 
         # Build Encoder
-        modules = []
-        e_input_dim = self.input_dim
-        for cnt, h_dim in enumerate(hidden_dims):
-            logger.debug("Encoding level {0} with dim {1} - {2}...".format(
-                cnt, e_input_dim, h_dim))
-            modules.append(
-                nn.Sequential(
-                    nn.Linear(e_input_dim, h_dim),
-                    nn.Tanh())
-            )
-            e_input_dim = h_dim
-        self.encoder = nn.Sequential(*modules)
-        self.fc_mu = nn.Linear(hidden_dims[-1], latent_dim)
-        self.fc_logvar = nn.Linear(hidden_dims[-1], latent_dim)
+        if hidden_dims is not None:
+            modules = []
+            e_input_dim = self.input_dim
+            for cnt, h_dim in enumerate(hidden_dims):
+                logger.debug("Encoding level {0} with dim {1} - {2}...".format(
+                    cnt, e_input_dim, h_dim))
+                modules.append(
+                    nn.Sequential(
+                        nn.Linear(e_input_dim, h_dim),
+                        nn.Tanh())
+                )
+                e_input_dim = h_dim
+            self.encoder = nn.Sequential(*modules)
+            input_dim = hidden_dims[-1]
+
+        self.fc_mu = nn.Linear(input_dim, latent_dim)
+        if self.sparse and self.log_alpha is None:
+            self.log_alpha = nn.Parameter(
+                torch.FloatTensor(1, self.latent_dim).normal_(0, 0.01))
+        elif not self.sparse:
+            self.fc_logvar = nn.Linear(input_dim, latent_dim)
 
         # Build Decoder
-        modules = []
-        hidden_dims.reverse()
-        d_input_dim = latent_dim
-        for cnt, h_dim in enumerate(hidden_dims):
-            logger.debug("Decoding level {0} with dim {1} - {2}...".format(
-                cnt, d_input_dim, h_dim))
-            modules.append(
-                nn.Sequential(
-                    nn.Linear(d_input_dim, h_dim),
-                    nn.Tanh())
-            )
-            d_input_dim = h_dim
-        self.decoder = nn.Sequential(*modules)
+        if self.use_distributions:
+            tmp_noise_par = torch.FloatTensor(1, self.input_dim).fill_(
+                self.noise_init_logvar)
+            if self.noise_fixed:
+                self.W_out_logvar = torch.nn.Parameter(
+                    data=tmp_noise_par, requires_grad=False)
+            else:
+                self.W_out_logvar = torch.nn.Parameter(
+                    data=tmp_noise_par, requires_grad=True)
+            del tmp_noise_par
+
+        if hidden_dims is not None:
+            modules = []
+            hidden_dims.reverse()
+            d_input_dim = latent_dim
+            for cnt, h_dim in enumerate(hidden_dims):
+                logger.debug("Decoding level {0} with dim {1} - {2}...".format(
+                    cnt, d_input_dim, h_dim))
+                modules.append(
+                    nn.Sequential(
+                        nn.Linear(d_input_dim, h_dim),
+                        nn.Tanh()))
+                d_input_dim = h_dim
+            self.decoder = nn.Sequential(*modules)
+            latent_dim = hidden_dims[-1]
+
         self.final_layer = nn.Sequential(
-            nn.Linear(hidden_dims[-1], self.input_dim),
-            nn.Sigmoid()
-        )
+            nn.Linear(latent_dim, self.input_dim))
+        # nn.Sigmoid())
 
     def encode(self, x):
         """ Encodes the input by passing through the encoder network
@@ -284,12 +317,18 @@ class DVAENet(BaseVAE):
         """
         logger.debug("Encode...")
         self.debug("input", x)
-        x = self.encoder(x)
-        self.debug("encoded", x)
+        if self.hidden_dims is not None:
+            x = self.encoder(x)
+            self.debug("encoded", x)
         z_mu = self.fc_mu(x)
-        z_logvar = self.fc_logvar(x)
+        if not self.sparse:
+            z_logvar = self.fc_logvar(x)
+        else:
+            z_logvar = compute_logvar(z_mu, self.log_alpha)
         self.debug("z_mu", z_mu)
         self.debug("z_logvar", z_logvar)
+        if self.use_distributions:
+            return Normal(z_mu, z_logvar.exp().pow(0.5))
         return z_mu, z_logvar
 
     def decode(self, x_sample):
@@ -307,10 +346,15 @@ class DVAENet(BaseVAE):
         """
         logger.debug("Decode...")
         self.debug("x sample", x_sample)
-        x = self.decoder(x_sample)
-        self.debug("decoded", x)
+        x = x_sample
+        if self.hidden_dims is not None:
+            x = self.decoder(x_sample)
+            self.debug("decoded", x)
         x = self.final_layer(x)
         self.debug("final", x)
+        if self.use_distributions:
+            # return Bernoulli(probs=x)
+            return Normal(x, self.W_out_logvar.exp().pow(0.5))
         return x
 
     def reparameterize(self, z_mu, z_logvar):
@@ -339,9 +383,27 @@ class DVAENet(BaseVAE):
 
     def forward(self, x, **kwargs):
         logger.debug("DVAE Net...")
-        z_mu, z_logvar = self.encode(x)
-        z = self.reparameterize(z_mu, z_logvar)
-        if self.nodecoding:
-            return z, {"z_mu": z_mu, "z_logvar": z_logvar}
+        if self.use_distributions:
+            q = self.encode(x)
+            z = q.rsample()
+            if self.nodecoding:
+                return z, {"q": q}
+            return self.decode(z), {"q": q}
         else:
+            z_mu, z_logvar = self.encode(x)
+            z = self.reparameterize(z_mu, z_logvar)
+            if self.nodecoding:
+                return z, {"z_mu": z_mu, "z_logvar": z_logvar}
             return self.decode(z), {"z_mu": z_mu, "z_logvar": z_logvar}
+
+    @property
+    def dropout(self):
+        if self.sparse:
+            alpha = torch.exp(self.log_alpha.detach())
+            return alpha / (alpha + 1)
+        else:
+            raise NotImplementedError
+
+
+def compute_logvar(mu, log_alpha):
+    return log_alpha + 2 * torch.log(torch.abs(mu) + 1e-8)

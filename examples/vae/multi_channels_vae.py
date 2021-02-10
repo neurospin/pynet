@@ -1,8 +1,7 @@
 """
 Multi Channels VAE (MCVAE)
 ==========================
-
-Credit: A Grigis
+Credit: A Grigis & C. Ambroise
 """
 
 # Imports
@@ -26,7 +25,6 @@ from pynet.utils import setup_logging
 
 
 # Global parameters
-setup_logging(level="debug")
 n_samples = 500
 n_channels = 3
 n_feats = 4
@@ -34,7 +32,9 @@ true_lat_dims = 2
 fit_lat_dims = 5
 snr = 10
 adam_lr = 2e-3
-epochs = 20000
+epochs = 5000
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+setup_logging(level="info")
 
 
 # Create synthetic data
@@ -43,12 +43,9 @@ epochs = 20000
 class GeneratorUniform(nn.Module):
     """ Generate multiple sources (channels) of data through a linear
     generative model:
-
     z ~ N(0,I)
-
     for c_idx in n_channels:
         x_ch = W_ch(c_idx)
-
     where 'W_ch' is an arbitrary linear mapping z -> x_ch
     """
     def __init__(self, lat_dim=2, n_channels=2, n_feats=5, seed=100):
@@ -108,6 +105,9 @@ class SyntheticDataset(Dataset):
     def __getitem__(self, item):
         return [x[item] for x in self.X]
 
+    @property
+    def shape(self):
+        return (len(self), len(self.X))
 
 def preprocess_and_add_noise(x, snr, seed=0):
     if not isinstance(snr, list):
@@ -130,13 +130,15 @@ ds_train = SyntheticDataset(
     lat_dim=true_lat_dims,
     n_feats=n_feats,
     n_channels=n_channels,
-    train=True)
+    train=True,
+    snr=snr)
 ds_val = SyntheticDataset(
     n_samples=n_samples,
     lat_dim=true_lat_dims,
     n_feats=n_feats,
     n_channels=n_channels,
-    train=False)
+    train=False,
+    snr=snr)
 image_datasets = {
     "train": ds_train,
     "val": ds_val}
@@ -146,8 +148,7 @@ print("- datasets:", image_datasets)
 # Create models
 models = {}
 torch.manual_seed(42)
-vae_kwargs = {
-    "hidden_dims": [10]}
+vae_kwargs = {}
 models["mcvae"] = MCVAE(
     latent_dim=fit_lat_dims, n_channels=n_channels,
     n_feats=[n_feats] * n_channels, vae_model="dense", vae_kwargs=vae_kwargs)
@@ -161,42 +162,45 @@ print("- models:", models)
 
 # Fit models
 
-def train_model(model, dataloaders, criterion, optimizer, scheduler,
+def train_model(model, dataloaders, criterion, optimizer, scheduler=None,
                 num_epochs=25):
     # Parameters
-    since = time.time()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     best_model_wts = copy.deepcopy(model.state_dict())
-    best_acc = 0.0
+    best_loss = 1e8
+
 
     # Loop over epochs
     for epoch in range(num_epochs):
-        print("Epoch {}/{}".format(epoch, num_epochs - 1))
-        print("-" * 10)
-
         # Each epoch has a training and validation phase
-        for phase in ["train", "val"]:
+        since = time.time()
+        for phase in image_datasets.keys():
             if phase == "train":
                 model.train()
             else:
                 model.eval()
 
             running_loss = 0.0
+            running_kl = 0.0
+            running_ll = 0.0
             running_corrects = 0
 
             # Iterate over data
+
             for inputs in dataloaders[phase]:
                 inputs = [ch_inputs.to(device) for ch_inputs in inputs]
 
                 # zero the parameter gradients
                 optimizer.zero_grad()
-
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == "train"):
-                    outputs, kwargs = model(inputs)
-                    loss = criterion(outputs, inputs, **kwargs)
+                    fwd_ret = model(inputs)
+                    losses = criterion(fwd_ret, inputs)
+                    loss = losses["total"]
+                    kl = losses["kl"]
+                    ll = losses["ll"]
+
 
                     # backward + optimize only if in training phase
                     if phase == "train":
@@ -204,109 +208,117 @@ def train_model(model, dataloaders, criterion, optimizer, scheduler,
                         optimizer.step()
 
                 # statistics
-                running_loss += loss.item() * inputs.size(0)
-                running_corrects += torch.sum(preds == labels.data)
+                running_loss += loss.detach().item() * inputs[0].size(0)
+                running_kl += kl.detach().item() * inputs[0].size(0)
+                running_ll += ll.detach().item() * inputs[0].size(0)
 
-            # Update scheduler
-            if phase == "train":
-                scheduler.step()
 
             # Epoch statistics
-            epoch_loss = running_loss / dataset_sizes[phase]
-            epoch_acc = running_corrects.double() / dataset_sizes[phase]
-            print("{} Loss: {:.4f} Acc: {:.4f}".format(
-                phase, epoch_loss, epoch_acc))
+            epoch_loss = running_loss / len(dataloaders[phase].dataset)
+            epoch_kl = running_kl / len(dataloaders[phase].dataset)
+            epoch_ll = running_ll / len(dataloaders[phase].dataset)
+
+            # Update scheduler
+            if scheduler is not None and phase == "train":
+                scheduler.step(epoch_loss)
+
+            # Display info
+            if epoch % 10 == 0:
+                print("===> {}: epoch {}/{},\t Loss: {:.4f},\t KL: {:.4f},\t "
+                      "LL: {:.4f}".format(
+                            phase, epoch, num_epochs - 1, epoch_loss, epoch_kl,
+                            epoch_ll))
 
             # Save weights of the best model
-            if phase == "val" and epoch_acc > best_acc:
-                best_acc = epoch_acc
+            if phase == "val" and epoch_loss < best_loss:
+                best_loss = epoch_loss
                 best_model_wts = copy.deepcopy(model.state_dict())
-
-        print()
 
     time_elapsed = time.time() - since
     print("Training complete in {:.0f}m {:.0f}s".format(
         time_elapsed // 60, time_elapsed % 60))
-    print("Best val Acc: {:4f}".format(best_acc))
 
     # Load best model weights
-    model.load_state_dict(best_model_wts)
+    if "val" in image_datasets.keys():
+        model.load_state_dict(best_model_wts)
 
     return model
 
 
 dataloaders = {
     x: torch.utils.data.DataLoader(
-        image_datasets[x], batch_size=10, shuffle=True, num_workers=4)
-              for x in ["train", "val"]}
+        image_datasets[x], batch_size=n_samples, shuffle=True, num_workers=0)
+              for x in image_datasets.keys()}
+
 
 for model_name, model in models.items():
     
     print("- training:", model_name)
     criterion = MCVAELoss(model.n_channels, beta=1., sparse=model.sparse)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=adam_lr)
-    scheduler = lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.5)
-    train_model(model, dataloaders, criterion, optimizer, scheduler,
+    # scheduler = lr_scheduler.ReduceLROnPlateau(optimizer)
+    print(model)
+    train_model(model, dataloaders, criterion, optimizer, scheduler=None,
                 num_epochs=epochs)
-
-
-stop
 
 
 # Display results
 pred = {}  # Prediction
 z = {}     # Latent Space
 g = {}     # Generative Parameters
-x_hat = {}  # reconstructed channels
+x_hat = {}  # Reconstructed channels
 
-print("Latent space ...")
 for model_name, model in models.items():
+    X = dataloaders["train"]
+
+    big_X = [[],[],[]]
+    for x in X:
+        for idx, c in enumerate(x):
+            big_X[idx].append(c)
+    X = [torch.cat(x).to(device) for x in big_X]    
+    
     print("--", model_name)
     print("-- X", [e.size() for e in X])
     m = model_name
-    plot_loss(model)
     q = model.encode(X)  # encoded distribution q(z|x)
     print("-- encoded distribution q(z|x)", [n for n in q])
-    z[m] = [q[i].mean.detach().numpy() for i in range(n_channels)]
+    z[m] = [q[i].loc.squeeze().detach().numpy() for i in range(n_channels)]
     print("-- z", [e.shape for e in z[m]])
     if model.sparse:
         z[m] = model.apply_threshold(z[m], 0.2)
-    z[m] = np.array(z[m]).reshape(-1)  # flatten
+    z[m] = np.array(z[m]).reshape(-1) # flatten
     print("-- z", z[m].shape)
-    x_hat[m] = model.reconstruct(X, dropout_threshold=0.2)  # it will raise a warning in non-sparse mcvae
-    g[m] = [model.vae[i].W_out.weight.detach().numpy() for i in range(n_channels)]
+    # x_hat[m] = model.reconstruct(X, dropout_threshold=0.2)  # it will raise a warning in non-sparse mcvae
+    g[m] = [model.vae[i].fc_mu.weight.detach().numpy() for i in range(n_channels)]
     g[m] = np.array(g[m]).reshape(-1)  #flatten
 
 
-lsplom(ltonumpy(x), title=f'Ground truth')
-lsplom(ltonumpy(x_noisy), title=f'ENoisy data fitted by the models (snr={snr})')
-for m in models.keys():
-    lsplom(ltonumpy(x_hat[m]), title=f'Reconstructed with {m} model')
-
 """
-With such a simple dataset, mcvae and sparse-mcvae gives the same results in terms of
-latent space and generative parameters.
-However, only with the sparse model is possible to easily identify the important latent dimensions.
+With such a simple dataset, mcvae and sparse-mcvae gives the same results in
+terms of latent space and generative parameters.
+However, only with the sparse model is possible to easily identify the
+important latent dimensions.
 """
 plt.figure()
 plt.subplot(1,2,1)
-plt.hist([z['smcvae'], z['mcvae']], bins=20, color=['k', 'gray'])
-plt.legend(['Sarse', 'Non sparse'])
-plt.title(r'Latent dimensions distribution')
-plt.ylabel('Count')
-plt.xlabel('Value')
+plt.hist([z["smcvae"], z["mcvae"]], bins=20, color=["k", "gray"])
+plt.legend(["Sparse", "Non sparse"])
+plt.title("Latent dimensions distribution")
+plt.ylabel("Count")
+plt.xlabel("Value")
 plt.subplot(1,2,2)
-plt.hist([g['smcvae'], g['mcvae']], bins=20, color=['k', 'gray'])
-plt.legend(['Sparse', 'Non sparse'])
-plt.title(r'Generative parameters $\mathbf{\theta} = \{\mathbf{\theta}_1 \ldots \mathbf{\theta}_C\}$')
-plt.xlabel('Value')
+plt.hist([g["smcvae"], g["mcvae"]], bins=20, color=["k", "gray"])
+plt.legend(["Sparse", "Non sparse"])
+plt.title(r"Generative parameters $\mathbf{\theta} = \{\mathbf{\theta}_1 "
+           "\ldots \mathbf{\theta}_C\}$")
+plt.xlabel("Value")
 
-
-do = np.sort(models['smcvae'].dropout.detach().numpy().reshape(-1))
+do = np.sort(models["smcvae"].dropout.detach().numpy().reshape(-1))
 plt.figure()
 plt.bar(range(len(do)), do)
-plt.suptitle(f'Dropout probability of {fit_lat_dims} fitted latent dimensions in Sparse Model')
-plt.title(f'({true_lat_dims} true latent dimensions)')
+plt.suptitle("Dropout probability of {0} fitted latent dimensions in Sparse "
+             "Model".format(fit_lat_dims))
+plt.title("{0} true latent dimensions".format(true_lat_dims))
 
 plt.show()
 print("See you!")
