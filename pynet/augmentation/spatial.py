@@ -60,8 +60,6 @@ def affine(arr, rotation=10, translation=10, zoom=0.2, order=3, dist="uniform",
         rotation, arr.ndim, dist=dist, seed=seed)
     random_translations = random_generator(
         translation, arr.ndim, dist=dist, seed=seed)
-    random_zooms = random_generator(
-        translation, arr.ndim, dist=dist, seed=seed)
     np.random.seed(seed)
     random_zooms = np.random.uniform(
         low=(1 - zoom), high=(1 + zoom), size=arr.ndim)
