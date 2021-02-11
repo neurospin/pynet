@@ -303,10 +303,11 @@ class Base(Observable):
                 self.loss.layer_outputs = layer_outputs
             batch_items = self.loss(outputs, *targets)
             batch_loss, batch_loss_metrics = self._parse_outputs(batch_items)
-            for name, metric in batch_loss_metrics.items():
-                if name not in values:
-                    values[name] = 0
-                values[name] += float(metric) / nb_batch
+            if batch_loss_metrics is not None:
+                for name, metric in batch_loss_metrics.items():
+                    if name not in values:
+                        values[name] = 0
+                    values[name] += float(metric) / nb_batch
             regularizations = self.notify_observers(
                 "regularizer", layer_outputs=layer_outputs)
             for reg in regularizations:
@@ -455,10 +456,11 @@ class Base(Observable):
                     batch_items = self.loss(outputs, *targets)
                     batch_loss, batch_loss_metrics = self._parse_outputs(
                         batch_items)
-                    for name, metric in batch_loss_metrics.items():
-                        if name not in values:
-                            values[name] = 0
-                        values[name] += float(metric) / nb_batch
+                    if batch_loss_metrics is not None:
+                        for name, metric in batch_loss_metrics.items():
+                            if name not in values:
+                                values[name] = 0
+                            values[name] += float(metric) / nb_batch
                     loss += float(batch_loss) / nb_batch
                     for name, metric in self.metrics.items():
                         logger.debug("  compute metric '{0}'.".format(name))
@@ -540,7 +542,7 @@ class Base(Observable):
                 "The function / method can only return one or "
                 "two parameters: the main output (loss, forward result), "
                 "and as an option specific outputs in a dictionary.")
-        if not isinstance(extra_out, dict):
+        if extra_out is not None and not isinstance(extra_out, dict):
             raise ValueError("Specific outputs must be a dictionary.")
         return out, extra_out
 
