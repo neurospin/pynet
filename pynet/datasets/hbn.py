@@ -16,6 +16,7 @@ import os
 import json
 import urllib
 import shutil
+import pickle
 import requests
 import logging
 import numpy as np
@@ -25,7 +26,8 @@ import sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from pynet.datasets import Fetchers
-import pickle
+from neurocombat_sklearn import CombatModel as fortin_combat
+
 
 
 # Global parameters
@@ -88,7 +90,7 @@ def fetch_rois(datasetdir=SAVING_FOLDER,
     roi_types=['cortical'], z_score=True,
     adjust_sites=True, residualize_by=['age', 'wisc:fsiq', 'sex'],
     qc={'wsic:fsiq': {'gte': 70}, 'euler': {'gt': -217}, 'mri': {'eq': 1}},
-    make_test=True, seed=42):
+    test_size=0.2, seed=42):
 
     clinical_prefix = 'bloc-clinical_scores'
 
@@ -122,27 +124,28 @@ def fetch_rois(datasetdir=SAVING_FOLDER,
 
     X_train = data[feature_list].copy()
 
-    if use_test:
-        X_train, X_test = train_test_split(X_train, random_state=seed)
+    if test_size != 0:
+        X_train, X_test = train_test_split(X_train, test_size=test_size, random_state=seed)
 
     if z_score:
         scaler = StandardScaler()
         X_train = scaler.fit_transform(X_train)
         with open('rois_scaler.pkl', 'wb') as f:
             pickle.dump(scaler, f)
-        if use_test:
+        if test_size != 0:
             X_test = scaler.transform(X_test)
     else:
         X_train = X_train.values
-        if use_test:
+        if test_size != 0:
             X_test = X_test.values
 
     path = os.path.join(datasetdir, 'HBN_rois_X_train.npy')
     np.save(path, data)
 
-    if use_test:
+    if test_size != 0:
         path_test = os.path.join(datasetdir, 'HBN_rois_X_test.npy')
         np.save(path_test, data)
+        return path, path_test
 
     return path
 
