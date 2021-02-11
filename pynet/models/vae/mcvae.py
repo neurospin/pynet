@@ -32,6 +32,7 @@ logger = logging.getLogger("pynet")
 @DeepLearningDecorator(family=("encoder", "vae"))
 class MCVAE(nn.Module):
     """ Sparse Multi-Channel Variational Autoencoder (sMCVAE).
+
     Sparse Multi-Channel Variational Autoencoder for the Joint Analysis of
     Heterogeneous Data, Luigi Antelmi, Nicholas Ayache, Philippe Robert,
     Marco Lorenzi Proceedings of the 36th International Conference on Machine
@@ -144,10 +145,10 @@ class MCVAE(nn.Module):
         qs = self.encode(x)
         z = [q.rsample() for q in qs]
         if self.nodecoding:
-            return {"z": z, "q": qs}
+            return z, {"q": qs, "x": x}
         else:
             p = self.decode(z)
-            return {"p": p, "q": qs}
+            return p, {"q": qs, "x": x}
 
     def apply_threshold(self, z, threshold, keep_dims=True, reorder=False):
         """ Apply dropout threshold.
@@ -196,12 +197,16 @@ class MCVAE(nn.Module):
 
 @Losses.register
 class MCVAELoss(object):
-    """ MCVAE consists of two loss functions:
+    """ MCVAE loss.
+
+    MCVAE consists of two loss functions:
+
     1. KL divergence loss: how off the distribution over the latent space is
        from the prior. Given the prior is a standard Gaussian and the inferred
        distribution is a Gaussian with a diagonal covariance matrix,
        the KL-divergence becomes analytically solvable.
     2. log-likelihood LL
+
     loss = beta * KL_loss + LL_loss.
     """
     def __init__(self, n_channels, beta=1., enc_channels=None,
@@ -240,26 +245,33 @@ class MCVAELoss(object):
         self.n_enc_channels = len(self.enc_channels)
         self.n_dec_channels = len(self.dec_channels)
         self.nodecoding = nodecoding
+        self.layer_outputs = None
 
-    def __call__(self, fwd_ret, x_true):
+    def __call__(self, p):
         """ Compute loss.
 
         Parameters
         ----------
-        x_pred: list of Tensor, (C,) -> (N, F)
+        p: list of Tensor, (C,) -> (N, F)
             reconstructed channels data.
-        x_true: list of Tensor, (C,) -> (N, F)
+        x: list of Tensor, (C,) -> (N, F)
             inputs channels data.
         q: list of 2-uplet
             the distribution parameters z_mu, z_logvar for each channel.
         """
         if self.nodecoding:
             return -1
-        kl = self.compute_kl(fwd_ret['q'], self.beta)
-        ll = self.compute_ll(fwd_ret['p'], x_true)
+        if self.layer_outputs is None:
+            raise ValueError(
+                "This loss needs intermediate layers outputs. Please register "
+                "an appropriate callback.")
+        x = self.layer_outputs["x"]
+        q = self.layer_outputs["q"]
+        kl = self.compute_kl(q, self.beta)
+        ll = self.compute_ll(p, x)
 
         total = kl - ll
-        return {"total": total, "kl": kl, "ll": ll}
+        return total, {"kl": kl, "ll": ll}
 
     def compute_kl(self, q, beta):
         kl = 0

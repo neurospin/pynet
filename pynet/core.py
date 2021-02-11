@@ -228,7 +228,8 @@ class Base(Observable):
                         fold=fold)
                 if with_validation:
                     logger.debug("  validation.")
-                    y_pred, loss, values = self.test(loaders.validation)
+                    y_pred, loss, values = self.test(
+                        loaders.validation, is_validation=True)
                     observers_kwargs["val_loss"] = loss
                     observers_kwargs.update(dict(
                         ("val_{0}".format(key), val)
@@ -278,39 +279,34 @@ class Base(Observable):
             logger.debug("Mini-batch {0}:".format(iteration))
             pbar.update(iteration + 1)
             logger.debug("  transfer inputs to {0}.".format(self.device))
-            inputs = dataitem.inputs.to(self.device)
+            inputs = self._to_device(dataitem.inputs)
             logger.debug("  transfer targets to {0}.".format(self.device))
             targets = []
             for item in (dataitem.outputs, dataitem.labels):
                 if item is not None:
-                    targets.append(item.to(self.device))
+                    targets.append(self._to_device(item))
             args = ()
             if self.add_labels and dataitem.labels is not None:
                 args = (targets[-1], )
             logger.debug("  evaluate model.")
             self.optimizer.zero_grad()
             output_items = self.model(inputs, *args)
-            if (not isinstance(output_items, tuple) and
-                    not isinstance(output_items, list)):
-                outputs = output_items
-                layer_outputs = None
-            elif len(output_items) == 1:
-                outputs = output_items[0]
-                layer_outputs = None
-            elif len(output_items) == 2:
-                outputs, layer_outputs = output_items
-            else:
-                raise ValueError(
-                    "The forward method can only return one or "
-                    "two parameters: the forward output, and "
-                    "as an option specific layer outputs dict.")
+            outputs, layer_outputs = self._parse_outputs(output_items)
             logger.debug("  update loss.")
-            logger.debug("  outputs: {0} - {1}".format(
-                outputs.shape, outputs.dtype))
+            if isinstance(outputs, list):
+                logger.debug("  outputs: {0}".format(len(outputs)))
+            else:
+                logger.debug("  outputs: {0} - {1}".format(
+                    outputs.shape, outputs.dtype))
             logger.debug("  targets: {0}".format(len(targets)))
             if hasattr(self.loss, "layer_outputs"):
                 self.loss.layer_outputs = layer_outputs
-            batch_loss = self.loss(outputs, *targets)
+            batch_items = self.loss(outputs, *targets)
+            batch_loss, batch_loss_metrics = self._parse_outputs(batch_items)
+            for name, metric in batch_loss_metrics.items():
+                if name not in values:
+                    values[name] = 0
+                values[name] += float(metric) / nb_batch
             regularizations = self.notify_observers(
                 "regularizer", layer_outputs=layer_outputs)
             for reg in regularizations:
@@ -387,7 +383,7 @@ class Base(Observable):
         return y, X, y_true, loss, values
 
     def test(self, loader, with_logit=False, logit_function="softmax",
-             predict=False, concat_layer_outputs=None):
+             predict=False, concat_layer_outputs=None, is_validation=False):
         """ Evaluate the model on the test or validation data.
 
         Parameters
@@ -403,6 +399,8 @@ class Base(Observable):
         concat_layer_outputs: list of str, default None
             the outputs of the intermediate layers to be merged with the
             predicted data (must be the same size).
+        is_validation: bool default False
+            specify if we are in the validation phase.
 
         Returns
         -------
@@ -418,6 +416,7 @@ class Base(Observable):
         nb_batch = len(loader)
         loss = 0
         values = {}
+        concate_out = True
         with torch.no_grad():
             y = []
             pbar = progressbar.ProgressBar(
@@ -427,47 +426,39 @@ class Base(Observable):
                 logger.debug("Mini-batch {0}:".format(iteration))
                 pbar.update(iteration + 1)
                 logger.debug("  transfer inputs to {0}.".format(self.device))
-                inputs = dataitem.inputs.to(self.device)
+                inputs = self._to_device(dataitem.inputs)
                 logger.debug("  transfer targets to {0}.".format(self.device))
                 targets = []
                 for item in (dataitem.outputs, dataitem.labels):
                     if item is not None:
-                        targets.append(item.to(self.device))
+                        targets.append(self._to_device(item))
                 args = ()
                 if self.add_labels and dataitem.labels is not None:
                     args = (targets[-1], )
-                elif len(targets) == 0:
-                    targets = None
                 logger.debug("  evaluate model.")
                 output_items = self.model(inputs, *args)
                 extra_outputs = []
-                if (not isinstance(output_items, tuple) and
-                        not isinstance(output_items, list)):
-                    outputs = output_items
-                    layer_outputs = None
-                elif len(output_items) == 1:
-                    outputs = output_items[0]
-                    layer_outputs = None
-                elif len(output_items) == 2:
-                    outputs, layer_outputs = output_items
-                    if concat_layer_outputs is not None:
-                        for name in concat_layer_outputs:
-                            if name not in layer_outputs:
-                                raise ValueError(
-                                    "Unknown layer output '{0}'. Check the "
-                                    "network forward method.".format(name))
-                            extra_outputs.append(layer_outputs[name])
-                else:
-                    raise ValueError(
-                        "The forward method can only return one or "
-                        "two parameters: the forward output, and "
-                        "as an option specific layer outputs in a dict.")
-                if targets is not None:
+                outputs, layer_outputs = self._parse_outputs(output_items)
+                if (concat_layer_outputs is not None and
+                        layer_outputs is not None):
+                    for name in concat_layer_outputs:
+                        if name not in layer_outputs:
+                            raise ValueError(
+                                "Unknown layer output '{0}'. Check the "
+                                "network forward method.".format(name))
+                        extra_outputs.append(layer_outputs[name])
+                if is_validation or len(targets) > 0:
                     logger.debug("  update loss.")
                     logger.debug("  layer outputs: {0}".format(layer_outputs))
                     if hasattr(self.loss, "layer_outputs"):
                         self.loss.layer_outputs = layer_outputs
-                    batch_loss = self.loss(outputs, *targets)
+                    batch_items = self.loss(outputs, *targets)
+                    batch_loss, batch_loss_metrics = self._parse_outputs(
+                        batch_items)
+                    for name, metric in batch_loss_metrics.items():
+                        if name not in values:
+                            values[name] = 0
+                        values[name] += float(metric) / nb_batch
                     loss += float(batch_loss) / nb_batch
                     for name, metric in self.metrics.items():
                         logger.debug("  compute metric '{0}'.".format(name))
@@ -480,11 +471,12 @@ class Base(Observable):
                     y.append(torch.cat([outputs] + extra_outputs, 1))
                 else:
                     if isinstance(outputs, list):
-                        outputs = outputs[0]
+                        concate_out = False
                     y.append(outputs)
                 logger.debug("Mini-batch done.")
             pbar.finish()
-            y = torch.cat(y, 0)
+            if concate_out:
+                y = torch.cat(y, 0)
             if with_logit:
                 logger.debug("Apply logit.")
                 if logit_function == "softmax":
@@ -493,8 +485,79 @@ class Base(Observable):
                     y = torch.sigmoid(y)
                 else:
                     raise ValueError("Unsupported logit function.")
-            y = y.cpu().detach().numpy()
+            y = self._numpy(y)
             if predict:
                 logger.debug("Apply predict.")
                 y = np.argmax(y, axis=1)
         return y, loss, values
+
+    def _numpy(self, data):
+        """ Transfer data to cpu as array data.
+
+        Parameters
+        ----------
+        data: tensor or list of tensor
+            the data to transfer.
+
+        Returns
+        -------
+        out:  array or list of array
+            the transfered data.
+        """
+        if isinstance(data, list):
+            return [self._numpy(tensor) for tensor in data]
+        elif torch.is_tensor(data):
+            return data.cpu().detach().numpy()
+        else:
+            return data
+
+    def _parse_outputs(self, output_items):
+        """ Parse function/method outputs.
+
+        Parameters
+        ----------
+        output_items: object, list or tuple
+            the data to be parsed.
+
+        Returns
+        -------
+        out: object
+            the first output.
+        extra_out: dict
+            other outputs.
+        """
+        if (not isinstance(output_items, tuple) and
+                not isinstance(output_items, list)):
+            out = output_items
+            extra_out = None
+        elif len(output_items) == 1:
+            out = output_items[0]
+            extra_out = None
+        elif len(output_items) == 2:
+            out, extra_out = output_items
+        else:
+            raise ValueError(
+                "The function / method can only return one or "
+                "two parameters: the main output (loss, forward result), "
+                "and as an option specific outputs in a dictionary.")
+        if not isinstance(extra_out, dict):
+            raise ValueError("Specific outputs must be a dictionary.")
+        return out, extra_out
+
+    def _to_device(self, data):
+        """ Transfer data to device.
+
+        Parameters
+        ----------
+        data: tensor or list of tensor
+            the data to transfer.
+
+        Returns
+        -------
+        out:  tensor or list of tensor
+            the transfered data.
+        """
+        if isinstance(data, list):
+            return [tensor.to(self.device) for tensor in data]
+        else:
+            return data.to(self.device)

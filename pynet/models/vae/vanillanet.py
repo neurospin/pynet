@@ -30,8 +30,10 @@ logger = logging.getLogger("pynet")
 @Networks.register
 @DeepLearningDecorator(family=("encoder", "vae"))
 class VanillaNet(BaseVAE):
-    """
+    """ Conv VAE.
+
     The model is composed of two sub-networks:
+
     1. Given x (image), encode it into a distribution over the latent space -
        referred to as Q(z|x).
     2. Given z in latent space (code representation of an image), decode it
@@ -200,12 +202,13 @@ class VanillaNet(BaseVAE):
 @Networks.register
 @DeepLearningDecorator(family=("encoder", "vae"))
 class DVAENet(BaseVAE):
-    """
-    Dense Variational AutoEncoder (DVAE).
+    """ Dense Variational AutoEncoder (DVAE).
+
     DEEP VARIATIONAL AUTOENCODER FOR MODELING FUNCTIONAL BRAIN NETWORKS AND
     ADHD IDENTIFICATION, ISBI 2020.
 
     The model is composed of two sub-networks:
+
     1. Given x (image), encode it into a distribution over the latent space -
        referred to as Q(z|x).
     2. Given z in latent space (code representation of an image), decode it

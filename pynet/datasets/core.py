@@ -133,6 +133,7 @@ class DataManager(object):
         self.data_loader_kwargs = dataloader_kwargs
         self.sampler = sampler
         self.continuous_labels = continuous_labels
+        self.multi_bloc = None
         if isinstance(input_path, dict):
             self.dataset = input_path
             return
@@ -364,6 +365,50 @@ class DataManager(object):
                    number_of_folds=1,
                    continuous_labels=continuous_labels)
 
+    @classmethod
+    def from_dataset(cls, test_dataset=None, train_dataset=None,
+                     validation_dataset=None, batch_size=1, sampler="random",
+                     multi_bloc=False):
+        """ Create a data manger from torch datasets.
+
+        Parameters
+        ----------
+        *_dataset: Dataset
+            the train/validation/test datasets.
+        batch_size: int, default 1
+            the size of each mini-batch.
+        sampler: str or Sampler, default 'random'
+            whether we use a sequential, random or weighted random sampler
+            (to deal with imbalanced classes issue) during the generation of
+            the mini-batches: None, 'random', 'weighted_random' or a custom
+            Sampler class.
+        multi_bloc: bool, default False
+            if sett expect multi bloc datasets that returns a list with
+            N bloc of data.
+
+        Returns
+        -------
+        ins: DataManager
+            a data manager.
+        """
+        dataset = dict((key, None) for key in ("train", "test", "validation"))
+        input_transforms = []
+        output_transforms = []
+        data_augmentation_transforms = []
+        if test_dataset is not None:
+            dataset["test"] = test_dataset
+        if train_dataset is not None:
+            dataset["train"] = [train_dataset]
+        if validation_dataset is not None:
+            dataset["validation"] = [validation_dataset]
+        manager = cls(input_path=dataset,
+                      metadata_path=None,
+                      sampler=sampler,
+                      batch_size=batch_size,
+                      number_of_folds=1)
+        manager.multi_bloc = multi_bloc
+        return manager
+
     def __getitem__(self, item):
         """ Return the requested item.
 
@@ -388,10 +433,15 @@ class DataManager(object):
         """
         data = OrderedDict()
         for key in ("inputs", "outputs", "labels"):
-            if len(list_samples) == 0:
+            if (len(list_samples) == 0 or
+                    getattr(list_samples[-1], key) is None):
                 data[key] = None
-            elif getattr(list_samples[-1], key) is None:
-                data[key] = None
+            elif self.multi_bloc:
+                n_blocs = len(getattr(list_samples[-1], key))
+                data[key] = [torch.stack([
+                    torch.as_tensor(getattr(sample, key)[bloc])
+                    for sample in list_samples], dim=0).float()
+                    for bloc in range(n_blocs)]
             else:
                 data[key] = torch.stack([
                     torch.as_tensor(getattr(sample, key))
