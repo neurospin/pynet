@@ -31,13 +31,39 @@ Item = namedtuple("Item", ["input_path", "output_path", "metadata_path",
 
 FOLDER = "/neurospin/brainomics/2020_deepint/data"
 
-FILES = [
-    os.path.join(FOLDER, 'EUAIMS_clinical.tsv'),
-    os.path.join(FOLDER, 'EUAIMS_rois.tsv'),
-    os.path.join(FOLDER, 'EUAIMS_stratification.tsv'),
-    os.path.join(FOLDER, 'EUAIMS_subgroups.tsv'),
-    os.path.join(FOLDER, 'EUAIMS_surf_stratification.tsv'),
-    os.path.join(FOLDER, 'EUAIMS_subgroups_angeline.csv'),
-]
+FILES = {
+    'clinical': os.path.join(FOLDER, 'EUAIMS_clinical.tsv'),
+    'rois': os.path.join(FOLDER, 'EUAIMS_rois.tsv'),
+    'clinical_rois': os.path.join(FOLDER, 'EUAIMS_stratification.tsv'),
+    'subgroups_full': os.path.join(FOLDER, 'EUAIMS_subgroups.tsv'),
+    'clinical_genetic_surface': os.path.join(FOLDER, 'EUAIMS_surf_stratification.tsv'),
+    'subgroups': os.path.join(FOLDER, 'EUAIMS_subgroups_angeline.csv'),
+    'subgroups_rbs': os.path.join(FOLDER, 'EUAIMS_subgroups_with_rbs_angeline.csv'),
+
+}
 
 logger = logging.getLogger("pynet")
+
+tables = []
+print("table read")
+tables.append(pd.read_table(FILES[0]))
+print("table read")
+tables.append(pd.read_table(FILES[1]))
+print("table read")
+tables.append(pd.read_table(FILES[2]))
+print("table read")
+tables.append(pd.read_table(FILES[3]))
+print("table read")
+tables.append(pd.read_table(FILES[4]))
+print("table read")
+tables.append(pd.read_csv(FILES[5]))
+print("table read")
+tables.append(pd.read_csv(FILES[6]))
+
+for table in tables:
+    print(table.shape)
+    print(table.describe())
+    print(table.columns)
+
+def fetch_clinical():
+    table = pd.read_table
