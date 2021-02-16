@@ -107,6 +107,7 @@ def fetch_rois(datasetdir=SAVING_FOLDER,
     data = pd.read_table(FILES["clinical_rois"])
     roi_mapper = pd.read_table(FILES["rois_mapper"])
 
+    # ROI selection
     roi_label_range = pd.Series([False] * len(roi_mapper))
     for roi_type in roi_types:
         if roi_type == "cortical":
@@ -123,6 +124,7 @@ def fetch_rois(datasetdir=SAVING_FOLDER,
     roi_labels = roi_mapper.loc[roi_label_range, "labels"]
     print(roi_labels)
 
+    # Feature selection
     features_list = []
     for column in data.columns:
         if column.startswith(roi_prefix):
@@ -159,6 +161,8 @@ def fetch_rois(datasetdir=SAVING_FOLDER,
                 data_test[["{}-{}".format(clinical_prefix, f) for f in residualize_by["discrete"]]],
                 data_test[["{}-{}".format(clinical_prefix, f) for f in residualize_by["continuous"]]])
 
+    
+    # Standerdize
     if z_score:
         scaler = StandardScaler()
         X_train = scaler.fit_transform(X_train)
@@ -172,6 +176,7 @@ def fetch_rois(datasetdir=SAVING_FOLDER,
         if test_size != 0:
             X_test = X_test.values
 
+    # Residualize
     if residualize_by is not None or len(residualize_by) != 0:
         regressor = LinearRegression()
         y_train = np.concatenate([
@@ -196,6 +201,7 @@ def fetch_rois(datasetdir=SAVING_FOLDER,
             ], axis=1)
             X_test = X_test - regressor.predict(y_test)
         
+    # Saving
     path = os.path.join(datasetdir, "HBN_rois_X_train.npy")
     np.save(path, data)
 
@@ -211,7 +217,7 @@ def fetch_surface(hemisphere, datasetdir=SAVING_FOLDER,
     roi_types=["cortical"], z_score=True, adjust_sites=True,
     residualize_by={"continuous": ["age", "wisc:fsiq"], "discrete":["sex"]},
     qc={"wisc:fsiq": {"gte": 70}, "euler": {"gt": -217}, "mri": {"eq": 1}},
-    na_method="null", test_size=0.2, seed=42):
+    na_method="remove", test_size=0.2, seed=42):
     
     assert(hemisphere in ["rh", "lh"])
 
@@ -219,7 +225,7 @@ def fetch_surface(hemisphere, datasetdir=SAVING_FOLDER,
 
     surf_prefix = "bloc-t1w_hemi-{}_metric".format(hemisphere)
     
-    data = pd.read_table(FILES["clinical_surface"])
+    data = pd.read_table(FILES["clinical_surface"]).drop(columns=["bloc-t1w_hemi-lh_metric-area", "bloc-t1w_hemi-rh_metric-area"])
 
     features_list = []
     for column in data.columns:
@@ -231,88 +237,90 @@ def fetch_surface(hemisphere, datasetdir=SAVING_FOLDER,
     data_train = apply_qc(data, clinical_prefix, qc, na_method).sort_values("participant_id")
     print(data_train.shape)
 
-    X_train = pd.DataFrame([np.nan] * len(data_train), index=data_train.index)
-    for feature in features_list:
-        for i, path in enumerate(data_train[feature]):
-            print(path)
-            X = load_surf_data(path)
-            print(type(X))
-            print(X.shape)
-            print(X)
-            break
-        break
-
-    X_train = data_train[features_list].copy()
+    n_vertices = len(load_surf_data(data_train[features_list[0]].iloc[0]))
+    X_train = np.zeros((len(data_train), n_vertices, len(features_list)))
+    for i in range(len(data_train)):
+        for j, feature in enumerate(features_list):
+            path = data_train[feature].iloc[i]
+            X_train[i,:, j] = load_surf_data(path)   
 
     if test_size != 0:
         X_train, X_test, data_train, data_test = train_test_split(
             X_train, data_train, test_size=test_size, random_state=seed)
 
-    # Correction for site effects
-    if adjust_sites:
-        for metric in metrics:
+    
+    for i, feature in enumerate(features_list):
+        print(feature)
+        # Correction for site effects
+        if adjust_sites:
+            # print(((X_train[:, :, i] == 0).sum(0) == len(X_train)).sum())
+            # print(((X_test[:, :, i] == 0).sum(0) == len(X_test)).sum())
+            non_zeros_idx = (X_train[:, :, i] != 0).sum(0) >= 1# | ((X_test[:, :, i] != 0).sum(0) >= 1)
+            print(X_train.shape[1] - non_zeros_idx.sum())
             adjuster = fortin_combat()
-            features = [feature for feature in features_list if metric in feature]
-            X_train[features] = adjuster.fit_transform(X_train[features],
+            X_train[:, non_zeros_idx, i] = adjuster.fit_transform(X_train[:, non_zeros_idx, i],
                 data_train[["{}-study site".format(clinical_prefix)]],
                 data_train[["{}-{}".format(clinical_prefix, f) for f in residualize_by["discrete"]]],
                 data_train[["{}-{}".format(clinical_prefix, f) for f in residualize_by["continuous"]]])
             
-            with open("rois_combat.pkl", "wb") as f:
+            path = os.path.join(datasetdir, "surface_combat_feature{}.pkl".format(i))
+            with open(path, "wb") as f:
                 pickle.dump(adjuster, f)
 
             if test_size != 0:
-                X_test[features] = adjuster.transform(X_test,
+                X_test[:, non_zeros_idx, i] = adjuster.transform(X_test[:, non_zeros_idx, i],
                 data_test[["{}-study site".format(clinical_prefix)]],
                 data_test[["{}-{}".format(clinical_prefix, f) for f in residualize_by["discrete"]]],
                 data_test[["{}-{}".format(clinical_prefix, f) for f in residualize_by["continuous"]]])
-
-    if z_score:
-        scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train)
-        with open("rois_scaler.pkl", "wb") as f:
-            pickle.dump(scaler, f)
-        if test_size != 0:
-            X_test = scaler.transform(X_test)
-    else:
-        X_train = X_train.values
-        if test_size != 0:
-            X_test = X_test.values
-
-    if residualize_by is not None or len(residualize_by) != 0:
-        regressor = LinearRegression()
-        y_train = np.concatenate([
-            data_train[["{}-{}".format(clinical_prefix, f) for f in residualize_by["continuous"]]].values,
-            OneHotEncoder(sparse=False).fit_transform(
-                data_train[["{}-{}".format(clinical_prefix, f) for f in residualize_by["discrete"]]])
-        ], axis=1)
-        print(y_train.shape)
-        t = time.time()
-        regressor.fit(y_train, X_train)
-        X_train = X_train - regressor.predict(y_train)
-        print(time.time() - t)
-        with open("rois_residualizer.pkl", "wb") as f:
-            pickle.dump(regressor, f)
-
-        if test_size != 0:
-            y_test = np.concatenate([
-            data_test[["{}-{}".format(clinical_prefix, f) for f in residualize_by["continuous"]]].values,
-                OneHotEncoder(sparse=False).fit_transform(
-                data_test[["{}-{}".format(clinical_prefix, f) for f in residualize_by["discrete"]]])
-            ], axis=1)
-            X_test = X_test - regressor.predict(y_test)
         
-    path = os.path.join(datasetdir, "HBN_rois_X_train.npy")
+        # Standardize
+        if z_score:
+            scaler = StandardScaler()
+            X_train[:, :, i] = scaler.fit_transform(X_train[:, :, i])
+
+            path = os.path.join(datasetdir, "surface_scaler_feature{}.pkl".format(i))            
+            with open(path, "wb") as f:
+                pickle.dump(scaler, f)
+            if test_size != 0:
+                X_test[:, :, i] = scaler.transform(X_test[:, :, i])
+
+        # Residualize
+        if residualize_by is not None or len(residualize_by) != 0:
+            regressor = LinearRegression()
+            y_train = np.concatenate([
+                data_train[["{}-{}".format(clinical_prefix, f) for f in residualize_by["continuous"]]].values,
+                OneHotEncoder(sparse=False).fit_transform(
+                    data_train[["{}-{}".format(clinical_prefix, f) for f in residualize_by["discrete"]]])
+            ], axis=1)
+            print(y_train.shape)
+            t = time.time()
+            regressor.fit(y_train, X_train[:, :, i])
+            X_train[:, :, i] = X_train[:, :, i] - regressor.predict(y_train)
+            print(time.time() - t)
+            path = os.path.join(datasetdir, "surface_residualizer_feature{}.pkl".format(i))
+            with open(path, "wb") as f:
+                pickle.dump(regressor, f)
+
+            if test_size != 0:
+                y_test = np.concatenate([
+                data_test[["{}-{}".format(clinical_prefix, f) for f in residualize_by["continuous"]]].values,
+                    OneHotEncoder(sparse=False).fit_transform(
+                    data_test[["{}-{}".format(clinical_prefix, f) for f in residualize_by["discrete"]]])
+                ], axis=1)
+                X_test[:, :, i] = X_test[:, :, i] - regressor.predict(y_test)
+    
+    # Saving
+    path = os.path.join(datasetdir, "HBN_surface_X_train.npy")
     np.save(path, data)
 
     if test_size != 0:
-        path_test = os.path.join(datasetdir, "HBN_rois_X_test.npy")
+        path_test = os.path.join(datasetdir, "HBN_surface_X_test.npy")
         np.save(path_test, data)
         return path, path_test
 
     return path
 
-fetch_surface('rh')
+print(fetch_surface('rh'))
 
 
 
