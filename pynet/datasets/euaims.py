@@ -53,7 +53,7 @@ FILES = {
 
 logger = logging.getLogger("pynet")
 
-def apply_qc(data, prefix, qc, na_method='remove'):
+def apply_qc(data, prefix, qc):
     idx_to_keep = pd.Series([True] * len(data))
 
     relation_mapper = {
@@ -70,24 +70,37 @@ def apply_qc(data, prefix, qc, na_method='remove'):
             else:
                 new_idx = relation_mapper[relation](data["{}{}".format(prefix, name)], value)
                 idx_to_keep = idx_to_keep & new_idx
-    if na_method == 'remove':
-        idx_to_keep = idx_to_keep & (data.isna().sum(1) == 0)
+    # if na_method == 'remove':
+    #     idx_to_keep = idx_to_keep & (data.isna().sum(1) == 0)
     return data[idx_to_keep]
 
 def fetch_clinical(datasetdir=SAVING_FOLDER, z_score=True,
-    drop_cols=["subjects", "t1_site", "t1_ageyrs", "t1_sex", "t1:fsiq", "t1_group", "t1_diagnosis", "mri", "t1_group_name"],
+    drop_cols=["t1_site", "t1_ageyrs", "t1_sex", "t1:fsiq", "t1_group", "t1_diagnosis", "mri", "t1_group_name"],
     qc={"t1:fsiq": {"gte": 70}, "mri": {"eq": 1}},
-    na_method="remove", test_size=0.2, seed=42, return_data=False):
+    test_size=0.2, seed=42, return_data=False):
 
     data = pd.read_table(FILES["clinical"])
 
-    data_train = apply_qc(data, "", qc, na_method).sort_values("subjects")
+    data_train = apply_qc(data, "", qc).sort_values("subjects")
 
-    X_train = data.drop(columns=drop_cols).values
+    X_train = data_train.drop(columns=drop_cols)
 
     if test_size != 0:
         X_train, X_test = train_test_split(X_train,
             test_size=test_size, random_state=seed)
+
+        
+        na_idx_test = (X_test.isna().sum(1) == 0)
+        X_test = X_test[na_idx_test]
+        if return_data:
+            subj_test = X_test["subjects"].values
+        X_test = X_test.drop(columns=["subjects"]).values
+
+    na_idx_train = (X_train.isna().sum(1) == 0)
+    X_train = X_train[na_idx_train]
+    if return_data:
+        subj_train = X_train["subjects"].values
+    X_train = X_train.drop(columns=["subjects"]).values
 
    
     if z_score:
@@ -101,8 +114,8 @@ def fetch_clinical(datasetdir=SAVING_FOLDER, z_score=True,
 
     if return_data:
         if test_size != 0:
-            return X_train, X_test
-        return X_train
+            return X_train, X_test, subj_train, subj_test
+        return X_train, subj_train
     path = os.path.join(datasetdir, "EUAIMS_clinical_X_train.npy")
     np.save(path, data)
     if test_size != 0:
@@ -117,7 +130,7 @@ def fetch_rois(datasetdir=SAVING_FOLDER,
     roi_types=["cortical"], z_score=True, adjust_sites=True,
     residualize_by={"continuous": ["t1:ageyrs", "t1:fsiq"], "discrete":["t1:sex"]},
     qc={"t1:fsiq": {"gte": 70}, "mri": {"eq": 1}},
-    na_method="remove", test_size=0.2, seed=42, return_data=False):
+    test_size=0.2, seed=42, return_data=False):
 
     clinical_prefix = "bloc-clinical_score-"
 
@@ -141,7 +154,7 @@ def fetch_rois(datasetdir=SAVING_FOLDER,
     
 
     roi_labels = roi_mapper.loc[roi_label_range, "labels"]
-    print(roi_labels)
+    # print(roi_labels)
 
     # Feature selection
     features_list = []
@@ -151,14 +164,26 @@ def fetch_rois(datasetdir=SAVING_FOLDER,
             metric = column.split("-")[-1]
             if roi in roi_labels.values and metric in metrics:
                 features_list.append(column)
-    data_train = apply_qc(data, clinical_prefix, qc, na_method).sort_values("participant_id")
-    print(data_train.shape)
+    data_train = apply_qc(data, clinical_prefix, qc).sort_values("participant_id")
+    # print(data_train.shape)
 
     X_train = data_train[features_list].copy()
 
     if test_size != 0:
         X_train, X_test, data_train, data_test = train_test_split(
             X_train, data_train, test_size=test_size, random_state=seed)
+
+        na_idx_test = (X_test.isna().sum(1) == 0)
+        X_test = X_test[na_idx_test]
+        data_test = data_test[na_idx_test]
+        if return_data:
+            subj_test = data_test["participant_id"].values
+
+    na_idx_train = (X_train.isna().sum(1) == 0)
+    X_train = X_train[na_idx_train]
+    data_train = data_train[na_idx_train]
+    if return_data:
+        subj_train = data_train["participant_id"].values
 
     # Correction for site effects
     if adjust_sites:
@@ -203,11 +228,11 @@ def fetch_rois(datasetdir=SAVING_FOLDER,
             OneHotEncoder(sparse=False).fit_transform(
                 data_train[["{}{}".format(clinical_prefix, f) for f in residualize_by["discrete"]]])
         ], axis=1)
-        print(y_train.shape)
+        # print(y_train.shape)
         t = time.time()
         regressor.fit(y_train, X_train)
         X_train = X_train - regressor.predict(y_train)
-        print(time.time() - t)
+        # print(time.time() - t)
         path = os.path.join(datasetdir, "rois_residualizer.pkl")
         with open(path, "wb") as f:
             pickle.dump(regressor, f)
@@ -223,8 +248,8 @@ def fetch_rois(datasetdir=SAVING_FOLDER,
     # Saving
     if return_data:
         if test_size != 0:
-            return X_train, X_test
-        return X_train
+            return X_train, X_test, subj_train, subj_test
+        return X_train, subj_train
     path = os.path.join(datasetdir, "EUAIMS_rois_X_train.npy")
     np.save(path, data)
 
@@ -243,7 +268,7 @@ def fetch_surface(hemisphere):
         roi_types=["cortical"], z_score=True, adjust_sites=True,
         residualize_by={"continuous": ["t1:ageyrs", "t1:fsiq"], "discrete":["t1:sex"]},
         qc={"t1:fsiq": {"gte": 70}, "mri": {"eq": 1}},
-        na_method="remove", test_size=0.2, seed=42):
+        test_size=0.2, seed=42):
 
         clinical_prefix = "bloc-clinical_score-"
 
@@ -259,28 +284,41 @@ def fetch_surface(hemisphere):
                     if m == metric:
                         features_list.append(column)
 
-        data_train = apply_qc(data, clinical_prefix, qc, na_method).sort_values("participant_id")
+        data_train = apply_qc(data, clinical_prefix, qc).sort_values("participant_id")
         
         n_vertices = len(surface_loader(data_train[features_list[0]].iloc[0]).get_data())
         X_train = np.zeros((len(data_train), n_vertices, len(features_list)))
         for i in range(len(data_train)):
             for j, feature in enumerate(features_list):
                 path = data_train[feature].iloc[i]
-                X_train[i,:, j] = surface_loader(path).get_data().squeeze()   
+                if not pd.isnull([path]):
+                    X_train[i,:, j] = surface_loader(path).get_data().squeeze()   
 
         if test_size != 0:
             X_train, X_test, data_train, data_test = train_test_split(
                 X_train, data_train, test_size=test_size, random_state=seed)
 
+            na_idx_test = (np.isnan(X_test).sum((1,2)) == 0)
+            X_test = X_test[na_idx_test]
+            data_test = data_test[na_idx_test]
+            if return_data:
+                subj_test = data_test["participant_id"].values
+
+        na_idx_train = (np.isnan(X_train).sum((1, 2)) == 0)
+        
+        X_train = X_train[na_idx_train]
+        data_train = data_train[na_idx_train]
+        if return_data:
+            subj_train = data_train["participant_id"].values
         
         for i, feature in enumerate(features_list):
-            print(feature)
+            # print(feature)
             # Correction for site effects
             if adjust_sites:
                 # print(((X_train[:, :, i] == 0).sum(0) == len(X_train)).sum())
                 # print(((X_test[:, :, i] == 0).sum(0) == len(X_test)).sum())
                 non_zeros_idx = (X_train[:, :, i] != 0).sum(0) >= 1# | ((X_test[:, :, i] != 0).sum(0) >= 1)
-                print(X_train.shape[1] - non_zeros_idx.sum())
+                # print(X_train.shape[1] - non_zeros_idx.sum())
                 adjuster = fortin_combat()
                 X_train[:, non_zeros_idx, i] = adjuster.fit_transform(X_train[:, non_zeros_idx, i],
                     data_train[["{}t1:site".format(clinical_prefix)]],
@@ -316,11 +354,11 @@ def fetch_surface(hemisphere):
                     OneHotEncoder(sparse=False).fit_transform(
                         data_train[["{}{}".format(clinical_prefix, f) for f in residualize_by["discrete"]]])
                 ], axis=1)
-                print(y_train.shape)
-                t = time.time()
+                # print(y_train.shape)
+                # t = time.time()
                 regressor.fit(y_train, X_train[:, :, i])
                 X_train[:, :, i] = X_train[:, :, i] - regressor.predict(y_train)
-                print(time.time() - t)
+                # print(time.time() - t)
                 path = os.path.join(datasetdir, "surface_{}_residualizer_feature{}.pkl".format(hemisphere, i))
                 with open(path, "wb") as f:
                     pickle.dump(regressor, f)
@@ -336,8 +374,8 @@ def fetch_surface(hemisphere):
         # Saving
         if return_data:
             if test_size != 0:
-                return X_train, X_test
-            return X_train
+                return X_train, X_test, subj_train, subj_test
+            return X_train, subj_train
         path = os.path.join(datasetdir, "EUAIMS_surface_{}_X_train.npy".format(hemisphere))
         np.save(path, X_train)
 
@@ -359,38 +397,75 @@ FETCHERS = {
 def fetch_multi_block(blocks=['clinical', 'surface-lh', 'surface-rh'],
     datasetdir=SAVING_FOLDER,
     qc={"t1:fsiq": {"gte": 70}, "mri": {"eq": 1}},
-    na_method="remove", test_size=0.2, seed=42, **kwargs):
+    test_size=0.2, seed=42, **kwargs):
     X_train = []
+    subj_train = []
     if test_size != 0:
         X_test = []
+        subj_test = []
     for block in blocks:
         assert block in ['clinical', 'surface-lh', 'surface-rh', 'rois']
         if block in kwargs.keys():
             local_kwargs = kwargs[block]
 
-            # Impose to have the same qc steps and splitting train/test over all the blocks 
-            # to have the same subjects
+            # Impose to have the same qc steps and splitting train/test over all the blocks
             for key, value in local_kwargs.items():
-                if key in ["datasetdir", "qc", "na_method", "test_size", "seed"]:
+                if key in ["datasetdir", "qc", "test_size", "seed"]:
                     del local_kwargs[key]
         else:
             local_kwargs = {}
         if test_size != 0:
-            new_X_train, new_X_test = FETCHERS[block](datasetdir, qc=qc,
-                na_method=na_method, test_size=test_size, seed=seed, 
+            new_X_train, new_X_test, new_subj_train, new_subj_test = FETCHERS[block](
+                datasetdir, qc=qc, test_size=test_size, seed=seed, 
                 return_data=True, **local_kwargs)
             X_test.append(new_X_test)
+            print(new_X_test.shape)
+            subj_test.append(new_subj_test)
         else:
-            new_X_train = FETCHERS[block](datasetdir, qc=qc,
-                na_method=na_method, test_size=test_size, seed=seed,
+            new_X_train, new_subj_train = FETCHERS[block](datasetdir, qc=qc,
+                test_size=test_size, seed=seed,
                 return_data=True, **local_kwargs)
         X_train.append(new_X_train)
+        # print(new_X_train.shape)
+        subj_train.append(new_subj_train)
+
+    # Remove subjects that werent in all the channels
+    common_subjects_train = subj_train[0]
+    for subjects in subj_train[1:]:
+        common_subjects_train = [sub for sub in subjects if sub in common_subjects_train]
+
+    idx_to_keep = []
+    for subjects in subj_train:
+        new_idx_to_keep = []
+        for i, sub in enumerate(subjects):
+            if sub in common_subjects_train:
+                new_idx_to_keep.append(i)
+        idx_to_keep.append(new_idx_to_keep)
+    for i in range(len(X_train)):
+        X_train[i] = X_train[i][idx_to_keep[i]]
+        print(X_train[i].shape)
     
-    path = os.path.join(datasetdir, "EUAIMS_multi-block_X_train.npy")
-    np.save(path, X_train)
+    common_subjects_test = subj_test[0]
+    for subjects in subj_test[1:]:
+        common_subjects_test = [sub for sub in subjects if sub in common_subjects_test]
+
+    idx_to_keep = []
+    for subjects in subj_test:
+        new_idx_to_keep = []
+        for i, sub in enumerate(subjects):
+            if sub in common_subjects_test:
+                new_idx_to_keep.append(i)
+        idx_to_keep.append(new_idx_to_keep)
+    for i in range(len(X_test)):
+        X_test[i] = X_test[i][idx_to_keep[i]]
+        print(X_test[i].shape)
+
+    # Saving
+    path = os.path.join(datasetdir, "EUAIMS_multi-block_X_train.npz")
+    np.savez(path, *X_train)
     if test_size != 0:
-        path_test = os.path.join(datasetdir, "EUAIMS_multi-block_X_test.npy")
-        np.save(path_test, X_test)
+        path_test = os.path.join(datasetdir, "EUAIMS_multi-block_X_test.npz")
+        np.savez(path_test, *X_test)
 
         return path, path_test
     return path
