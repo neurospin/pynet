@@ -57,7 +57,7 @@ print(ico_vertices.shape, ico_triangles.shape)
 prob = gaussian_sdist(ico_vertices, ico_triangles, n_maps=1, scales=[1])
 labels = (prob[0] > 0.25).astype(int)
 fig, ax = plt.subplots(1, 1, subplot_kw={
-    "projection": "3d", "aspect": "auto"}, figsize=(10,10))
+    "projection": "3d", "aspect": "auto"}, figsize=(10, 10))
 tri_texture = np.asarray(
     [np.round(np.mean(labels[tri])) for tri in ico_triangles])
 plot_trisurf(fig, ax, ico_vertices, ico_triangles, tri_texture)
@@ -119,7 +119,7 @@ print(y_pred.shape, X.shape, y_true.shape)
 
 # Inspect results
 fig, ax = plt.subplots(1, 1, subplot_kw={
-    "projection": "3d", "aspect": "auto"}, figsize=(10,10))
+    "projection": "3d", "aspect": "auto"}, figsize=(10, 10))
 tri_texture = np.asarray(
     [np.round(np.mean(y_pred[:, tri])) for tri in ico_triangles])
 plot_trisurf(fig, ax, ico_vertices, ico_triangles, tri_texture)
