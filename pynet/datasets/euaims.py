@@ -84,6 +84,46 @@ def fetch_clinical(
                "t1_diagnosis", "mri", "t1_group_name"],
     qc={"t1:fsiq": {"gte": 70}, "mri": {"eq": 1}, "qc": {"eq": "include"}},
 ):
+    """ Fetches and preprocesses clinical data
+
+    Parameters
+    ----------
+    datasetdir: string
+        path to the folder in which to save the data
+    test_size: float, default 0.2
+        proportion of the dataset to keep for testing. Preprocessing models
+        will only be fitted on the training part and applied to the test
+        set. You can specify not to use a testing set by setting it to 0
+    seed: int, default 42
+        random seed to split the data into train / test
+    return_data: bool, default False
+        If false, saves the data in the specified folder, and return the
+        path. Otherwise, returns the preprocessed data and the
+        corresponding subjects
+    z_score: bool, default True
+        wether or not to transform the data into z_scores, meaning
+        standardizing and scaling it
+    drop_cols: list of string, see default
+        names of the columns to drop before saving the data
+    qc: dict, see default
+        keys are the name of the features the control on, values are the
+        requirements on their values (see the function apply_qc)
+
+    Returns
+    -------
+    path: string,
+        path to the training data, if return_data is False
+    path_test: string,
+        path to the testing data, if return_data is False and test_size > 0
+    X_train: numpy array,
+        Training data, if return_data is True
+    X_test: numpy array,
+        Test data, if return_data is True and test_size > 0
+    subj_train: numpy array,
+        Training subjects, if return_data is True
+    subj_test: numpy array,
+        Test subjects, if return_data is True and test_size > 0
+    """
 
     data = pd.read_table(FILES["clinical"])
 
@@ -92,7 +132,7 @@ def fetch_clinical(
     X_train = data_train.drop(columns=drop_cols)
 
     # Splits in train and test and removes nans
-    if test_size != 0:
+    if test_size > 0:
         X_train, X_test = train_test_split(
             X_train, test_size=test_size, random_state=seed)
 
@@ -115,19 +155,19 @@ def fetch_clinical(
         path = os.path.join(datasetdir, "clinical_scaler.pkl")
         with open(path, "wb") as f:
             pickle.dump(scaler, f)
-        if test_size != 0:
+        if test_size > 0:
             X_test = scaler.transform(X_test)
 
     # Return data and subjects
     if return_data:
-        if test_size != 0:
+        if test_size > 0:
             return X_train, X_test, subj_train, subj_test
         return X_train, subj_train
 
     # Saving
     path = os.path.join(datasetdir, "EUAIMS_clinical_X_train.npy")
     np.save(path, X_train)
-    if test_size != 0:
+    if test_size > 0:
         path_test = os.path.join(datasetdir, "EUAIMS_clinical_X_test.npy")
         np.save(path_test, X_test)
         return path, path_test
@@ -143,6 +183,54 @@ def fetch_rois(
                     "discrete": ["t1:sex"]},
     qc={"t1:fsiq": {"gte": 70}, "mri": {"eq": 1}, "qc": {"eq": "include"}},
 ):
+    """ Fetches and preprocesses roi data
+
+    Parameters
+    ----------
+    datasetdir: string
+        path to the folder in which to save the data
+    metrics: list of strings, see default
+        metrics to fetch
+    roi_types: list of strings, default ["cortical"]
+        type of rois to fetch. Must be one of "cortical", "subcortical"
+        and "other"
+    test_size: float, default 0.2
+        proportion of the dataset to keep for testing. Preprocessing models
+        will only be fitted on the training part and applied to the test
+        set. You can specify not to use a testing set by setting it to 0
+    seed: int, default 42
+        random seed to split the data into train / test
+    return_data: bool, default False
+        If false, saves the data in the specified folder, and return the
+        path. Otherwise, returns the preprocessed data and the
+        corresponding subjects
+    z_score: bool, default True
+        wether or not to transform the data into z_scores, meaning
+        standardizing and scaling it
+    adjust_sites: bool, default True
+        wether or not the correct site effects via the Combat algorithm
+    residualize_by: dict, see default
+        variables to residualize the data. Two keys, "continuous" and
+        "discrete", and the values are a list of the variable names
+    qc: dict, see default
+        keys are the name of the features the control on, values are the
+        requirements on their values (see the function apply_qc)
+
+    Returns
+    -------
+    path: string,
+        path to the training data, if return_data is False
+    path_test: string,
+        path to the testing data, if return_data is False and test_size > 0
+    X_train: numpy array,
+        Training data, if return_data is True
+    X_test: numpy array,
+        Test data, if return_data is True and test_size > 0
+    subj_train: numpy array,
+        Training subjects, if return_data is True
+    subj_test: numpy array,
+        Test subjects, if return_data is True and test_size > 0
+    """
 
     clinical_prefix = "bloc-clinical_score-"
 
@@ -182,7 +270,7 @@ def fetch_rois(
     X_train = data_train[features_list].copy()
 
     # Splits in train and test and removes nans
-    if test_size != 0:
+    if test_size > 0:
         X_train, X_test, data_train, data_test = train_test_split(
             X_train, data_train, test_size=test_size, random_state=seed)
 
@@ -216,7 +304,7 @@ def fetch_rois(
             with open(path, "wb") as f:
                 pickle.dump(adjuster, f)
 
-            if test_size != 0:
+            if test_size > 0:
                 X_test[features] = adjuster.transform(
                     X_test[features],
                     data_test[["{}t1:site".format(clinical_prefix)]],
@@ -232,15 +320,15 @@ def fetch_rois(
         path = os.path.join(datasetdir, "rois_scaler.pkl")
         with open(path, "wb") as f:
             pickle.dump(scaler, f)
-        if test_size != 0:
+        if test_size > 0:
             X_test = scaler.transform(X_test)
     else:
         X_train = X_train.values
-        if test_size != 0:
+        if test_size > 0:
             X_test = X_test.values
 
     # Residualizes and scales
-    if residualize_by is not None or len(residualize_by) != 0:
+    if residualize_by is not None or len(residualize_by) > 0:
         regressor = LinearRegression()
         y_train = np.concatenate([
             data_train[["{}{}".format(clinical_prefix, f)
@@ -255,7 +343,7 @@ def fetch_rois(
         with open(path, "wb") as f:
             pickle.dump(regressor, f)
 
-        if test_size != 0:
+        if test_size > 0:
             y_test = np.concatenate([
                 data_test[["{}{}".format(clinical_prefix, f)
                            for f in residualize_by["continuous"]]].values,
@@ -267,14 +355,14 @@ def fetch_rois(
 
     # Returns data and subjects
     if return_data:
-        if test_size != 0:
+        if test_size > 0:
             return X_train, X_test, subj_train, subj_test
         return X_train, subj_train
 
     # Saving
     path = os.path.join(datasetdir, "EUAIMS_rois_X_train.npy")
     np.save(path, X_train)
-    if test_size != 0:
+    if test_size > 0:
         path_test = os.path.join(datasetdir, "EUAIMS_rois_X_test.npy")
         np.save(path_test, X_test)
         return path, path_test
@@ -283,6 +371,19 @@ def fetch_rois(
 
 
 def fetch_surface(hemisphere):
+    """ Fetcher wrapper
+
+    Parameters
+    ----------
+    hemisphere: string
+        name of the hemisphere data fetcher, one of "rh" or "lh"
+
+    Returns
+    -------
+    fetcher: function
+        corresponding fetcher
+
+    """
     assert(hemisphere in ["rh", "lh"])
 
     def fetch_surface_hemi(
@@ -293,6 +394,51 @@ def fetch_surface(hemisphere):
                         "discrete": ["t1:sex"]},
         qc={"t1:fsiq": {"gte": 70}, "mri": {"eq": 1}, "qc": {"eq": "include"}},
     ):
+        """ Fetches and preprocesses surface data
+
+        Parameters
+        ----------
+        datasetdir: string
+            path to the folder in which to save the data
+        metrics: list of strings, see default
+            metrics to fetch
+        test_size: float, default 0.2
+            proportion of the dataset to keep for testing. Preprocessing models
+            will only be fitted on the training part and applied to the test
+            set. You can specify not to use a testing set by setting it to 0
+        seed: int, default 42
+            random seed to split the data into train / test
+        return_data: bool, default False
+            If false, saves the data in the specified folder, and return the
+            path. Otherwise, returns the preprocessed data and the
+            corresponding subjects
+        z_score: bool, default True
+            wether or not to transform the data into z_scores, meaning
+            standardizing and scaling it
+        adjust_sites: bool, default True
+            wether or not the correct site effects via the Combat algorithm
+        residualize_by: dict, see default
+            variables to residualize the data. Two keys, "continuous" and
+            "discrete", and the values are a list of the variable names
+        qc: dict, see default
+            keys are the name of the features the control on, values are the
+            requirements on their values (see the function apply_qc)
+
+        Returns
+        -------
+        path: string,
+            path to the training data, if return_data is False
+        path_test: string,
+            path to the testing data, if return_data is False and test_size > 0
+        X_train: numpy array,
+            Training data, if return_data is True
+        X_test: numpy array,
+            Test data, if return_data is True and test_size > 0
+        subj_train: numpy array,
+            Training subjects, if return_data is True
+        subj_test: numpy array,
+            Test subjects, if return_data is True and test_size > 0
+        """
 
         clinical_prefix = "bloc-clinical_score-"
 
@@ -326,7 +472,7 @@ def fetch_surface(hemisphere):
                         path).get_data().squeeze()
 
         # Splits in train and test and removes nans
-        if test_size != 0:
+        if test_size > 0:
             X_train, X_test, data_train, data_test = train_test_split(
                 X_train, data_train, test_size=test_size, random_state=seed)
 
@@ -347,7 +493,7 @@ def fetch_surface(hemisphere):
         for i, feature in enumerate(features_list):
             # Correction for site effects
             if adjust_sites:
-                non_zeros_idx = (X_train[:, :, i] != 0).sum(0) >= 1
+                non_zeros_idx = (X_train[:, :, i] > 0).sum(0) >= 1
                 adjuster = fortin_combat()
                 X_train[:, non_zeros_idx, i] = adjuster.fit_transform(
                     X_train[:, non_zeros_idx, i],
@@ -363,7 +509,7 @@ def fetch_surface(hemisphere):
                 with open(path, "wb") as f:
                     pickle.dump(adjuster, f)
 
-                if test_size != 0:
+                if test_size > 0:
                     X_test[:, non_zeros_idx, i] = adjuster.transform(
                         X_test[:, non_zeros_idx, i],
                         data_test[["{}t1:site".format(clinical_prefix)]],
@@ -382,11 +528,11 @@ def fetch_surface(hemisphere):
                     "surface_{}_scaler_feature{}.pkl".format(hemisphere, i))
                 with open(path, "wb") as f:
                     pickle.dump(scaler, f)
-                if test_size != 0:
+                if test_size > 0:
                     X_test[:, :, i] = scaler.transform(X_test[:, :, i])
 
             # Residualizes
-            if residualize_by is not None or len(residualize_by) != 0:
+            if residualize_by is not None or len(residualize_by) > 0:
                 regressor = LinearRegression()
                 y_train = np.concatenate([
                     data_train[["{}{}".format(clinical_prefix, f)
@@ -405,7 +551,7 @@ def fetch_surface(hemisphere):
                 with open(path, "wb") as f:
                     pickle.dump(regressor, f)
 
-                if test_size != 0:
+                if test_size > 0:
                     y_test = np.concatenate([
                         data_test[["{}{}".format(clinical_prefix, f)
                                    for f in residualize_by["continuous"]]
@@ -419,7 +565,7 @@ def fetch_surface(hemisphere):
 
         # Returns data and subjects
         if return_data:
-            if test_size != 0:
+            if test_size > 0:
                 return X_train, X_test, subj_train, subj_test
             return X_train, subj_train
 
@@ -427,7 +573,7 @@ def fetch_surface(hemisphere):
         path = os.path.join(
             datasetdir, "EUAIMS_surface_{}_X_train.npy".format(hemisphere))
         np.save(path, X_train)
-        if test_size != 0:
+        if test_size > 0:
             path_test = os.path.join(
                 datasetdir, "EUAIMS_surface_{}_X_test.npy".format(hemisphere))
             np.save(path_test, X_test)
@@ -442,6 +588,46 @@ def fetch_genetic(
     seed=42, return_data=False z_score=True,
     qc={"t1:fsiq": {"gte": 70}, "mri": {"eq": 1}, "qc": {"eq": "include"}},
 ):
+    """ Fetches and preprocesses genetic data
+
+    Parameters
+    ----------
+    datasetdir: string
+        path to the folder in which to save the data
+    scores: list of strings, default None
+        scores to fetch, None mean it fetches all the available scores
+    test_size: float, default 0.2
+        proportion of the dataset to keep for testing. Preprocessing models
+        will only be fitted on the training part and applied to the test
+        set. You can specify not to use a testing set by setting it to 0
+    seed: int, default 42
+        random seed to split the data into train / test
+    return_data: bool, default False
+        If false, saves the data in the specified folder, and return the
+        path. Otherwise, returns the preprocessed data and the
+        corresponding subjects
+    z_score: bool, default True
+        wether or not to transform the data into z_scores, meaning
+        standardizing and scaling it
+    qc: dict, see default
+        keys are the name of the features the control on, values are the
+        requirements on their values (see the function apply_qc)
+
+    Returns
+    -------
+    path: string
+        path to the training data, if return_data is False
+    path_test: string
+        path to the testing data, if return_data is False and test_size > 0
+    X_train: numpy array
+        Training data, if return_data is True
+    X_test: numpy array
+        Test data, if return_data is True and test_size > 0
+    subj_train: numpy array
+        Training subjects, if return_data is True
+    subj_test: numpy array
+        Test subjects, if return_data is True and test_size > 0
+    """
 
     clinical_prefix = "bloc-clinical_score-"
 
@@ -465,7 +651,7 @@ def fetch_genetic(
     X_train = data_train[features_list].copy()
 
     # Splits in train and test and removes nans
-    if test_size != 0:
+    if test_size > 0:
         X_train, X_test, data_train, data_test = train_test_split(
             X_train, data_train, test_size=test_size, random_state=seed)
 
@@ -488,23 +674,23 @@ def fetch_genetic(
         path = os.path.join(datasetdir, "genetic_scaler.pkl")
         with open(path, "wb") as f:
             pickle.dump(scaler, f)
-        if test_size != 0:
+        if test_size > 0:
             X_test = scaler.transform(X_test)
     else:
         X_train = X_train.values
-        if test_size != 0:
+        if test_size > 0:
             X_test = X_test.values
 
     # Returns data and subjects
     if return_data:
-        if test_size != 0:
+        if test_size > 0:
             return X_train, X_test, subj_train, subj_test
         return X_train, subj_train
     path = os.path.join(datasetdir, "EUAIMS_genetic_X_train.npy")
     np.save(path, X_train)
 
     # Saving
-    if test_size != 0:
+    if test_size > 0:
         path_test = os.path.join(datasetdir, "EUAIMS_genetic_X_test.npy")
         np.save(path_test, X_test)
         return path, path_test
@@ -527,11 +713,44 @@ def fetch_multi_block(
     qc={"t1:fsiq": {"gte": 70}, "mri": {"eq": 1}},
     **kwargs
 ):
+    """ Fetches and preprocesses multi block data
+
+    Parameters
+    ----------
+    blocks: list of strings, see default
+        blocks of data to fetch, all must be in the key list of FETCHERS
+    datasetdir: string
+        path to the folder in which to save the data
+    test_size: float, default 0.2
+        proportion of the dataset to keep for testing. Preprocessing models
+        will only be fitted on the training part and applied to the test
+        set. You can specify not to use a testing set by setting it to 0
+    seed: int, default 42
+        random seed to split the data into train / test
+    qc: dict, see default
+        keys are the name of the features the control on, values are the
+        requirements on their values (see the function apply_qc)
+    kwargs: dict
+        additional arguments to be passed to each fetcher indivudally.
+        Keys are the name of the fetchers, and values are a dictionnary
+        containing arguments and the values for this fetcher
+
+    Returns
+    -------
+    path: string
+        path to the training data
+    path_test: string
+        path to the testing data, if test_size > 0
+    metadata_path: string
+        path to the metadata corresponding to the training set
+    metadata_path_test: string
+        path to the metadata corresponding to the test set, if test_size > 0
+    """
 
     path = os.path.join(datasetdir, "EUAIMS_multi-block_X_train.npz")
     metadata_path = os.path.join(datasetdir, "EUAIMS_metadata_train.csv")
 
-    if test_size != 0:
+    if test_size > 0:
         path_test = os.path.join(datasetdir, "EUAIMS_multi-block_X_test.npz")
         metadata_path_test = os.path.join(
             datasetdir, "EUAIMS_metadata_test.csv")
@@ -539,7 +758,7 @@ def fetch_multi_block(
     if not os.path.exists(path):
         X_train = []
         subj_train = []
-        if test_size != 0:
+        if test_size > 0:
             X_test = []
             subj_test = []
         for block in blocks:
@@ -554,7 +773,7 @@ def fetch_multi_block(
                         del local_kwargs[key]
             else:
                 local_kwargs = {}
-            if test_size != 0:
+            if test_size > 0:
                 new_X_train, new_X_test, new_subj_train, new_subj_test = \
                     FETCHERS[block](
                         datasetdir, qc=qc, test_size=test_size, seed=seed,
@@ -588,7 +807,7 @@ def fetch_multi_block(
             X_train[i] = X_train[i][idx_to_keep[i]]
             print(X_train[i].shape)
 
-        if test_size != 0:
+        if test_size > 0:
             common_subjects_test = subj_test[0]
             for subjects in subj_test[1:]:
                 common_subjects_test = [sub for sub in subjects
@@ -609,17 +828,17 @@ def fetch_multi_block(
         metadata = pd.read_table(FILES["clinical_subgroups"])
         metadata_train = metadata[
             metadata["subjects"].isin(common_subjects_train)]
-        if test_size != 0:
+        if test_size > 0:
             metadata_test = metadata[
                 metadata["subjects"].isin(common_subjects_test)]
 
         # Saving
         np.savez(path, *X_train)
         metadata_train.to_csv(metadata_path, index=False)
-        if test_size != 0:
+        if test_size > 0:
             np.savez(path_test, *X_test)
             metadata_test.to_csv(metadata_path_test, index=False)
 
-    if test_size != 0:
+    if test_size > 0:
         return path, path_test, metadata_path, metadata_path_test
     return path, metadata_path
