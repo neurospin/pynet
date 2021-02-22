@@ -779,7 +779,6 @@ def fetch_multi_block(
                         datasetdir, qc=qc, test_size=test_size, seed=seed,
                         return_data=True, **local_kwargs)
                 X_test.append(new_X_test)
-                print(new_X_test.shape)
                 subj_test.append(new_subj_test)
             else:
                 new_X_train, new_subj_train = FETCHERS[block](
@@ -787,7 +786,6 @@ def fetch_multi_block(
                     test_size=test_size, seed=seed,
                     return_data=True, **local_kwargs)
             X_train.append(new_X_train)
-            print(new_X_train.shape)
             subj_train.append(new_subj_train)
 
         # Remove subjects that arent in all the channels
@@ -805,7 +803,6 @@ def fetch_multi_block(
             idx_to_keep.append(new_idx_to_keep)
         for i in range(len(X_train)):
             X_train[i] = X_train[i][idx_to_keep[i]]
-            print(X_train[i].shape)
 
         if test_size > 0:
             common_subjects_test = subj_test[0]
@@ -822,7 +819,6 @@ def fetch_multi_block(
                 idx_to_keep.append(new_idx_to_keep)
             for i in range(len(X_test)):
                 X_test[i] = X_test[i][idx_to_keep[i]]
-                print(X_test[i].shape)
 
         # Loads metadata
         metadata = pd.read_table(FILES["clinical_subgroups"])
