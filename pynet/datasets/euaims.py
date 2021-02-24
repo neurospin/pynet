@@ -50,12 +50,15 @@ SAVING_FOLDER = "/neurospin/brainomics/2020_deepint/preprocessed_data/EUAIMS"
 FILES = {
     'clinical': os.path.join(FOLDER, 'EUAIMS_clinical.tsv'),
     'rois_mapper': os.path.join(FOLDER, 'EUAIMS_rois.tsv'),
-    'clinical_genetic_rois': os.path.join(FOLDER, 'EUAIMS_stratification.tsv'),
-    'subgroups_full': os.path.join(FOLDER, 'EUAIMS_subgroups.tsv'),
-    'clinical_genetic_surface': os.path.join(
+    'clinical_rois': os.path.join(FOLDER, 'EUAIMS_stratification.tsv'),
+    'clinical_subgroups_full': os.path.join(FOLDER, 'EUAIMS_subgroups.tsv'),
+    'clinical_surface': os.path.join(
         FOLDER, 'EUAIMS_surf_stratification.tsv'),
-    'subgroups': os.path.join(FOLDER, 'EUAIMS_subgroups_angeline.csv'),
-    'subgroups_rbs': os.path.join(
+    'clinical_genetic': os.path.join(
+        FOLDER, 'EUAIMS_surf_stratification.tsv'),
+    'clinical_subgroups': os.path.join(
+        FOLDER, 'EUAIMS_subgroups_angeline.csv'),
+    'clinical_subgroups_rbs': os.path.join(
         FOLDER, 'EUAIMS_subgroups_with_rbs_angeline.csv'),
 }
 
@@ -91,11 +94,35 @@ DEFAULTS = {
                            "discrete": ["t1:sex"]},
         "qc": {"t1:fsiq": {"gte": 70}, "mri": {"eq": 1},
                "qc": {"eq": "include"}},
+    },
+    "multiblock": {
+        "blocks": ['clinical', 'surface-lh', 'surface-rh', 'genetic'],
+        "test_size": 0.2, "seed": 42,
+        "qc": {"t1:fsiq": {"gte": 70}, "mri": {"eq": 1},
+               "qc": {"eq": "include"}},
     }
 }
 
 
 def apply_qc(data, prefix, qc):
+    """ applies quality control to the data
+
+    Parameters
+    ----------
+    data: pandas DataFrame
+        data for which we control the quality
+    prefix: string
+        prefix of the column names
+    qc: dict
+        quality control dict. keys are the name of the columns
+        to control on, and values dict containing an order relationsip
+        and a value as items
+
+    Returns
+    -------
+    data: pandas DataFrame
+        selected data by the quality control
+    """
     idx_to_keep = pd.Series([True] * len(data))
 
     relation_mapper = {
@@ -110,7 +137,7 @@ def apply_qc(data, prefix, qc):
             if relation not in relation_mapper.keys():
                 raise ValueError("The relationship {} provided is not a \
                     valid one".format(relation))
-            else:
+            elif "{}{}".format(prefix, name) in data.columns:
                 new_idx = relation_mapper[relation](
                     data["{}{}".format(prefix, name)], value)
                 idx_to_keep = idx_to_keep & new_idx
@@ -120,6 +147,27 @@ def apply_qc(data, prefix, qc):
 def fetch_clinical_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
                            cohort=COHORT_NAME, subject_column_name="subjects",
                            defaults=DEFAULTS['clinical']):
+    """ Fetcher wrapper for clinical data
+
+    Parameters
+    ----------
+    datasetdir: string, default SAVING_FOLDER
+        path to the folder in which to save the data
+    files: dict, default FILES
+        contains the paths to the different files
+    cohort: string, default COHORT_NAME,
+        name of the cohort
+    subject_columns_name: string, default "subjects"
+        name of the column containing the subjects id
+    defaults: dict, default DEFAULTS
+        default values for the wrapped function
+
+    Returns
+    -------
+    fetcher: function
+        corresponding fetcher
+
+    """
 
     fetcher_name = "fetcher_clinical_{}".format(cohort)
 
@@ -133,8 +181,6 @@ def fetch_clinical_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
 
         Parameters
         ----------
-        datasetdir: string
-            path to the folder in which to save the data
         test_size: float, default 0.2
             proportion of the dataset to keep for testing. Preprocessing models
             will only be fitted on the training part and applied to the test
@@ -156,10 +202,9 @@ def fetch_clinical_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
 
         Returns
         -------
-        path: string,
-            path to the training data, if return_data is False
-        path_test: string,
-            path to the testing data, if return_data is False and test_size > 0
+        item: namedtuple
+            a named tuple containing 'train_input_path', 'train_metadata_path',
+            and 'test_input_path', 'test_metadata_path' if test_size > 0
         X_train: numpy array,
             Training data, if return_data is True
         X_test: numpy array,
@@ -210,10 +255,10 @@ def fetch_clinical_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
             return X_train, subj_train
 
         # Saving
-        path = os.path.join(datasetdir, "EUAIMS_clinical_X_train.npy")
+        path = os.path.join(datasetdir, "clinical_X_train.npy")
         np.save(path, X_train)
         if test_size > 0:
-            path_test = os.path.join(datasetdir, "EUAIMS_clinical_X_test.npy")
+            path_test = os.path.join(datasetdir, "clinical_X_test.npy")
             np.save(path_test, X_test)
             return Item_test(train_input_path=path, test_input_path=path_test,
                              train_metadata_path="", test_metadata_path="")
@@ -223,7 +268,29 @@ def fetch_clinical_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
 
 
 def fetch_rois_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
-                       cohort=COHORT_NAME, defaults=DEFAULTS['rois']):
+                       cohort=COHORT_NAME, site_column_name="t1:site",
+                       defaults=DEFAULTS['rois']):
+    """ Fetcher wrapper for rois data
+
+    Parameters
+    ----------
+    datasetdir: string, default SAVING_FOLDER
+        path to the folder in which to save the data
+    files: dict, default FILES
+        contains the paths to the different files
+    cohort: string, default COHORT_NAME,
+        name of the cohort
+    site_columns_name: string, default "t1:site"
+        name of the column containing the site of MRI acquisition
+    defaults: dict, default DEFAULTS
+        default values for the wrapped function
+
+    Returns
+    -------
+    fetcher: function
+        corresponding fetcher
+
+    """
 
     fetcher_name = "fetcher_rois_{}".format(cohort)
 
@@ -270,10 +337,9 @@ def fetch_rois_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
 
         Returns
         -------
-        path: string,
-            path to the training data, if return_data is False
-        path_test: string,
-            path to the testing data, if return_data is False and test_size > 0
+        item: namedtuple
+            a named tuple containing 'train_input_path', 'train_metadata_path',
+            and 'test_input_path', 'test_metadata_path' if test_size > 0
         X_train: numpy array,
             Training data, if return_data is True
         X_test: numpy array,
@@ -288,8 +354,8 @@ def fetch_rois_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
 
         roi_prefix = "bloc-t1w_roi"
 
-        data = pd.read_table(FILES["clinical_genetic_rois"])
-        roi_mapper = pd.read_table(FILES["rois_mapper"])
+        data = pd.read_table(files["clinical_rois"])
+        roi_mapper = pd.read_table(files["rois_mapper"])
 
         # ROI selection
         roi_label_range = pd.Series([False] * len(roi_mapper))
@@ -348,7 +414,8 @@ def fetch_rois_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
                             if metric in feature]
                 X_train[features] = adjuster.fit_transform(
                     X_train[features],
-                    data_train[["{}t1:site".format(clinical_prefix)]],
+                    data_train[["{}{}".format(
+                        clinical_prefix, site_column_name)]],
                     data_train[["{}{}".format(clinical_prefix, f)
                                 for f in residualize_by["discrete"]]],
                     data_train[["{}{}".format(clinical_prefix, f)
@@ -361,7 +428,8 @@ def fetch_rois_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
                 if test_size > 0:
                     X_test[features] = adjuster.transform(
                         X_test[features],
-                        data_test[["{}t1:site".format(clinical_prefix)]],
+                        data_test[["{}{}".format(
+                            clinical_prefix, site_column_name)]],
                         data_test[["{}{}".format(clinical_prefix, f)
                                    for f in residualize_by["discrete"]]],
                         data_test[["{}{}".format(clinical_prefix, f)
@@ -414,10 +482,10 @@ def fetch_rois_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
             return X_train, subj_train
 
         # Saving
-        path = os.path.join(datasetdir, "EUAIMS_rois_X_train.npy")
+        path = os.path.join(datasetdir, "rois_X_train.npy")
         np.save(path, X_train)
         if test_size > 0:
-            path_test = os.path.join(datasetdir, "EUAIMS_rois_X_test.npy")
+            path_test = os.path.join(datasetdir, "rois_X_test.npy")
             np.save(path_test, X_test)
             return Item_test(train_input_path=path, test_input_path=path_test,
                              train_metadata_path="", test_metadata_path="")
@@ -427,14 +495,25 @@ def fetch_rois_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
 
 
 def fetch_surface_wrapper(hemisphere, datasetdir=SAVING_FOLDER,
-                          cohort=COHORT_NAME, files=FILES,
+                          files=FILES, cohort=COHORT_NAME,
+                          site_column_name="t1:site",
                           defaults=DEFAULTS["surface"]):
-    """ Fetcher wrapper
+    """ Fetcher wrapper for surface data
 
     Parameters
     ----------
     hemisphere: string
         name of the hemisphere data fetcher, one of "rh" or "lh"
+    datasetdir: string, default SAVING_FOLDER
+        path to the folder in which to save the data
+    files: dict, default FILES
+        contains the paths to the different files
+    cohort: string, default COHORT_NAME,
+        name of the cohort
+    site_columns_name: string, default "t1:site"
+        name of the column containing the site of MRI acquisition
+    defaults: dict, default DEFAULTS
+        default values for the wrapped function
 
     Returns
     -------
@@ -450,16 +529,14 @@ def fetch_surface_wrapper(hemisphere, datasetdir=SAVING_FOLDER,
         metrics=defaults["metrics"],
         test_size=defaults["test_size"], seed=defaults["seed"],
         return_data=defaults["return_data"],
-        z_score=default["z_score"], adjust_sites=defaults["adjust_sites"],
+        z_score=defaults["z_score"], adjust_sites=defaults["adjust_sites"],
         residualize_by=defaults["residualize_by"], qc=defaults["qc"],
     ):
         """ Fetches and preprocesses surface data
 
         Parameters
         ----------
-        datasetdir: string
-            path to the folder in which to save the data
-        metrics: list of strings, see default
+        metrics: list of strings, see defaults
             metrics to fetch
         test_size: float, default 0.2
             proportion of the dataset to keep for testing. Preprocessing models
@@ -485,10 +562,9 @@ def fetch_surface_wrapper(hemisphere, datasetdir=SAVING_FOLDER,
 
         Returns
         -------
-        path: string,
-            path to the training data, if return_data is False
-        path_test: string,
-            path to the testing data, if return_data is False and test_size > 0
+        item: namedtuple
+            a named tuple containing 'train_input_path', 'train_metadata_path',
+            and 'test_input_path', 'test_metadata_path' if test_size > 0
         X_train: numpy array,
             Training data, if return_data is True
         X_test: numpy array,
@@ -503,7 +579,7 @@ def fetch_surface_wrapper(hemisphere, datasetdir=SAVING_FOLDER,
 
         surf_prefix = "bloc-t1w_hemi-{}_metric".format(hemisphere)
 
-        data = pd.read_table(FILES["clinical_genetic_surface"]).drop(
+        data = pd.read_table(files["clinical_surface"]).drop(
             columns=["bloc-t1w_hemi-lh_metric-area",
                      "bloc-t1w_hemi-rh_metric-area"])
 
@@ -556,7 +632,8 @@ def fetch_surface_wrapper(hemisphere, datasetdir=SAVING_FOLDER,
                 adjuster = fortin_combat()
                 X_train[:, non_zeros_idx, i] = adjuster.fit_transform(
                     X_train[:, non_zeros_idx, i],
-                    data_train[["{}t1:site".format(clinical_prefix)]],
+                    data_train[["{}{}".format(
+                        clinical_prefix, site_column_name)]],
                     data_train[["{}{}".format(clinical_prefix, f)
                                 for f in residualize_by["discrete"]]],
                     data_train[["{}{}".format(clinical_prefix, f)
@@ -571,7 +648,8 @@ def fetch_surface_wrapper(hemisphere, datasetdir=SAVING_FOLDER,
                 if test_size > 0:
                     X_test[:, non_zeros_idx, i] = adjuster.transform(
                         X_test[:, non_zeros_idx, i],
-                        data_test[["{}t1:site".format(clinical_prefix)]],
+                        data_test[["{}{}".format(
+                            clinical_prefix, site_column_name)]],
                         data_test[["{}{}".format(clinical_prefix, f)
                                    for f in residualize_by["discrete"]]],
                         data_test[["{}{}".format(clinical_prefix, f)
@@ -630,11 +708,11 @@ def fetch_surface_wrapper(hemisphere, datasetdir=SAVING_FOLDER,
 
         # Saving
         path = os.path.join(
-            datasetdir, "EUAIMS_surface_{}_X_train.npy".format(hemisphere))
+            datasetdir, "surface_{}_X_train.npy".format(hemisphere))
         np.save(path, X_train)
         if test_size > 0:
             path_test = os.path.join(
-                datasetdir, "EUAIMS_surface_{}_X_test.npy".format(hemisphere))
+                datasetdir, "surface_{}_X_test.npy".format(hemisphere))
             np.save(path_test, X_test)
             return path, path_test
 
@@ -642,14 +720,33 @@ def fetch_surface_wrapper(hemisphere, datasetdir=SAVING_FOLDER,
     return fetch_surface
 
 
-def fetch_genetic_wrapper(datasetdir=SAVING_FOLDER, cohort=COHORT_NAME,
-                          defaults=DEFAULTS['genetic']):
+def fetch_genetic_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
+                          cohort=COHORT_NAME, defaults=DEFAULTS['genetic']):
+    """ Fetcher wrapper for genetic data
+
+    Parameters
+    ----------
+    datasetdir: string, default SAVING_FOLDER
+        path to the folder in which to save the data
+    files: dict, default FILES
+        contains the paths to the different files
+    cohort: string, default COHORT_NAME,
+        name of the cohort
+    defaults: dict, default DEFAULTS
+        default values for the wrapped function
+
+    Returns
+    -------
+    fetcher: function
+        corresponding fetcher
+
+    """
 
     fetcher_name = "fetcher_genetic_{}".format(cohort)
 
     # @Fetchers.register
     def fetch_genetic(
-        scores=defaults["scores"], test_size=default["test_size"],
+        scores=defaults["scores"], test_size=defaults["test_size"],
         seed=defaults["seed"], return_data=defaults["return_data"],
         z_score=defaults["z_score"], qc=defaults["qc"],
     ):
@@ -657,33 +754,30 @@ def fetch_genetic_wrapper(datasetdir=SAVING_FOLDER, cohort=COHORT_NAME,
 
         Parameters
         ----------
-        datasetdir: string
-            path to the folder in which to save the data
-        scores: list of strings, default None
+        scores: list of strings, see defaults
             scores to fetch, None mean it fetches all the available scores
-        test_size: float, default 0.2
+        test_size: float, see defaults
             proportion of the dataset to keep for testing. Preprocessing models
             will only be fitted on the training part and applied to the test
             set. You can specify not to use a testing set by setting it to 0
-        seed: int, default 42
+        seed: int, see default
             random seed to split the data into train / test
         return_data: bool, default False
             If false, saves the data in the specified folder, and return the
             path. Otherwise, returns the preprocessed data and the
             corresponding subjects
-        z_score: bool, default True
+        z_score: bool, see defaults
             wether or not to transform the data into z_scores, meaning
             standardizing and scaling it
-        qc: dict, see default
+        qc: dict, see defaults
             keys are the name of the features the control on, values are the
             requirements on their values (see the function apply_qc)
 
         Returns
         -------
-        path: string
-            path to the training data, if return_data is False
-        path_test: string
-            path to the testing data, if return_data is False and test_size > 0
+        item: namedtuple
+            a named tuple containing 'train_input_path', 'train_metadata_path',
+            and 'test_input_path', 'test_metadata_path' if test_size > 0
         X_train: numpy array
             Training data, if return_data is True
         X_test: numpy array
@@ -698,7 +792,7 @@ def fetch_genetic_wrapper(datasetdir=SAVING_FOLDER, cohort=COHORT_NAME,
 
         genetic_prefix = "bloc-genetic_score-"
 
-        data = pd.read_table(FILES["clinical_genetic_surface"])
+        data = pd.read_table(files["clinical_genetic"])
 
         # Feature selection
         features_list = []
@@ -751,12 +845,12 @@ def fetch_genetic_wrapper(datasetdir=SAVING_FOLDER, cohort=COHORT_NAME,
             if test_size > 0:
                 return X_train, X_test, subj_train, subj_test
             return X_train, subj_train
-        path = os.path.join(datasetdir, "EUAIMS_genetic_X_train.npy")
+        path = os.path.join(datasetdir, "genetic_X_train.npy")
         np.save(path, X_train)
 
         # Saving
         if test_size > 0:
-            path_test = os.path.join(datasetdir, "EUAIMS_genetic_X_test.npy")
+            path_test = os.path.join(datasetdir, "genetic_X_test.npy")
             np.save(path_test, X_test)
             return Item_test(train_input_path=path, test_input_path=path_test,
                              train_metadata_path="", test_metadata_path="")
@@ -765,151 +859,210 @@ def fetch_genetic_wrapper(datasetdir=SAVING_FOLDER, cohort=COHORT_NAME,
     return fetch_genetic
 
 
-FETCHERS = {
-    'clinical': fetch_clinical_wrapper(),
-    'rois': fetch_rois_wrapper(),
-    'surface-rh': fetch_surface_wrapper(hemisphere='rh'),
-    'surface-lh': fetch_surface_wrapper(hemisphere='lh'),
-    'genetic': fetch_genetic_wrapper(),
-}
+def make_fetchers(datasetdir=SAVING_FOLDER):
+
+    return {
+        'clinical': fetch_clinical_wrapper(datasetdir=datasetdir),
+        'rois': fetch_rois_wrapper(datasetdir=datasetdir),
+        'surface-rh': fetch_surface_wrapper(hemisphere='rh',
+                                            datasetdir=datasetdir),
+        'surface-lh': fetch_surface_wrapper(hemisphere='lh',
+                                            datasetdir=datasetdir),
+        'genetic': fetch_genetic_wrapper(datasetdir=datasetdir),
+    }
 
 
-def fetch_multi_block(
-    blocks=['clinical', 'surface-lh', 'surface-rh', 'genetic'],
-    datasetdir=SAVING_FOLDER, subject_column_name="subjects",
-    test_size=0.2, seed=42,
-    qc={"t1:fsiq": {"gte": 70}, "mri": {"eq": 1}},
-    **kwargs
-):
-    """ Fetches and preprocesses multi block data
+def fetch_multiblock_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
+                             cohort=COHORT_NAME,
+                             subject_column_name="subjects",
+                             defaults=DEFAULTS["multiblock"],
+                             make_fetchers_func=make_fetchers):
+    """ Fetcher wrapper for multiblock data
 
     Parameters
     ----------
-    blocks: list of strings, see default
-        blocks of data to fetch, all must be in the key list of FETCHERS
-    datasetdir: string
+    datasetdir: string, default SAVING_FOLDER
         path to the folder in which to save the data
-    test_size: float, default 0.2
-        proportion of the dataset to keep for testing. Preprocessing models
-        will only be fitted on the training part and applied to the test
-        set. You can specify not to use a testing set by setting it to 0
-    seed: int, default 42
-        random seed to split the data into train / test
-    qc: dict, see default
-        keys are the name of the features the control on, values are the
-        requirements on their values (see the function apply_qc)
-    kwargs: dict
-        additional arguments to be passed to each fetcher indivudally.
-        Keys are the name of the fetchers, and values are a dictionnary
-        containing arguments and the values for this fetcher
+    files: dict, default FILES
+        contains the paths to the different files
+    cohort: string, default COHORT_NAME,
+        name of the cohort
+    subject_columns_name: string, default "subjects"
+        name of the column containing the subjects id
+    defaults: dict, default DEFAULTS
+        default values for the wrapped function
+    make_fetchers_func: function, default make_fetchers
+        function to build the fetchers from their wrappers.
+        Must return a dict containing as keys the name of the
+        channels, and values the corresponding fetcher
 
     Returns
     -------
-    path: string
-        path to the training data
-    path_test: string
-        path to the testing data, if test_size > 0
-    metadata_path: string
-        path to the metadata corresponding to the training set
-    metadata_path_test: string
-        path to the metadata corresponding to the test set, if test_size > 0
+    fetcher: function
+        corresponding fetcher
+
     """
 
-    path = os.path.join(datasetdir, "multi-block_X_train.npz")
-    metadata_path = os.path.join(datasetdir, "metadata_train.csv")
+    fetcher_name = "fetcher_multiblock_{}".format(cohort)
+    FETCHERS = make_fetchers_func(datasetdir)
 
-    if test_size > 0:
-        path_test = os.path.join(datasetdir, "multi-block_X_test.npz")
-        metadata_path_test = os.path.join(
-            datasetdir, "metadata_test.csv")
+    # @Fetchers.register
+    def fetch_multiblock(
+        blocks=defaults["blocks"],
+        test_size=defaults["test_size"], seed=defaults["seed"],
+        qc=defaults["qc"],
+        **kwargs
+    ):
+        """ Fetches and preprocesses multi block data
 
-    if not os.path.exists(path):
-        X_train = []
-        subj_train = []
+        Parameters
+        ----------
+        blocks: list of strings, see default
+            blocks of data to fetch, all must be in the key list of FETCHERS
+        test_size: float, default 0.2
+            proportion of the dataset to keep for testing. Preprocessing models
+            will only be fitted on the training part and applied to the test
+            set. You can specify not to use a testing set by setting it to 0
+        seed: int, default 42
+            random seed to split the data into train / test
+        qc: dict, see default
+            keys are the name of the features the control on, values are the
+            requirements on their values (see the function apply_qc)
+        kwargs: dict
+            additional arguments to be passed to each fetcher indivudally.
+            Keys are the name of the fetchers, and values are a dictionnary
+            containing arguments and the values for this fetcher
+
+        Returns
+        -------
+        item: namedtuple
+            a named tuple containing 'train_input_path', 'train_metadata_path',
+            and 'test_input_path', 'test_metadata_path' if test_size > 0
+        """
+
+        path = os.path.join(datasetdir, "multiblock_X_train.npz")
+        metadata_path = os.path.join(datasetdir, "metadata_train.csv")
+
         if test_size > 0:
-            X_test = []
-            subj_test = []
-        for block in blocks:
-            assert block in FETCHERS.keys()
-            if block in kwargs.keys():
-                local_kwargs = kwargs[block]
+            path_test = os.path.join(datasetdir, "multiblock_X_test.npz")
+            metadata_path_test = os.path.join(
+                datasetdir, "metadata_test.csv")
 
-                # Impose to have the same qc steps and splitting train/test
-                # over all the blocks to have the same subjects
-                for key, value in local_kwargs.items():
-                    if key in ["datasetdir", "qc", "test_size", "seed"]:
-                        del local_kwargs[key]
-            else:
-                local_kwargs = {}
+        if not os.path.exists(path):
+            X_train = []
+            subj_train = []
             if test_size > 0:
-                new_X_train, new_X_test, new_subj_train, new_subj_test = \
-                    FETCHERS[block](
-                        datasetdir, qc=qc, test_size=test_size, seed=seed,
+                X_test = []
+                subj_test = []
+            for block in blocks:
+                assert block in FETCHERS.keys()
+                if block in kwargs.keys():
+                    local_kwargs = kwargs[block]
+
+                    # Impose to have the same qc steps and splitting train/test
+                    # over all the blocks to have the same subjects
+                    for key, value in local_kwargs.items():
+                        if key in ["qc", "test_size", "seed"]:
+                            del local_kwargs[key]
+                else:
+                    local_kwargs = {}
+                if test_size > 0:
+                    new_X_train, new_X_test, new_subj_train, new_subj_test = \
+                        FETCHERS[block](
+                            qc=qc, test_size=test_size, seed=seed,
+                            return_data=True, **local_kwargs)
+                    X_test.append(new_X_test)
+                    subj_test.append(new_subj_test)
+                else:
+                    new_X_train, new_subj_train = FETCHERS[block](
+                        qc=qc, test_size=test_size, seed=seed,
                         return_data=True, **local_kwargs)
-                X_test.append(new_X_test)
-                subj_test.append(new_subj_test)
-            else:
-                new_X_train, new_subj_train = FETCHERS[block](
-                    datasetdir, qc=qc,
-                    test_size=test_size, seed=seed,
-                    return_data=True, **local_kwargs)
-            X_train.append(new_X_train)
-            subj_train.append(new_subj_train)
+                X_train.append(new_X_train)
+                subj_train.append(new_subj_train)
 
-        # Remove subjects that arent in all the channels
-        common_subjects_train = subj_train[0]
-        for subjects in subj_train[1:]:
-            common_subjects_train = [sub for sub in subjects
-                                     if sub in common_subjects_train]
-
-        idx_to_keep = []
-        for subjects in subj_train:
-            new_idx_to_keep = []
-            for i, sub in enumerate(subjects):
-                if sub in common_subjects_train:
-                    new_idx_to_keep.append(i)
-            idx_to_keep.append(new_idx_to_keep)
-        for i in range(len(X_train)):
-            X_train[i] = X_train[i][idx_to_keep[i]]
-
-        if test_size > 0:
-            common_subjects_test = subj_test[0]
-            for subjects in subj_test[1:]:
-                common_subjects_test = [sub for sub in subjects
-                                        if sub in common_subjects_test]
+            # Remove subjects that arent in all the channels
+            common_subjects_train = subj_train[0]
+            for subjects in subj_train[1:]:
+                common_subjects_train = \
+                    [sub for sub in subjects
+                     if sub in common_subjects_train]
 
             idx_to_keep = []
-            for subjects in subj_test:
+            for subjects in subj_train:
                 new_idx_to_keep = []
                 for i, sub in enumerate(subjects):
-                    if sub in common_subjects_test:
+                    if sub in common_subjects_train:
                         new_idx_to_keep.append(i)
                 idx_to_keep.append(new_idx_to_keep)
-            for i in range(len(X_test)):
-                X_test[i] = X_test[i][idx_to_keep[i]]
+            for i in range(len(X_train)):
+                X_train[i] = X_train[i][idx_to_keep[i]]
 
-        # Loads metadata
-        metadata = pd.read_table(FILES["clinical_subgroups"])
-        metadata_train = metadata[
-            metadata[subject_column_name].isin(common_subjects_train)]
+            if test_size > 0:
+                common_subjects_test = subj_test[0]
+                for subjects in subj_test[1:]:
+                    common_subjects_test = [sub for sub in subjects
+                                            if sub in common_subjects_test]
+
+                idx_to_keep = []
+                for subjects in subj_test:
+                    new_idx_to_keep = []
+                    for i, sub in enumerate(subjects):
+                        if sub in common_subjects_test:
+                            new_idx_to_keep.append(i)
+                    idx_to_keep.append(new_idx_to_keep)
+                for i in range(len(X_test)):
+                    X_test[i] = X_test[i][idx_to_keep[i]]
+
+            # Loads metadata
+            metadata = pd.read_table(files["clinical_subgroups_full"])
+            metadata_train = metadata[
+                metadata[subject_column_name].isin(common_subjects_train)]
+            if test_size > 0:
+                metadata_test = metadata[
+                    metadata[subject_column_name].isin(common_subjects_test)]
+
+            # Saving
+            np.savez(path, *X_train)
+            metadata_train.to_csv(metadata_path, index=False)
+            if test_size > 0:
+                np.savez(path_test, *X_test)
+                metadata_test.to_csv(metadata_path_test, index=False)
+
         if test_size > 0:
-            metadata_test = metadata[
-                metadata[subject_column_name].isin(common_subjects_test)]
+            return Item_test(train_input_path=path, test_input_path=path_test,
+                             train_metadata_path=metadata_path,
+                             test_metadata_path=metadata_path_test)
+        return Item(train_input_path=path, train_metadata_path=metadata_path)
 
-        # Saving
-        np.savez(path, *X_train)
-        metadata_train.to_csv(metadata_path, index=False)
-        if test_size > 0:
-            np.savez(path_test, *X_test)
-            metadata_test.to_csv(metadata_path_test, index=False)
-
-    if test_size > 0:
-        return Item_test(train_input_path=path, test_input_path=path_test,
-                         train_metadata_path=metadata_path,
-                         test_metadata_path=metadata_path_test)
-    return Item(train_input_path=path, train_metadata_path=metadata_path)
-
+    return fetch_multiblock
 
 # rois_item = FETCHERS["rois"](test_size=0)
 # print(rois_item)
 # print(np.load(rois_item.train_input_path).shape)
+
+# for name, fetcher in FETCHERS.items():
+#     print(name)
+#     ret, subj = fetcher(return_data=True, test_size=0)
+#     print(ret.shape)
+#     print(subj.shape)
+#     ret, ret_test, subj, subj_test = fetcher(return_data=True)
+#     print(ret.shape)
+#     print(ret_test.shape)
+#     print(subj.shape)
+#     print(subj_test.shape)
+
+
+WRAPPERS = {
+    "clinical": fetch_clinical_wrapper,
+    "rois": fetch_rois_wrapper,
+    "genetic": fetch_genetic_wrapper,
+    "surface": fetch_surface_wrapper,
+    "multiblock": fetch_multiblock_wrapper,
+}
+
+
+# fetch_multiblock = fetch_multiblock_wrapper(
+#     datasetdir='/neurospin/tmp/CA263211/preprocessed_data/EUAIMS')
+
+# item = fetch_multiblock()
+# print(item)
