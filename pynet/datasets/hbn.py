@@ -13,21 +13,9 @@ Module provides functions to prepare different datasets from HBN.
 
 # Imports
 import os
-import json
 import time
-import urllib
-import shutil
-import pickle
-import requests
 import logging
 import numpy as np
-from collections import namedtuple
-import pandas as pd
-import sklearn
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, RobustScaler
-from sklearn.linear_model import LinearRegression
-from neurocombat_sklearn import CombatModel as fortin_combat
 from pynet.datasets.euaims import WRAPPERS
 
 logger = logging.getLogger("pynet")
@@ -37,7 +25,7 @@ COHORT_NAME = "HBN"
 
 FOLDER = "/neurospin/brainomics/2020_deepint/data/"
 
-SAVING_FOLDER = "/neurospin/brainomics/2020_deepint/preprocessed_data/HBN"
+SAVING_FOLDER = "/neurospin/tmp/CA263211/preprocessed_data/HBN"
 
 FILES = {
     "clinical": os.path.join(FOLDER, "HBN_clinical.tsv"),
@@ -107,14 +95,7 @@ def make_fetchers(datasetdir=SAVING_FOLDER):
     }
 
 
-fetch_multiblock = WRAPPERS["multiblock"](
-    datasetdir='/neurospin/tmp/CA263211/preprocessed_data/HBN', files=FILES,
+fetch_multiblock_HBN = WRAPPERS["multiblock"](
+    datasetdir=SAVING_FOLDER, files=FILES,
     cohort=COHORT_NAME, subject_column_name="EID",
     defaults=DEFAULTS["multiblock"], make_fetchers_func=make_fetchers)
-
-for name, fetcher in make_fetchers('/neurospin/tmp/CA263211/preprocessed_data/HBN').items():
-    print(name)
-    ret, subj = fetcher(test_size=0, return_data=True)
-    print(ret.shape, subj.shape)
-# item = fetch_multiblock()
-# print(item)

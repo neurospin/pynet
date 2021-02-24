@@ -44,7 +44,7 @@ COHORT_NAME = "EUAIMS"
 
 FOLDER = "/neurospin/brainomics/2020_deepint/data"
 
-SAVING_FOLDER = "/neurospin/brainomics/2020_deepint/preprocessed_data/EUAIMS"
+SAVING_FOLDER = "/neurospin/tmp/CA263211/preprocessed_data/EUAIMS"
 
 
 FILES = {
@@ -1036,21 +1036,6 @@ def fetch_multiblock_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
 
     return fetch_multiblock
 
-# rois_item = FETCHERS["rois"](test_size=0)
-# print(rois_item)
-# print(np.load(rois_item.train_input_path).shape)
-
-# for name, fetcher in FETCHERS.items():
-#     print(name)
-#     ret, subj = fetcher(return_data=True, test_size=0)
-#     print(ret.shape)
-#     print(subj.shape)
-#     ret, ret_test, subj, subj_test = fetcher(return_data=True)
-#     print(ret.shape)
-#     print(ret_test.shape)
-#     print(subj.shape)
-#     print(subj_test.shape)
-
 
 WRAPPERS = {
     "clinical": fetch_clinical_wrapper,
@@ -1060,9 +1045,4 @@ WRAPPERS = {
     "multiblock": fetch_multiblock_wrapper,
 }
 
-
-# fetch_multiblock = fetch_multiblock_wrapper(
-#     datasetdir='/neurospin/tmp/CA263211/preprocessed_data/EUAIMS')
-
-# item = fetch_multiblock()
-# print(item)
+fetch_multiblock_EUAIMS = fetch_multiblock_wrapper()
