@@ -1,12 +1,13 @@
 """
-Unsupervised Conditional Variational AutoEncoder (VAE)
-======================================================
+Unsupervised MoE Variational AutoEncoder (VAE)
+==============================================
 
 Credit: A Grigis
 
 Based on:
 
-- https://ravirajag.dev
+- https://towardsdatascience.com/mixture-of-variational-autoencoders-
+  a-fusion-between-moe-and-vae-22c0901a6675
 
 The Variational Autoencoder (VAE) is a  neural networks that try to learn the
 shape of the input space. Once trained, the model can be used to generate
@@ -60,7 +61,7 @@ is described in the MoE paper, is to add a balancing term to the loss.
 It encourages the outputs of the manager over a batch of inputs to
 be balanced: $\sum_\text{examples in batch} \vec{p} \approx Uniform$.
 
-Let’s begin with importing stuffs:
+Let's begin with importing stuffs:
 """
 
 import os
@@ -70,9 +71,11 @@ if "CI_MODE" in os.environ:
 
 import numpy as np
 from scipy import ndimage
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
+from torch.distributions import Normal, kl_divergence
 from pynet.datasets import DataManager, fetch_minst
 from pynet.interfaces import DeepLearningInterface
 from pynet.plotting import Board, update_board
@@ -110,7 +113,7 @@ manager = DataManager(
 #    the image it represents - referred to as f(z).
 
 class Encoder(nn.Module):
-    """ This the encoder part of VAE.
+    """ The encoder part of VAE.
     """
     def __init__(self, input_dim, hidden_dim, latent_dim):
         """ Init class.
@@ -127,21 +130,17 @@ class Encoder(nn.Module):
         super().__init__()
         self.linear = nn.Linear(input_dim, hidden_dim)
         self.mu = nn.Linear(hidden_dim, latent_dim)
-        self.var = nn.Linear(hidden_dim, latent_dim)
+        self.logvar = nn.Linear(hidden_dim, latent_dim)
 
     def forward(self, x):
-        # x is of shape [batch_size, input_dim]
-        hidden = func.relu(self.linear(x))
-        # hidden is of shape [batch_size, hidden_dim]
+        hidden = torch.sigmoid(self.linear(x))
         z_mu = self.mu(hidden)
-        # z_mu is of shape [batch_size, latent_dim]
-        z_var = self.var(hidden)
-        # z_var is of shape [batch_size, latent_dim]
+        z_logvar = self.logvar(hidden)
+        return z_mu, z_logvar
 
-        return z_mu, z_var
 
 class Decoder(nn.Module):
-    """ This the decoder part of VAE
+    """ The decoder part of VAE
     """
     def __init__(self, latent_dim, hidden_dim, output_dim):
         """ Init class.
@@ -160,13 +159,10 @@ class Decoder(nn.Module):
         self.hidden_to_out = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x):
-        # x is of shape [batch_size, latent_dim]
-        hidden = func.relu(self.latent_to_hidden(x))
-        # hidden is of shape [batch_size, hidden_dim]
+        hidden = torch.sigmoid(self.latent_to_hidden(x))
         predicted = torch.sigmoid(self.hidden_to_out(hidden))
-        # predicted is of shape [batch_size, output_dim]
-
         return predicted
+
 
 class VAE(nn.Module):
     """ This is the VAE.
@@ -189,12 +185,13 @@ class VAE(nn.Module):
 
     def forward(self, x):
         # encode an image into a distribution over the latent space
-        z_mu, z_var = self.encoder(x)
+        z_mu, z_logvar = self.encoder(x)
 
         # sample a latent vector from the latent space - using the
         # reparameterization trick
         # sample from the distribution having latent parameters z_mu, z_var
-        std = torch.exp(z_var / 2)
+        z_var = torch.exp(z_logvar) + 1e-5
+        std = torch.sqrt(z_var)
         eps = torch.randn_like(std)
         x_sample = eps.mul(std).add_(z_mu)
 
@@ -203,26 +200,39 @@ class VAE(nn.Module):
 
         return predicted, {"z_mu": z_mu, "z_var": z_var}
 
+
 class VAELoss(object):
-    def __init__(self):
+    def __init__(self, use_distributions=True):
         super(VAELoss, self).__init__()
         self.layer_outputs = None
+        self.use_distributions = use_distributions
 
     def __call__(self, x_sample, x):
         if self.layer_outputs is None:
             raise ValueError("The model needs to return the latent space "
                              "distribution parameters z_mu, z_var.")
-        z_mu = self.layer_outputs["z_mu"]
-        z_var = self.layer_outputs["z_var"]
-        # reconstruction loss
-        recon_loss = func.binary_cross_entropy(x_sample, x, reduction="sum")
-        # KL divergence loss
-        kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1.0 - z_var)
+        if self.use_distributions:
+            p = x_sample
+            q = self.layer_outputs["q"]
+        else:
+            z_mu = self.layer_outputs["z_mu"]
+            z_var = self.layer_outputs["z_var"]
+            p = Normal(x_sample, 0.5)
+            q = Normal(z_mu, z_var.pow(0.5))
 
-        return recon_loss + kl_loss
+        # reconstruction loss: log likelihood
+        ll_loss = - p.log_prob(x).sum(-1, keepdim=True)
+        # regularization loss: KL divergence
+        kl_loss = kl_divergence(q, Normal(0, 1)).sum(-1, keepdim=True)
+
+        combined_loss = ll_loss + kl_loss
+
+        return combined_loss, {"ll_loss": ll_loss, "kl_loss": kl_loss}
+
 
 class Manager(nn.Module):
-    def __init__(self, input_dim, hidden_dim, experts):
+    def __init__(self, input_dim, hidden_dim, experts, latent_dim,
+                 log_alpha=None):
         """ Init class.
 
         Parameters
@@ -236,18 +246,20 @@ class Manager(nn.Module):
         """
         super(Manager, self).__init__()
         self._experts = nn.ModuleList(experts)
+        self.latent_dim = latent_dim
         self._experts_results = []
         self.linear1 = nn.Linear(input_dim, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, len(experts))
         
     def forward(self, x):
-        hidden = func.relu(self.linear1(x))
+        hidden = torch.sigmoid(self.linear1(x))
         logits = self.linear2(hidden)
-        probs = func.softmax(logits, dim=1)
+        probs = func.softmax(logits)
         self._experts_results = []
         for net in self._experts:
             self._experts_results.append(net(x))
         return probs, {"experts_results": self._experts_results}
+
 
 class ManagerLoss(object):
     def __init__(self, balancing_weight=0.1):
@@ -261,7 +273,7 @@ class ManagerLoss(object):
         super(ManagerLoss, self).__init__()
         self.layer_outputs = None
         self.balancing_weight = balancing_weight
-        self.criterion = VAELoss()
+        self.criterion = VAELoss(use_distributions=False)
 
     def __call__(self, probs, x):
         if self.layer_outputs is None:
@@ -270,18 +282,20 @@ class ManagerLoss(object):
         losses = []
         for result in self.layer_outputs["experts_results"]:
             self.criterion.layer_outputs = result[1]
-            loss = self.criterion(result[0], x) / x.size(0)
+            loss, extra_loss = self.criterion(result[0], x)
             losses.append(loss.view(-1, 1))
         losses = torch.cat(losses, dim=1)
-        expected_expert_loss = torch.sum(losses * probs, dim=1)
-        expected_expert_loss = torch.mean(expected_expert_loss, dim=0)
+        expected_expert_loss = torch.mean(
+            torch.sum(losses * probs, dim=1), dim=0)
         experts_importance = torch.sum(probs, dim=0)
-        balancing_loss = torch.pow(experts_importance.std(dim=0), 2)
-        print(expected_expert_loss, balancing_loss)
-        print(probs[0])
-        loss = expected_expert_loss + self.balancing_weight * balancing_loss
+        # Remove effect of Bessel correction
+        experts_importance_std = experts_importance.std(dim=0, unbiased=False)
+        balancing_loss = torch.pow(experts_importance_std, 2)
+        combined_loss = (
+            expected_expert_loss + self.balancing_weight * balancing_loss)
 
-        return loss
+        return combined_loss, {"expected_expert_loss": expected_expert_loss,
+                               "balancing_loss": balancing_loss}
 
 
 #############################################################################
@@ -295,16 +309,19 @@ def sampling(signal):
     """
     device = signal.object.device
     experts = signal.object.model._experts
+    latent_dim = signal.object.model.latent_dim
     board = signal.object.board
     # sample and generate a image
-    z = torch.randn(1, 20).to(device)
+    z = torch.randn(1, latent_dim).to(device)
     # run only the decoder
     images = []
     for model in experts:
-        reconstructed_img = model.decoder(z)
-        img = reconstructed_img.view(-1, 28, 28).detach().numpy()
-        img = np.asarray([ndimage.zoom(arr, 5, order=0) for arr in img])        
-        images.append(img)
+        model.eval()
+        with torch.no_grad():
+            reconstructed_img = model.decoder(z)
+            img = reconstructed_img.view(-1, 28, 28).cpu().detach().numpy()
+            img = np.asarray([ndimage.zoom(arr, 5, order=0) for arr in img])        
+            images.append(img)
     # display result
     images = np.asarray(images)
     images = (images / images.max()) * 255
@@ -315,24 +332,28 @@ def sampling(signal):
             "caption": "sampling"},
         win="sampling")    
 
+latent_dim = 20
 experts = [
-    VAE(input_dim=(28 * 28), hidden_dim=128, latent_dim=20) for idx in range(10)]
-model = Manager(input_dim=(28 * 28), hidden_dim=128, experts=experts)
+    VAE(input_dim=(28 * 28), hidden_dim=128, latent_dim=latent_dim)
+    for idx in range(10)]
+model = Manager(input_dim=(28 * 28), hidden_dim=128, experts=experts,
+                latent_dim=latent_dim)
 interface = DeepLearningInterface(
     model=model,
     optimizer_name="Adam",
     learning_rate=0.001,
-    loss=ManagerLoss(balancing_weight=0.1))
+    loss=ManagerLoss(balancing_weight=0.1),
+    use_cuda=True)
 interface.board = Board(
     port=8097, host="http://localhost", env="vae")
 interface.add_observer("after_epoch", update_board)
 interface.add_observer("after_epoch", sampling)
 test_history, train_history = interface.training(
     manager=manager,
-    nb_epochs=30,
+    nb_epochs=100,
     checkpointdir=None,
     fold_index=0,
-    with_validation=True)
+    with_validation=False)
 
 
 
