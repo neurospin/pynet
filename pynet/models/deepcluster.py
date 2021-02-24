@@ -101,6 +101,7 @@ class DeepCluster(nn.Module):
             network features.
         """
         logger.debug("compute features:")
+        # Todo: apply dataloader indices
         data = self.data_loader.dataset.inputs.astype(np.float32)
         logger.debug("- data: {0}".format(data.shape))
         batchs = np.array_split(data, self.n_batchs)
