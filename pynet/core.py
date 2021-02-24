@@ -199,7 +199,8 @@ class Base(Observable):
             for epoch in range(nb_epochs):
                 logger.debug("Running epoch {0}:".format(fold))
                 logger.debug("  notify observers with signal 'before_epoch'.")
-                self.notify_observers("before_epoch", epoch=epoch, fold=fold)
+                self.notify_observers("before_epoch", epoch=epoch, fold=fold,
+                                      scheduler=scheduler)
                 observers_kwargs = {}
                 logger.debug("  train.")
                 loss, values = self.train(loaders.train)
@@ -208,7 +209,7 @@ class Base(Observable):
                 if scheduler is not None:
                     logger.debug("  update scheduler.")
                     scheduler.step(loss)
-                    logger.debug("  - lr: {0}".format(scheduler.get_lr()))
+                    logger.debug("  - lr: {0}".format(scheduler.get_last_lr()))
                 logger.debug("  update train history.")
                 train_history.log((fold, epoch), loss=loss, **values)
                 train_history.summary()
@@ -247,7 +248,7 @@ class Base(Observable):
                             fold=fold)
                 logger.debug("  notify observers with signal 'after_epoch'.")
                 self.notify_observers("after_epoch", epoch=epoch, fold=fold,
-                                      **observers_kwargs)
+                                      scheduler=scheduler, **observers_kwargs)
                 logger.debug("End epoch.".format(fold))
             logger.debug("End fold.")
         return train_history, valid_history
