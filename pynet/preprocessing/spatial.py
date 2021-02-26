@@ -26,6 +26,7 @@ from pynet.utils import TemporaryDirectory
 logger = logging.getLogger("pynet")
 
 
+
 def padd(arr, shape, fill_value=0):
     """ Apply a padding.
 
@@ -114,6 +115,7 @@ def scale(im, scale, tmpdir=None, check_pkg_version=True):
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         output, err = p.communicate()
+        logger.debug("scale : {0} - {1}\n".format(output, err))
         rc = p.returncode
         if rc != 0:
             raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
@@ -151,19 +153,160 @@ def bet2(im, frac=0.5, tmpdir=None, check_pkg_version=True):
         input_file = os.path.join(tmpdir, "input.nii.gz")
         output_file = os.path.join(tmpdir, "output.nii.gz")
         nibabel.save(im, input_file)
-        cmd = ["bet", input_file, output_file, "-f", str(frac)]
+        cmd = ["bet", input_file, output_file, "-f", str(frac), "-B", "-R"]
         logger.debug(" ".join(cmd))
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        output, err = p.communicate()
+        logger.debug("bet2 skullstripped : {0} - {1}\n".format(output, err))
+        rc = p.returncode
+        if rc != 0:
+            raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
+        normalized = nibabel.load(output_file)
+        normalized = nibabel.Nifti1Image(
+            normalized.get_data(), normalized.affine)
+    return normalized
+
+
+def EraseNoise(im, frac=0.2, tmpdir=None, check_pkg_version=True):
+    """ Generate binary brain mask and put the noise around the brain to 0.
+    Usefull after linear registration.
+
+    This function is based on FSL.
+
+    Parameters
+    ----------
+    im: nibabel.Nifti1Image
+        the input image.
+    tmpdir: str, default None
+        a folder where the intermediate results are saved.
+    frac: float, default 0.2
+        fractional intensity threshold (0->1);smaller values give larger brain
+         outline estimates
+    check_pkg_version: boolean, default True
+        put to 1 if the package is not installed with the source repository.
+
+    Returns
+    -------
+    denoised: nibabel.Nifti1Image
+        the denoised input image.
+    """
+    check_version("fsl", check_pkg_version)
+    check_command("bet")
+    with TemporaryDirectory(dir=tmpdir, name="denoised") as tmpdir:
+        input_file = os.path.join(tmpdir, "input.nii.gz")
+        output_file = os.path.join(tmpdir, "output.nii.gz")
+        nibabel.save(im, input_file)
+        cmd = ["bet", input_file, output_file, "-f", str(frac), "-m"]
+        logger.debug(" ".join(cmd))
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        output, err = p.communicate()
+        logger.debug("EraiseNoise : {0} - {1}\n".format(output, err))
+        rc = p.returncode
+        if rc != 0:
+            raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
+        denoised = nibabel.load(output_file)
+        denoised = nibabel.Nifti1Image(
+            denoised.get_data(), denoised.affine)
+    return denoised
+
+
+def super_bet2(im, frac=0.5, tmpdir=None, check_pkg_version=True):
+    """ Skull stripped the MRI image.
+    Performs a much better brain segmenation than the traditional BET2 with
+    default configuration. It estimate the inner and outer skull surfaces
+    as well as the outer scalp surface, if you have good quality images.
+    Inspired by : https://github.com/saslan-7/super-bet2
+    4 steps:
+        generates brain surface as mesh in .vtk format
+        register the T1 to MNI
+        using a registered T1 and brain surface, estimates inner and outer
+            skull surfaces and outer scalp surface 
+        using inner skull surface (mask) as skullstripped method
+
+
+    This function is based on FSL.
+
+    Parameters
+    ----------
+    im: nibabel.Nifti1Image
+        the input image.
+    tmpdir: str, default None
+        a folder where the intermediate results are saved.
+    frac: float, default 0.5
+        fractional intensity threshold (0->1);smaller values give larger brain
+         outline estimates
+    check_pkg_version: boolean, default True
+        put to 1 if the package is not installed with the source repository.
+
+    Returns
+    -------
+    skullstripped: nibabel.Nifti1Image
+        the skull stripped input image.
+    """
+    check_version("fsl", check_pkg_version)
+    check_command("bet")
+    check_command("flirt")
+    with TemporaryDirectory(dir=tmpdir, name="brain") as tmpdir:
+        input_file = os.path.join(tmpdir, "input.nii.gz")
+        brain_file = os.path.join(tmpdir, "brain.nii.gz")
+        output_flirt = os.path.join(tmpdir, "flirt_result")
+        output_flirtmat = os.path.join(tmpdir, "flirt_result.mat")
+        output_mesh_vtk = os.path.join(tmpdir, "brain_mesh.vtk")
+        output_mesh_off = os.path.join(tmpdir, "brain_mesh.off")
+        nibabel.save(im, input_file)
+        brain = os.path.join(tmpdir, "brain")
+        cmd = ["bet", input_file, brain, "-f", str(frac), "-e", "-B"]
+        logger.debug(" ".join(cmd))
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        output, err = p.communicate()
+        logger.debug("EraiseNoise : {0} - {1}\n".format(output, err))
+        rc = p.returncode
+        if rc != 0:
+            raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
+
+        cmd2 = ["flirt", "-in", brain_file, "-ref",
+                "/home/jv261711/Documents/traitement_de_donnees/target/"
+                "MNI152_T1_1mm_brain.nii",
+                "-out", output_flirt, "-omat", output_flirtmat]
+        logger.debug(" ".join(cmd2))
+        p = subprocess.Popen(cmd2, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         output, err = p.communicate()
         rc = p.returncode
         if rc != 0:
             raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
-        skullstripped = nibabel.load(output_file)
-        skullstripped = nibabel.Nifti1Image(
-            skullstripped.get_data(), skullstripped.affine)
-    return skullstripped
 
+        cmd3 = ["mv", output_mesh_vtk, output_mesh_off]
+        logger.debug(" ".join(cmd3))
+        p = subprocess.Popen(cmd3, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        output, err = p.communicate()
+        rc = p.returncode
+        if rc != 0:
+            raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
+
+        flirtout = os.path.join("brain", output_flirtmat)
+        name = os.path.join(tmpdir, "brain")
+        cmd4 = ["betsurf", "-1", "-m", "-s", input_file, output_mesh_off, flirtout, name]
+        logger.debug(" ".join(cmd4))
+        p = subprocess.Popen(cmd4, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        output, err = p.communicate()
+        rc = p.returncode
+        if rc != 0:
+            raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
+        print("name \n\n\n", tmpdir)
+        inskull = os.path.join(tmpdir, "brain_inskull_mask.nii.gz")
+        brain = nibabel.load(inskull)
+        mask_arr = brain.get_fdata()
+        noise_arr = im.get_fdata()
+        brain_arr = mask_arr * noise_arr
+        normalized = nibabel.Nifti1Image(
+            brain_arr, im.affine)
+    return normalized
 
 def reorient2std(im, tmpdir=None, check_pkg_version=True):
     """ Reorient the MRI image to match the approximate orientation of the
@@ -196,6 +339,7 @@ def reorient2std(im, tmpdir=None, check_pkg_version=True):
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         output, err = p.communicate()
+        logger.debug("reorient2std : {0} - {1}\n".format(output, err))
         rc = p.returncode
         if rc != 0:
             raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
@@ -287,6 +431,7 @@ def biasfield(im, mask=None, nb_iterations=50, convergence_threshold=0.001,
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         output, err = p.communicate()
+        logger.debug("biasfield : {0} - {1}\n".format(output, err))
         rc = p.returncode
         if rc != 0:
             raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
@@ -296,8 +441,8 @@ def biasfield(im, mask=None, nb_iterations=50, convergence_threshold=0.001,
     return normalized
 
 
-def register(im, target, mask=None, cost="normmi", bins=256, interp="spline",
-             dof=9, tmpdir=None, check_pkg_version=True):
+def register(im, target, mask=None, cost="normmi", bins=256,
+             interp="spline", dof=9, tmpdir=None, check_pkg_version=True):
     """ Register the MRI image to a target image using an affine transform
     with 9 dofs.
 
@@ -363,12 +508,50 @@ def register(im, target, mask=None, cost="normmi", bins=256, interp="spline",
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         output, err = p.communicate()
+        logger.debug("register : {0} - {1}\n".format(output, err))
         rc = p.returncode
         if rc != 0:
             raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
         normalized = nibabel.load(output_file)
         normalized = nibabel.Nifti1Image(
             normalized.get_data(), normalized.affine)
+    return normalized
+
+def brainmask(im, mask, tmpdir=None, check_pkg_version=True):
+    """ Apply cat12vbm brain mask.
+
+    This function is based on cat12vbm masks.
+
+    Parameters
+    ----------
+    im: nibabel.Nifti1Image
+        the input image.
+    mask: nibabel.Nifti1Image, default None
+        the partial volume p0 label mask image.
+    tmpdir: str, default None
+        a folder where the intermediate results are saved.
+    check_pkg_version: boolean, default True
+        put to 1 if the package is not installed with the source repository.
+
+    Returns
+    -------
+    brain extracted image : nibabel.Nifti1Image
+        the skullstripped input image.
+    """
+    with TemporaryDirectory(dir=tmpdir, name="skullstrippedcat12") as tmpdir:
+        input_file = os.path.join(tmpdir, "input.nii.gz")
+        mask_file = os.path.join(tmpdir, "mask.nii.gz")
+        output_file = os.path.join(tmpdir, "output.nii.gz")
+        nibabel.save(im, input_file)
+        nibabel.save(mask, mask_file)
+
+        maskPV = mask.get_fdata() > 0
+        noise = im.get_fdata().squeeze()
+        skullstripped = noise*maskPV
+
+        normalized = nibabel.Nifti1Image(
+            skullstripped, im.affine)
+        nibabel.save(normalized, output_file)
     return normalized
 
 
@@ -402,17 +585,17 @@ def apply(im, target, affines, interp="spline", tmpdir=None,
     """
     check_version("fsl", check_pkg_version)
     check_command("flirt")
-    if not isisntance(affines, list):
+    if not isinstance(affines, list):
         trf_file = affines
     elif len(affines) == 0:
         raise ValueError("No transform specified.")
     else:
         trf_file = os.path.join(tmpdir, "trf.txt")
         affines = [np.loadtxt(path) for path in affines][::-1]
-        affine = affine[0]
+        affine = affines[0]
         for matrix in affines[1:]:
             affine = np.dot(matrix, affine)
-        numpy.savetxt(trf_file, affine)
+        np.savetxt(trf_file, affine)
     with TemporaryDirectory(dir=tmpdir, name="apply") as tmpdir:
         input_file = os.path.join(tmpdir, "input.nii.gz")
         target_file = os.path.join(tmpdir, "target.nii.gz")

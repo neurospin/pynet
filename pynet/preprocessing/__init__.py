@@ -26,6 +26,9 @@ from .spatial import register
 from .spatial import padd
 from .spatial import downsample
 from .spatial import scale
+from .spatial import EraseNoise
+from .spatial import super_bet2
+from .spatial import brainmask
 
 
 # Global parameters
