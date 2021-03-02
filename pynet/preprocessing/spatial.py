@@ -212,7 +212,7 @@ def EraseNoise(im, frac=0.2, tmpdir=None, check_pkg_version=True):
     return denoised
 
 
-def super_bet2(im, frac=0.5, tmpdir=None, check_pkg_version=True):
+def super_bet2(im, target, frac=0.5, tmpdir=None, check_pkg_version=True):
     """ Skull stripped the MRI image.
     Performs a much better brain segmenation than the traditional BET2 with
     default configuration. It estimate the inner and outer skull surfaces
@@ -232,6 +232,8 @@ def super_bet2(im, frac=0.5, tmpdir=None, check_pkg_version=True):
     ----------
     im: nibabel.Nifti1Image
         the input image.
+    target: nibabel.Nifti1Image
+        the target image.
     tmpdir: str, default None
         a folder where the intermediate results are saved.
     frac: float, default 0.5
@@ -250,12 +252,14 @@ def super_bet2(im, frac=0.5, tmpdir=None, check_pkg_version=True):
     check_command("flirt")
     with TemporaryDirectory(dir=tmpdir, name="brain") as tmpdir:
         input_file = os.path.join(tmpdir, "input.nii.gz")
+        target_file = os.path.join(tmpdir, "target.nii.gz")
         brain_file = os.path.join(tmpdir, "brain.nii.gz")
         output_flirt = os.path.join(tmpdir, "flirt_result")
         output_flirtmat = os.path.join(tmpdir, "flirt_result.mat")
         output_mesh_vtk = os.path.join(tmpdir, "brain_mesh.vtk")
         output_mesh_off = os.path.join(tmpdir, "brain_mesh.off")
         nibabel.save(im, input_file)
+        nibabel.save(target, target_file)
         brain = os.path.join(tmpdir, "brain")
         cmd = ["bet", input_file, brain, "-f", str(frac), "-e", "-B"]
         logger.debug(" ".join(cmd))
@@ -267,9 +271,7 @@ def super_bet2(im, frac=0.5, tmpdir=None, check_pkg_version=True):
         if rc != 0:
             raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
 
-        cmd2 = ["flirt", "-in", brain_file, "-ref",
-                "/home/jv261711/Documents/traitement_de_donnees/target/"
-                "MNI152_T1_1mm_brain.nii",
+        cmd2 = ["flirt", "-in", brain_file, "-ref", target,
                 "-out", output_flirt, "-omat", output_flirtmat]
         logger.debug(" ".join(cmd2))
         p = subprocess.Popen(cmd2, stdout=subprocess.PIPE,
