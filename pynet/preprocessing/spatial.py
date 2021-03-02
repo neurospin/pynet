@@ -271,7 +271,7 @@ def super_bet2(im, target, frac=0.5, tmpdir=None, check_pkg_version=True):
         if rc != 0:
             raise ValueError("\noutput : {0}\n err : {1}".format(output, err))
 
-        cmd2 = ["flirt", "-in", brain_file, "-ref", target,
+        cmd2 = ["flirt", "-in", brain_file, "-ref", target_file,
                 "-out", output_flirt, "-omat", output_flirtmat]
         logger.debug(" ".join(cmd2))
         p = subprocess.Popen(cmd2, stdout=subprocess.PIPE,
