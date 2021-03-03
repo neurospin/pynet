@@ -219,9 +219,10 @@ def super_bet2(im, target, frac=0.5, tmpdir=None, check_pkg_version=True):
     Inspired by : https://github.com/saslan-7/super-bet2
     4 steps:
         generates brain surface as mesh in .vtk format
-        register the T1 to MNI
-        using a registered T1 and brain surface, estimates inner and outer
-            skull surfaces and outer scalp surface 
+        register the T1 to MNI (not to transform the image but just to get
+         the transform matrix itself)
+        using initial brain extraction and the transform matrix, 
+         estimates inner and outer skull surfaces and outer scalp surface 
         using inner skull surface (mask) as skullstripped method
 
 
