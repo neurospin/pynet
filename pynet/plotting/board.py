@@ -147,7 +147,10 @@ def update_board(signal):
         if key == "scheduler" and value is None:
             continue
         if key == "scheduler" and value is not None:
-            value = value.get_last_lr()[0]
+            if hasattr(value, "get_last_lr"):
+                value = value.get_last_lr()[0]
+            else:
+                value = value._last_lr[0]
             key += "_lr"
         if isinstance(value, torch.Tensor):
             value = value.cpu().detach().numpy().tolist()
