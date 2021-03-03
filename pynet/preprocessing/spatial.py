@@ -26,7 +26,6 @@ from pynet.utils import TemporaryDirectory
 logger = logging.getLogger("pynet")
 
 
-
 def padd(arr, shape, fill_value=0):
     """ Apply a padding.
 
@@ -292,7 +291,8 @@ def super_bet2(im, target, frac=0.5, tmpdir=None, check_pkg_version=True):
 
         flirtout = os.path.join("brain", output_flirtmat)
         name = os.path.join(tmpdir, "brain")
-        cmd4 = ["betsurf", "-1", "-m", "-s", input_file, output_mesh_off, flirtout, name]
+        cmd4 = ["betsurf", "-1", "-m", "-s", input_file, output_mesh_off,
+                flirtout, name]
         logger.debug(" ".join(cmd4))
         p = subprocess.Popen(cmd4, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
@@ -303,12 +303,13 @@ def super_bet2(im, target, frac=0.5, tmpdir=None, check_pkg_version=True):
         print("name \n\n\n", tmpdir)
         inskull = os.path.join(tmpdir, "brain_inskull_mask.nii.gz")
         brain = nibabel.load(inskull)
-        mask_arr = brain.get_fdata()
-        noise_arr = im.get_fdata()
-        brain_arr = mask_arr * noise_arr
+        mask_arr = brain.get_fdata() > 0
+        noise_arr = im.get_fdata().squeeze()
+        brain_arr = noise_arr*mask_arr
         normalized = nibabel.Nifti1Image(
             brain_arr, im.affine)
     return normalized
+
 
 def reorient2std(im, tmpdir=None, check_pkg_version=True):
     """ Reorient the MRI image to match the approximate orientation of the
@@ -519,6 +520,7 @@ def register(im, target, mask=None, cost="normmi", bins=256,
             normalized.get_data(), normalized.affine)
     return normalized
 
+
 def brainmask(im, mask, tmpdir=None, check_pkg_version=True):
     """ Apply cat12vbm brain mask.
 
@@ -668,11 +670,11 @@ def check_version(package_name, check_pkg_version):
     if check_pkg_version:
         # local computer installation
         if exitcode != 0:
+            version = None
             logger.debug("Version {0}: {1}".format(package_name, stderr))
             raise ValueError(
                 "Impossible to check package '{0}' version."
                 .format(package_name))
-            version = None
         else:
             versions = re.findall("Version: .*$", stdout, re.MULTILINE)
             version = "|".join(versions)
