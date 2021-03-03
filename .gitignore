@@ -17,3 +17,4 @@ dist/
 .egg-info/
 __pycache__/
 .eggs/
+.vscode/
