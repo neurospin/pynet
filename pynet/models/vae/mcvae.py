@@ -141,6 +141,16 @@ class MCVAE(nn.Module):
             del pi
         return p
 
+    def reconstruct(self, p):
+        x_hat = []
+        for c_idx1 in range(self.n_channels):
+            x_tmp = torch.stack([
+                p[c_idx1][c_idx2].loc.detach()
+                for c_idx2 in range(self.n_channels)]).mean(dim=0)
+            x_hat.append(x_tmp.cpu().numpy())
+            del x_tmp
+        return x_hat
+
     def forward(self, x):
         qs = self.encode(x)
         z = [q.rsample() for q in qs]
