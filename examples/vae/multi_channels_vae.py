@@ -1,6 +1,7 @@
 """
 Multi Channels VAE (MCVAE)
 ==========================
+
 Credit: A Grigis & C. Ambroise
 """
 
@@ -18,9 +19,12 @@ from sklearn.preprocessing import StandardScaler
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim import lr_scheduler
 from torch.utils.data import Dataset
-from pynet.models.vae.mcvae import MCVAE, MCVAELoss
+from pynet import NetParameters
+from pynet.datasets import DataManager
+from pynet.datasets.core import DataItem
+from pynet.interfaces import MCVAEEncoder
+from pynet.models.vae.mcvae import MCVAELoss
 from pynet.utils import setup_logging
 
 
@@ -103,7 +107,8 @@ class SyntheticDataset(Dataset):
         return self.n_samples
 
     def __getitem__(self, item):
-        return [x[item] for x in self.X]
+        return DataItem(inputs=[x[item] for x in self.X], outputs=None,
+                        labels=None)
 
     @property
     def shape(self):
@@ -125,6 +130,7 @@ def preprocess_and_add_noise(x, snr, seed=0):
     return x_std, x_std_noisy
 
 
+# Create dataset
 ds_train = SyntheticDataset(
     n_samples=n_samples,
     lat_dim=true_lat_dims,
@@ -142,124 +148,53 @@ ds_val = SyntheticDataset(
 image_datasets = {
     "train": ds_train,
     "val": ds_val}
+manager = DataManager.from_dataset(
+    train_dataset=image_datasets["train"],
+    validation_dataset=image_datasets["val"],
+    batch_size=n_samples, sampler="random", multi_bloc=True)
 print("- datasets:", image_datasets)
 
 
 # Create models
 models = {}
 torch.manual_seed(42)
-vae_kwargs = {}
-models["mcvae"] = MCVAE(
-    latent_dim=fit_lat_dims, n_channels=n_channels,
-    n_feats=[n_feats] * n_channels, vae_model="dense", vae_kwargs=vae_kwargs)
+params = NetParameters(
+    latent_dim=fit_lat_dims,
+    n_channels=n_channels,
+    n_feats=[n_feats] * n_channels,
+    vae_model="dense",
+    vae_kwargs={},
+    sparse=False)
+models["mcvae"] = MCVAEEncoder(params,
+    optimizer_name="Adam",
+    learning_rate=adam_lr,
+    loss=MCVAELoss(n_channels, beta=1., sparse=False),
+    use_cuda=False)
 torch.manual_seed(42)
-models["smcvae"] = MCVAE(
-    latent_dim=fit_lat_dims, n_channels=n_channels,
-    n_feats=[n_feats] * n_channels, vae_model="dense", vae_kwargs=vae_kwargs,
+params = NetParameters(
+    latent_dim=fit_lat_dims,
+    n_channels=n_channels,
+    n_feats=[n_feats] * n_channels,
+    vae_model="dense",
+    vae_kwargs={},
     sparse=True)
+models["smcvae"] = MCVAEEncoder(params,
+    optimizer_name="Adam",
+    learning_rate=adam_lr,
+    loss=MCVAELoss(n_channels, beta=1., sparse=True),
+    use_cuda=False)
 print("- models:", models)
 
 
 # Fit models
-
-def train_model(model, dataloaders, criterion, optimizer, scheduler=None,
-                num_epochs=25):
-    # Parameters
-    model = model.to(device)
-    best_model_wts = copy.deepcopy(model.state_dict())
-    best_loss = 1e8
-
-
-    # Loop over epochs
-    for epoch in range(num_epochs):
-        # Each epoch has a training and validation phase
-        since = time.time()
-        for phase in image_datasets.keys():
-            if phase == "train":
-                model.train()
-            else:
-                model.eval()
-
-            running_loss = 0.0
-            running_kl = 0.0
-            running_ll = 0.0
-            running_corrects = 0
-
-            # Iterate over data
-
-            for inputs in dataloaders[phase]:
-                inputs = [ch_inputs.to(device) for ch_inputs in inputs]
-
-                # zero the parameter gradients
-                optimizer.zero_grad()
-                # forward
-                # track history if only in train
-                with torch.set_grad_enabled(phase == "train"):
-                    fwd_ret = model(inputs)
-                    losses = criterion(fwd_ret, inputs)
-                    loss = losses["total"]
-                    kl = losses["kl"]
-                    ll = losses["ll"]
-
-
-                    # backward + optimize only if in training phase
-                    if phase == "train":
-                        loss.backward()
-                        optimizer.step()
-
-                # statistics
-                running_loss += loss.detach().item() * inputs[0].size(0)
-                running_kl += kl.detach().item() * inputs[0].size(0)
-                running_ll += ll.detach().item() * inputs[0].size(0)
-
-
-            # Epoch statistics
-            epoch_loss = running_loss / len(dataloaders[phase].dataset)
-            epoch_kl = running_kl / len(dataloaders[phase].dataset)
-            epoch_ll = running_ll / len(dataloaders[phase].dataset)
-
-            # Update scheduler
-            if scheduler is not None and phase == "train":
-                scheduler.step(epoch_loss)
-
-            # Display info
-            if epoch % 10 == 0:
-                print("===> {}: epoch {}/{},\t Loss: {:.4f},\t KL: {:.4f},\t "
-                      "LL: {:.4f}".format(
-                            phase, epoch, num_epochs - 1, epoch_loss, epoch_kl,
-                            epoch_ll))
-
-            # Save weights of the best model
-            if phase == "val" and epoch_loss < best_loss:
-                best_loss = epoch_loss
-                best_model_wts = copy.deepcopy(model.state_dict())
-
-    time_elapsed = time.time() - since
-    print("Training complete in {:.0f}m {:.0f}s".format(
-        time_elapsed // 60, time_elapsed % 60))
-
-    # Load best model weights
-    if "val" in image_datasets.keys():
-        model.load_state_dict(best_model_wts)
-
-    return model
-
-
-dataloaders = {
-    x: torch.utils.data.DataLoader(
-        image_datasets[x], batch_size=n_samples, shuffle=True, num_workers=0)
-              for x in image_datasets.keys()}
-
-
-for model_name, model in models.items():
-    
+for model_name, interface in models.items():
     print("- training:", model_name)
-    criterion = MCVAELoss(model.n_channels, beta=1., sparse=model.sparse)
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=adam_lr)
-    # scheduler = lr_scheduler.ReduceLROnPlateau(optimizer)
-    print(model)
-    train_model(model, dataloaders, criterion, optimizer, scheduler=None,
-                num_epochs=epochs)
+    train_history, valid_history = interface.training(
+        manager=manager,
+        nb_epochs=epochs,
+        checkpointdir=None,
+        fold_index=0,
+        with_validation=True)
 
 
 # Display results
@@ -267,38 +202,42 @@ pred = {}  # Prediction
 z = {}     # Latent Space
 g = {}     # Generative Parameters
 x_hat = {}  # Reconstructed channels
+loaders = manager.get_dataloader(validation=True, fold_index=0)
+dataitem = next(iter(loaders.validation))
 
-for model_name, model in models.items():
-    X = dataloaders["train"]
-
-    big_X = [[],[],[]]
-    for x in X:
-        for idx, c in enumerate(x):
-            big_X[idx].append(c)
-    X = [torch.cat(x).to(device) for x in big_X]    
-    
+for model_name, interface in models.items():
+    model = interface.model
+    model.eval()
+    X = [x.to(interface.device) for x in dataitem.inputs]
     print("--", model_name)
-    print("-- X", [e.size() for e in X])
-    m = model_name
-    q = model.encode(X)  # encoded distribution q(z|x)
+    print("-- X", [x.size() for x in X])
+
+    with torch.no_grad():
+        q = model.encode(X)  # encoded distribution q(z|x)
     print("-- encoded distribution q(z|x)", [n for n in q])
-    z[m] = [q[i].loc.squeeze().detach().numpy() for i in range(n_channels)]
-    print("-- z", [e.shape for e in z[m]])
+
+    z[model_name] = [
+        q[i].loc.squeeze().detach().numpy() for i in range(n_channels)]
+    print("-- z", [e.shape for e in z[model_name]])
+
     if model.sparse:
-        z[m] = model.apply_threshold(z[m], 0.2)
-    z[m] = np.array(z[m]).reshape(-1) # flatten
-    print("-- z", z[m].shape)
-    # x_hat[m] = model.reconstruct(X, dropout_threshold=0.2)  # it will raise a warning in non-sparse mcvae
-    g[m] = [model.vae[i].fc_mu.weight.detach().numpy() for i in range(n_channels)]
-    g[m] = np.array(g[m]).reshape(-1)  #flatten
+        z[model_name] = model.apply_threshold(z[model_name], 0.2)
+    z[model_name] = np.array(z[model_name]).reshape(-1) # flatten
+    print("-- z", z[model_name].shape)
+
+    # it will raise a warning in non-sparse mcvae
+    # x_hat[model_name] = model.reconstruct(X, dropout_threshold=0.2)  
+
+    g[model_name] = [
+        model.vae[i].fc_mu.weight.detach().numpy() for i in range(n_channels)]
+    g[model_name] = np.array(g[model_name]).reshape(-1)  #flatten
 
 
-"""
-With such a simple dataset, mcvae and sparse-mcvae gives the same results in
-terms of latent space and generative parameters.
-However, only with the sparse model is possible to easily identify the
-important latent dimensions.
-"""
+# With such a simple dataset, mcvae and sparse-mcvae gives the same results in
+# terms of latent space and generative parameters.
+# However, only with the sparse model is possible to easily identify the
+# important latent dimensions.
+
 plt.figure()
 plt.subplot(1,2,1)
 plt.hist([z["smcvae"], z["mcvae"]], bins=20, color=["k", "gray"])
@@ -313,7 +252,7 @@ plt.title(r"Generative parameters $\mathbf{\theta} = \{\mathbf{\theta}_1 "
            "\ldots \mathbf{\theta}_C\}$")
 plt.xlabel("Value")
 
-do = np.sort(models["smcvae"].dropout.detach().numpy().reshape(-1))
+do = np.sort(models["smcvae"].model.dropout.detach().numpy().reshape(-1))
 plt.figure()
 plt.bar(range(len(do)), do)
 plt.suptitle("Dropout probability of {0} fitted latent dimensions in Sparse "

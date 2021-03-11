@@ -30,8 +30,10 @@ logger = logging.getLogger("pynet")
 @Networks.register
 @DeepLearningDecorator(family=("encoder", "vae"))
 class VanillaNet(BaseVAE):
-    """
+    """ Conv VAE.
+
     The model is composed of two sub-networks:
+
     1. Given x (image), encode it into a distribution over the latent space -
        referred to as Q(z|x).
     2. Given z in latent space (code representation of an image), decode it
@@ -200,12 +202,13 @@ class VanillaNet(BaseVAE):
 @Networks.register
 @DeepLearningDecorator(family=("encoder", "vae"))
 class DVAENet(BaseVAE):
-    """
-    Dense Variational AutoEncoder (DVAE).
+    """ Dense Variational AutoEncoder (DVAE).
+
     DEEP VARIATIONAL AUTOENCODER FOR MODELING FUNCTIONAL BRAIN NETWORKS AND
     ADHD IDENTIFICATION, ISBI 2020.
 
     The model is composed of two sub-networks:
+
     1. Given x (image), encode it into a distribution over the latent space -
        referred to as Q(z|x).
     2. Given z in latent space (code representation of an image), decode it
@@ -213,7 +216,8 @@ class DVAENet(BaseVAE):
     """
     def __init__(self, latent_dim, input_dim, hidden_dims=None,
                  noise_init_logvar=-3, noise_fixed=False, sparse=False,
-                 log_alpha=None, nodecoding=False, **kwargs):
+                 log_alpha=None, nodecoding=False, activation_fct=None,
+                 final_activation=False, **kwargs):
         """ Init class.
 
         Parameters
@@ -234,6 +238,10 @@ class DVAENet(BaseVAE):
             dropout estimate.
         nodecoding: bool, default False
             if set do not apply the decoding.
+        activation_fct: @class, default None
+            define acctivation fonction, default nn.Tanh.
+        final_activation: bool, default False
+            apply activation function to the final result.
         """
         super(DVAENet, self).__init__(**kwargs)
         self.latent_dim = latent_dim
@@ -244,6 +252,7 @@ class DVAENet(BaseVAE):
         self.noise_fixed = noise_fixed
         self.noise_init_logvar = noise_init_logvar
         self.log_alpha = log_alpha
+        self.activation_fct = activation_fct or nn.Tanh
 
         # Build Encoder
         if hidden_dims is not None:
@@ -255,7 +264,7 @@ class DVAENet(BaseVAE):
                 modules.append(
                     nn.Sequential(
                         nn.Linear(e_input_dim, h_dim),
-                        nn.Tanh())
+                        self.activation_fct())
                 )
                 e_input_dim = h_dim
             self.encoder = nn.Sequential(*modules)
@@ -290,14 +299,17 @@ class DVAENet(BaseVAE):
                 modules.append(
                     nn.Sequential(
                         nn.Linear(d_input_dim, h_dim),
-                        nn.Tanh()))
+                        self.activation_fct()))
                 d_input_dim = h_dim
             self.decoder = nn.Sequential(*modules)
             latent_dim = hidden_dims[-1]
 
-        self.final_layer = nn.Sequential(
-            nn.Linear(latent_dim, self.input_dim))
-        # nn.Sigmoid())
+        if final_activation:
+            self.final_layer = nn.Sequential(
+                nn.Linear(latent_dim, self.input_dim),
+                self.activation_fct())
+        else:
+            self.final_layer = nn.Linear(latent_dim, self.input_dim)
 
     def encode(self, x):
         """ Encodes the input by passing through the encoder network

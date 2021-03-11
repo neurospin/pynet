@@ -83,17 +83,18 @@ class Board(object):
         logger.debug("Starting visdom server:\n{0}".format(cmd))
         self.server = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
 
-    def update_plots(self, data):
+    def update_plots(self, data, epoch):
         """ Update/create plots from the input data.
 
         Parameters
         ----------
         data: dict
             the name and new value of the plot to be updated.
+        epoch: int
+            the current epoch.
         """
         logger.debug("Board data update:\n{0}".format(data))
-        current_data = json.loads(self.viewer.get_window_data())
-        logger.debug("Board current context:\n{0}".format(current_data))
+        # current_data = json.loads(self.viewer.get_window_data())
         for key, val in data.items():
             if key == "val_pred":
                 if not self.display_pred:
@@ -113,18 +114,14 @@ class Board(object):
                         "caption": "y_pred"},
                     win=key)
             else:
-                if key in current_data:
-                    current_y = current_data[key]["content"]["data"][0]["y"]
-                else:
-                    current_y = []
-                current_y += [val]
                 self.viewer.line(
-                    X=np.asarray(range(len(current_y))),
-                    Y=np.asarray(current_y),
+                    X=np.asarray([epoch]),
+                    Y=np.asarray([val]),
                     opts={
                         "title": key,
                         "xlabel": "iterations",
                         "ylabel": key},
+                    update="append",
                     win=key)
 
 
@@ -147,7 +144,15 @@ def update_board(signal):
         if key in ("epoch", "fold"):
             continue
         value = getattr(signal, key)
+        if key == "scheduler" and value is None:
+            continue
+        if key == "scheduler" and value is not None:
+            if hasattr(value, "get_last_lr"):
+                value = value.get_last_lr()[0]
+            else:
+                value = value._last_lr[0]
+            key += "_lr"
         if isinstance(value, torch.Tensor):
             value = value.cpu().detach().numpy().tolist()
         data[key] = value
-    board.update_plots(data)
+    board.update_plots(data, epoch)

@@ -14,3 +14,4 @@ Module that privides common variational networks.
 from .vunet import VUNet
 from .vanillanet import VanillaNet
 from .vanillanet import DVAENet
+from .mcvae import MCVAE

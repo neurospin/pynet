@@ -85,7 +85,7 @@ REQUIRES = [
     "scipy>=0.19.1, <1.6.0",
     "statsmodels>=0.11.1",
     "lxml>=4.5.2",
-    "neurocombat-sklearn",
+    "neurocombat-sklearn>=0.1.3",
 ]
 EXTRA_REQUIRES = {
 }

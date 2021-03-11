@@ -10,9 +10,14 @@ In this tutorial, you will learn how to tune the hyperparameters using the
 talos and the kerasplotlib modules.
 """
 
+# Imports
+import os
+import sys
+if "CI_MODE" in os.environ:
+    sys.exit()
+
 import talos
 import numpy as np
-import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
