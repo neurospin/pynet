@@ -35,9 +35,9 @@ DEFAULTS = {
         "return_data": False, "z_score": True,
         "drop_cols": ["study site", "age", "sex", "wisc:fsiq", "mri",
                       "euler", "labels", "subgroups"],
-        "qc": {"bloc-clinical_score-wisc:fsiq": {"gte": 70},
-               "bloc-clinical_score-euler": {"gt": -217},
-               "bloc-clinical_score-mri": {"eq": 1}}
+        "qc": {"wisc:fsiq": {"gte": 70},
+               "euler": {"gt": -217},
+               "mri": {"eq": 1}}
     },
     "rois": {
         "test_size": 0.2, "seed": 42,
@@ -54,19 +54,18 @@ DEFAULTS = {
         "test_size": 0.2, "seed": 42,
         "return_data": False, "z_score": True, "adjust_sites": True,
         "metrics": ["pial_lgi", "thickness"],
-        "residualize_by": {"continuous": ["bloc-clinical_score-age",
-                                          "bloc-clinical_score-wisc:fsiq"],
-                           "discrete": ["bloc-clinical_score-sex"]},
-        "qc": {"bloc-clinical_score-wisc:fsiq": {"gte": 70},
-               "bloc-clinical_score-euler": {"gt": -217},
-               "bloc-clinical_score-mri": {"eq": 1}}
+        "residualize_by": {"continuous": ["age", "wisc:fsiq"],
+                           "discrete": ["sex"]},
+        "qc": {"wisc:fsiq": {"gte": 70},
+               "euler": {"gt": -217},
+               "mri": {"eq": 1}}
     },
     "multiblock": {
         "test_size": 0.2, "seed": 42,
         "blocks": ["clinical", "surface-lh", "surface-rh"],
-        "qc": {"bloc-clinical_score-wisc:fsiq": {"gte": 70},
-               "bloc-clinical_score-euler": {"gt": -217},
-               "bloc-clinical_score-mri": {"eq": 1}}
+        "qc": {"wisc:fsiq": {"gte": 70},
+               "euler": {"gt": -217},
+               "mri": {"eq": 1}}
     }
 }
 
@@ -95,8 +94,8 @@ def make_all_fetchers(datasetdir=SAVING_FOLDER):
     fetchers = make_fetchers(datasetdir)
 
     fetchers["multiblock"] = WRAPPERS["multiblock"](
-        datasetdir=SAVING_FOLDER, files=FILES,
-        cohort=COHORT_NAME, subject_column_name="EID",
+        datasetdir=datasetdir, files=FILES,
+        cohort=COHORT_NAME, subject_column_name="participant_id",
         defaults=DEFAULTS["multiblock"], make_fetchers_func=make_fetchers)
     return fetchers
 
