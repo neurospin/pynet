@@ -25,8 +25,8 @@ logger = logging.getLogger("pynet")
 
 class BaseVAE(nn.Module):
 
-    def __init__(self, use_distributions=False):
-        super(BaseVAE, self).__init__()
+    def __init__(self, use_distributions=False, *args, **kwargs):
+        super(BaseVAE, self).__init__(*args, **kwargs)
         self.use_distributions = use_distributions
 
     def encode(self, x):

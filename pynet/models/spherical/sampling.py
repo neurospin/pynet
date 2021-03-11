@@ -156,7 +156,8 @@ def vertex_adjacency_graph(vertices, triangles):
     > [1, 3, 4]
     """
     graph = nx.Graph()
-    graph.add_nodes_from(range(len(vertices)))
+    nodes = [(i, {'coordinates': coords}) for i, coords in enumerate(vertices)]
+    graph.add_nodes_from(nodes)
     edges, edges_triangle = triangles_to_edges(triangles)
     edges_cache = []
     for idx1, idx2 in edges:
@@ -271,6 +272,20 @@ def downsample(vertices, target_vertices):
                            "were found. Are you using an icosahedron "
                            "mesh?".format(n_duplicates))
     return nearest_idx.squeeze()
+
+
+def downsample_data(data, down_indices, neighs):
+    if len(data.shape) < 3:
+        data = data[np.newaxis, :, :]
+    data = data.transpose((0, 2, 1))
+    for i in range(len(down_indices)):
+        down_neigh_indices = neighs[i][down_indices[i]]
+        n_vertices, neigh_size = down_neigh_indices.shape
+
+        data = data[:, :, down_neigh_indices].reshape(
+                len(data), data.shape[1], n_vertices, neigh_size)
+        data = data.mean(-1)
+    return data.transpose(0, 2, 1).squeeze()
 
 
 def neighbors_rec(vertices, triangles, size=5, zoom=5):

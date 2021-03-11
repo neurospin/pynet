@@ -46,7 +46,7 @@ class SphericalUNet(nn.Module):
     """
     def __init__(self, in_order, in_channels, out_channels, depth=5,
                  start_filts=32, conv_mode="1ring", up_mode="interp",
-                 cachedir=None):
+                 merge_mode="concat", icosahedron=icosahedron, cachedir=None):
         """ Initialize the Spherical UNet.
 
         Parameters
@@ -82,11 +82,12 @@ class SphericalUNet(nn.Module):
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.up_mode = up_mode
+        self.merge_mode = merge_mode
         self.ico = {}
         icosahedron_cached = self.memory.cache(icosahedron)
         neighbors_cached = self.memory.cache(neighbors)
         neighbors_rec_cached = self.memory.cache(neighbors_rec)
-        for order in range(1, in_order + 1):
+        for order in range(in_order - depth + 1, in_order + 1):
             vertices, triangles = icosahedron_cached(order=order)
             logger.debug("- ico {0}: verts {1} - tris {2}".format(
                 order, vertices.shape, triangles.shape))
@@ -118,14 +119,14 @@ class SphericalUNet(nn.Module):
                 neighbor_indices=neighs, down_indices=None, up_indices=None,
                 conv_neighbor_indices=conv_neighs)
         downsample_cached = self.memory.cache(downsample)
-        for order in range(in_order, 1, -1):
+        for order in range(in_order, in_order - depth + 1, -1):
             down_indices = downsample_cached(
                 self.ico[order].vertices, self.ico[order - 1].vertices)
             logger.debug("- down {0}: {1}".format(order, down_indices.shape))
             self.ico[order] = self.ico[order]._replace(
                 down_indices=down_indices)
         interpolate_cached = self.memory.cache(interpolate)
-        for order in range(1, in_order):
+        for order in range(in_order - depth + 1, in_order):
             up_indices = interpolate_cached(
                 self.ico[order].vertices, self.ico[order + 1].vertices,
                 self.ico[order + 1].triangles)
@@ -180,7 +181,8 @@ class SphericalUNet(nn.Module):
                 neigh_indices=self.ico[order + 1].neighbor_indices,
                 up_neigh_indices=self.ico[order].up_indices,
                 down_indices=self.ico[order + 1].down_indices,
-                up_mode=self.up_mode)
+                up_mode=self.up_mode,
+                merge_mode=self.merge_mode)
             setattr(self, "up{0}".format(cnt), block)
             order += 1
             cnt += 1
@@ -285,7 +287,8 @@ class UpBlock(nn.Module):
     upconv => (conv => BN => ReLU) * 2
     """
     def __init__(self, conv_layer, in_ch, out_ch, conv_neigh_indices,
-                 neigh_indices, up_neigh_indices, down_indices, up_mode):
+                 neigh_indices, up_neigh_indices, down_indices, up_mode,
+                 merge_mode="concat"):
         """ Init.
 
         Parameters
@@ -324,6 +327,9 @@ class UpBlock(nn.Module):
                 in_ch, out_ch, neigh_indices, down_indices)
         else:
             raise ValueError("Invalid upsampling method.")
+        self.merge_mode = merge_mode
+        if merge_mode != "concat":
+            in_ch = out_ch
         self.double_conv = nn.Sequential(
              conv_layer(in_ch, out_ch, conv_neigh_indices),
              nn.BatchNorm1d(out_ch, momentum=0.15, affine=True,
@@ -334,17 +340,25 @@ class UpBlock(nn.Module):
                             track_running_stats=False),
              nn.LeakyReLU(0.2, inplace=True))
 
-    def forward(self, x1, x2, max_pool_indices):
+    def forward(self, x1, x2=None, max_pool_indices=None):
         logger.debug("- UpBlock")
         debug("input", x1)
-        debug("skip", x2)
+        if self.merge_mode in ["concat", "add"]:
+            debug("skip", x2)
         if self.up_mode == "maxpad":
             x1 = self.up(x1, max_pool_indices)
         else:
             x1 = self.up(x1)
         debug("upsampling", x1)
-        x = torch.cat((x1, x2), 1)
-        debug("cat", x)
+        if self.merge_mode == "concat":
+            x = torch.cat((x1, x2), 1)
+            debug("cat", x)
+        elif self.merge_mode == "add":
+            x = x1 + x2
+            debug("add", x)
+        else:
+            x = x1
+        debug("post up", x)
         x = self.double_conv(x)
         debug("output", x)
         return x

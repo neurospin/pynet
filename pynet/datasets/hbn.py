@@ -95,7 +95,14 @@ def make_fetchers(datasetdir=SAVING_FOLDER):
     }
 
 
-fetch_multiblock_HBN = WRAPPERS["multiblock"](
-    datasetdir=SAVING_FOLDER, files=FILES,
-    cohort=COHORT_NAME, subject_column_name="EID",
-    defaults=DEFAULTS["multiblock"], make_fetchers_func=make_fetchers)
+def make_all_fetchers(datasetdir=SAVING_FOLDER):
+    fetchers = make_fetchers(datasetdir)
+
+    fetchers["multiblock"] = WRAPPERS["multiblock"](
+        datasetdir=SAVING_FOLDER, files=FILES,
+        cohort=COHORT_NAME, subject_column_name="EID",
+        defaults=DEFAULTS["multiblock"], make_fetchers_func=make_fetchers)
+    return fetchers
+
+
+FETCHERS = make_all_fetchers()

@@ -208,7 +208,11 @@ class Base(Observable):
                 if scheduler is not None:
                     logger.debug("  update scheduler.")
                     scheduler.step(loss)
-                    logger.debug("  - lr: {0}".format(scheduler.get_lr()))
+                    if hasattr(scheduler, "get_lr"):
+                        lr = scheduler.get_lr()
+                    else:
+                        lr = [param["lr"] for param in self.optimizer.param_groups]
+                    logger.debug("  - lr: {0}".format(lr))
                 logger.debug("  update train history.")
                 train_history.log((fold, epoch), loss=loss, **values)
                 train_history.summary()
@@ -305,8 +309,11 @@ class Base(Observable):
                     "two parameters: the forward output, and "
                     "as an option specific layer outputs dict.")
             logger.debug("  update loss.")
-            logger.debug("  outputs: {0} - {1}".format(
-                outputs.shape, outputs.dtype))
+            if isinstance(outputs, list):
+                logger.debug("  outputs: {0}".format(len(outputs)))
+            elif isinstance(outputs, np.ndarray):
+                logger.debug("  outputs: {0} - {1}".format(
+                    outputs.shape, outputs.dtype))
             logger.debug("  targets: {0}".format(len(targets)))
             if hasattr(self.loss, "layer_outputs"):
                 self.loss.layer_outputs = layer_outputs
