@@ -15,6 +15,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
+from torch.distributions import Normal, kl_divergence
 from torch.autograd import Variable
 from pynet.utils import Losses
 
@@ -528,10 +529,20 @@ class SoftDiceLoss(object):
 class CustomKLLoss(object):
     """ KL Loss.
     """
-    def __call__(self, mean, std):
-        return (torch.mean(torch.mul(mean, mean)) +
-                torch.mean(torch.mul(std, std)) -
-                torch.mean(torch.log(torch.mul(std, std))) - 1)
+    def __init__(self, reduction="mean"):
+        super(CustomKLLoss, self).__init__()
+        self.reduction = reduction
+
+    def __call__(self, posterior):
+        kl_loss = kl_divergence(posterior, Normal(0, 1)).sum(-1, keepdim=True)
+        if self.reduction == "mean":
+            return kl_loss.mean(0)
+        elif self.reduction == "sum":
+            return kl_loss.sum(0)
+        elif self.reduction == "none":
+            return kl_loss
+        else:
+            return NotImplementedError
 
 
 @Losses.register
@@ -552,29 +563,24 @@ class NvNetCombinedLoss(object):
         self.k2 = k2
         self.ce_loss = nn.CrossEntropyLoss(reduction="mean")
         self.l2_loss = nn.MSELoss(reduction="mean")
-        self.kl_loss = CustomKLLoss()
+        self.kl_loss = CustomKLLoss(reduction="mean")
 
     def __call__(self, output, target):
         logger.debug("NvNet Combined Loss...")
         self.debug("output", output)
         self.debug("target", target)
         if self.layer_outputs is not None:
-            y_mid = self.layer_outputs
-            self.debug("y_mid", y_mid)
+            z = self.layer_outputs["z"]
+            posterior = self.layer_outputs["q"]
         if len(output.shape) < 2:
             raise ValueError("Invalid labels shape {0}.".format(output.shape))
         if output.shape != target.shape:
             raise ValueError("Expected pred & true of same size.")
         if output.device != target.device:
             raise ValueError("Pred & true labels must be in the same device.")
-        if self.layer_outputs is not None and y_mid.shape[-1] != 256:
-            raise ValueError("128 means & stds expected.")
 
         device = output.device
         if self.layer_outputs is not None:
-            est_mean, est_std = (y_mid[:, :128], y_mid[:, 128:])
-            self.debug("est_mean", est_mean)
-            self.debug("est_std", est_std)
             vae_pred = output[:, self.num_classes:]
             vae_truth = target[:, self.num_classes:]
             self.debug("vae_pred", vae_pred)
@@ -591,15 +597,16 @@ class NvNetCombinedLoss(object):
         ce_loss = self.ce_loss(seg_pred, seg_truth)
         if self.layer_outputs is not None:
             l2_loss = self.l2_loss(vae_pred, vae_truth)
-            kl_div = self.kl_loss(est_mean, est_std)
+            kl_div = self.kl_loss(posterior)
             combined_loss = ce_loss + self.k1 * l2_loss + self.k2 * kl_div
         else:
-            l2_loss, kl_div = (None, None)
+            l2_loss, kl_div = 0, 0
             combined_loss = ce_loss
         logger.debug(
             "ce_loss: {0}, L2_loss: {1}, KL_div: {2}, combined_loss: "
             "{3}".format(ce_loss, l2_loss, kl_div, combined_loss))
-        return combined_loss
+        return combined_loss, {"l2_loss": l2_loss, "kl_loss": kl_div,
+                               "ce_loss": ce_loss}
 
     def debug(self, name, tensor):
         """ Print debug message.

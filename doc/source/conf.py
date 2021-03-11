@@ -26,6 +26,7 @@ MOCK_MODULES = [
     'torch.utils.data', 'torch.autograd', 'torch.nn.modules',
     'torch.nn.modules.loss', 'torch.distributions',
     'torchvision', 'torchvision.transforms', 'torchvision.models',
+    'torchvision.utils',
     'torchviz',
     'PySide2',
     'hiddenlayer',

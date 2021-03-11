@@ -42,7 +42,7 @@ def fetch_minst(datasetdir):
     Returns
     -------
     item: namedtuple
-        a named tuple containing 'input_path', and 'metadata_path',
+        a named tuple containing 'input_path', and 'metadata_path'.
     """
     logger.info("Loading minst dataset.")
     if not os.path.isdir(datasetdir):

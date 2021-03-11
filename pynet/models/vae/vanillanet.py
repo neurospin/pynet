@@ -204,8 +204,12 @@ class VanillaNet(BaseVAE):
 class DVAENet(BaseVAE):
     """ Dense Variational AutoEncoder (DVAE).
 
-    DEEP VARIATIONAL AUTOENCODER FOR MODELING FUNCTIONAL BRAIN NETWORKS AND
-    ADHD IDENTIFICATION, ISBI 2020.
+    Deep Variational Autoencoder for Modeleing functional brain networks and
+    ADHD idetification, ISBI 2020.
+
+    Sparse Multi-Channel Variational Autoencoder for the Joint Analysis of
+    Heterogeneous Data, Luigi Antelmi, Nicholas Ayache, Philippe Robert,
+    Marco Lorenzi, PMLR 2019.
 
     The model is composed of two sub-networks:
 
@@ -217,7 +221,7 @@ class DVAENet(BaseVAE):
     def __init__(self, latent_dim, input_dim, hidden_dims=None,
                  noise_init_logvar=-3, noise_fixed=False, sparse=False,
                  log_alpha=None, nodecoding=False, activation_fct=None,
-                 final_activation=False, **kwargs):
+                 final_activation=False, use_distributions=False):
         """ Init class.
 
         Parameters
@@ -242,8 +246,10 @@ class DVAENet(BaseVAE):
             define acctivation fonction, default nn.Tanh.
         final_activation: bool, default False
             apply activation function to the final result.
+        use_distributions: bool, default False
+            use distributions as encoding and decoding outputs.
         """
-        super(DVAENet, self).__init__(**kwargs)
+        super(DVAENet, self).__init__(use_distributions=use_distributions)
         self.latent_dim = latent_dim
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
@@ -264,8 +270,7 @@ class DVAENet(BaseVAE):
                 modules.append(
                     nn.Sequential(
                         nn.Linear(e_input_dim, h_dim),
-                        self.activation_fct())
-                )
+                        self.activation_fct()))
                 e_input_dim = h_dim
             self.encoder = nn.Sequential(*modules)
             input_dim = hidden_dims[-1]
@@ -336,12 +341,13 @@ class DVAENet(BaseVAE):
         if not self.sparse:
             z_logvar = self.fc_logvar(x)
         else:
-            z_logvar = compute_logvar(z_mu, self.log_alpha)
+            z_logvar = DVAENet.compute_logvar(z_mu, self.log_alpha)
         self.debug("z_mu", z_mu)
         self.debug("z_logvar", z_logvar)
         if self.use_distributions:
             return Normal(z_mu, z_logvar.exp().pow(0.5))
-        return z_mu, z_logvar
+        else:
+            return z_mu, z_logvar
 
     def decode(self, x_sample):
         """ Maps the given latent codes onto the image space.
@@ -367,7 +373,8 @@ class DVAENet(BaseVAE):
         if self.use_distributions:
             # return Bernoulli(probs=x)
             return Normal(x, self.W_out_logvar.exp().pow(0.5))
-        return x
+        else:
+            return x
 
     def reparameterize(self, z_mu, z_logvar):
         """ Reparameterization trick to sample from N(mu, var) from N(0,1).
@@ -394,28 +401,92 @@ class DVAENet(BaseVAE):
         return x_sample
 
     def forward(self, x, **kwargs):
+        """ The forward method.
+        """
         logger.debug("DVAE Net...")
         if self.use_distributions:
             q = self.encode(x)
             z = q.rsample()
             if self.nodecoding:
                 return z, {"q": q}
-            return self.decode(z), {"q": q}
+            else:
+                return self.decode(z), {"q": q}
         else:
             z_mu, z_logvar = self.encode(x)
             z = self.reparameterize(z_mu, z_logvar)
             if self.nodecoding:
                 return z, {"z_mu": z_mu, "z_logvar": z_logvar}
-            return self.decode(z), {"z_mu": z_mu, "z_logvar": z_logvar}
+            else:
+                return self.decode(z), {"z_mu": z_mu, "z_logvar": z_logvar}
+
+    @staticmethod
+    def p_to_prediction(p):
+        """ Get the prediction from various types of distributions.
+        """
+        if isinstance(p, list):
+            return [stVAE.p_to_prediction(_p) for _p in p]
+        elif isinstance(p, Normal):
+            pred = p.loc.cpu().detach().numpy()
+        elif isinstance(p, Bernoulli):
+            pred = p.probs.cpu().detach().numpy()
+        else:
+            raise NotImplementedError
+        return pred
+
+    def reconstruct(self, x, sample=False):
+        """ Reconstruct a new data from a given input with or without
+        resampling.
+        """
+        with torch.no_grad():
+            q = self.encode(x)
+            posterior = q
+            if sample:
+                z = posterior.sample()
+            else:
+                z = posterior.loc
+            p = self.decode(z)
+        return self.p_to_prediction(p)
+
+    def generate(self, z=None, device=None):
+        """ Generate a new data from a given sample or a random one.
+        """
+        device = device or torch.device("cpu")
+        with torch.no_grad():
+            if z is None:
+                z = Normal(loc=torch.zeros(1, self.latent_dim),
+                           scale=1).sample()
+            z = z.to(device)
+            p = self.decode(z)
+            return stVAE.p_to_prediction(p)
+
+    def apply_threshold(self, z, threshold, keep_dims=True, reorder=False):
+        """ Threshold the latent samples based on the estimated dropout
+        probabilities.
+        """
+        assert(threshold <= 1.0)
+        order = torch.argsort(self.dropout).squeeze()
+        keep = (self.dropout < threshold).squeeze()
+        if keep_dims:
+            z[:, ~keep] = 0
+        else:
+            z = z[:, keep]
+            order = torch.argsort(self.dropout[keep]).squeeze()
+        if reorder:
+            z = z[:, order]
+        return z
 
     @property
     def dropout(self):
+        """ Compute the dropout probabilities.
+        """
         if self.sparse:
             alpha = torch.exp(self.log_alpha.detach())
             return alpha / (alpha + 1)
         else:
             raise NotImplementedError
 
-
-def compute_logvar(mu, log_alpha):
-    return log_alpha + 2 * torch.log(torch.abs(mu) + 1e-8)
+    @staticmethod
+    def compute_logvar(mu, log_alpha):
+        """ Compute the log variance in case of sparsity contraints.
+        """
+        return log_alpha + 2 * torch.log(torch.abs(mu) + 1e-8)

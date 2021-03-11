@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as func
 import numpy as np
+from torch.distributions import Normal
 from pynet.interfaces import DeepLearningDecorator
 from pynet.utils import Networks
 
@@ -87,7 +88,7 @@ class NvNet(nn.Module):
         self.with_vae = with_vae
 
         # Encoder Blocks: encoder parts uses ResNet blocks (two 3x3x3 conv,
-        # group normlization (better than batch norm for small batch size),
+        # group normalization (better than batch norm for small batch size),
         # and ReLU), followed by additive identity skip connection.
         # A Downsizing of 2 is performed with strided convolutions.
         # Features increase by two at each level.
@@ -155,7 +156,7 @@ class NvNet(nn.Module):
         # Variational Auto-Encoder: reduce the input to a low dimensional
         # space of 256 (128 to represent the mean and 128 to represent the std)
         # A sample is drawn from the Gaussian distribution and reconstructed
-        # into the inputt image shape following the decoder architecture
+        # into the input image shape following the decoder architecture
         # without interlevel skip connections.
         if self.with_vae:
             self.shapes = self._downsample_shape(
@@ -202,11 +203,10 @@ class NvNet(nn.Module):
         out_end = self.de_end(out_de0)
         logger.debug("Final conv: {0}".format(out_end.shape))
         if self.with_vae:
-            out_vae, out_distr = self.vae(out_en3)
-            logger.debug("VAE: {0} - {1}".format(
-                out_vae.shape, out_distr.shape))
+            out_vae, vae_kwargs = self.vae(out_en3)
+            logger.debug("VAE: {0}".format(out_vae.shape))
             out_final = torch.cat((out_end, out_vae), 1)
-            return [out_final, out_distr]
+            return out_final, vae_kwargs
         else:
             return out_end
 
@@ -384,12 +384,17 @@ class VDResampling(nn.Module):
                 16 * dense_features[0] * dense_features[1] *
                 dense_features[2]),
             out_features=in_channels)
+        self.vdraw = VDraw(in_channels=in_channels, out_channels=128)
         self.dense2 = nn.Linear(
             in_features=self.mid_chans,
             out_features=(
                 self.mid_chans * dense_features[0] * dense_features[1] *
-                dense_features[2])
-            )
+                dense_features[2]))
+        self.dense = nn.Linear(
+            in_features=self.mid_chans,
+            out_features=(
+                self.mid_chans * dense_features[0] * dense_features[1] *
+                dense_features[2]))
         self.up0 = LinearUpSampling(self.mid_chans, out_channels)
 
     def forward(self, x):
@@ -403,10 +408,10 @@ class VDResampling(nn.Module):
         logger.debug("Resampling VD 1.2: {0}".format(out.shape))
         out_vd = self.dense1(out)
         logger.debug("Resampling VD 2: {0}".format(out_vd.shape))
-        distr = out_vd
-        out = VDraw(out_vd)
-        logger.debug("Resampling VDraw: {0}".format(out.shape))
-        out = self.dense2(out)
+        q = self.vdraw(out_vd)
+        z = self.vdraw.reparametrization(q)
+        logger.debug("Resampling VDraw: {0}".format(z.shape))
+        out = self.dense2(z)
         out = self.actv2(out)
         logger.debug("Resampling VU 1.1: {0}".format(out.shape))
         out = out.view((n_samples, self.mid_chans, self.dense_features[0],
@@ -414,7 +419,7 @@ class VDResampling(nn.Module):
         logger.debug("Resampling VU 1.2: {0}".format(out.shape))
         out = self.up0(out, x, cat=False)
         logger.debug("Resampling VU 2: {0}".format(out.shape))
-        return out, distr
+        return out, {"z": z, "q": q}
 
     def num_flat_features(self, x):
         size = x.size()[1:]
@@ -424,11 +429,30 @@ class VDResampling(nn.Module):
         return num_features
 
 
-def VDraw(x):
+class VDraw(nn.Module):
     """ Generate a Gaussian distribution with the given mean(128-d) and
     std(128-d).
     """
-    return torch.distributions.Normal(x[:, :128], x[:, 128:]).sample()
+    def __init__(self, in_channels=256, out_channels=128):
+        super(VDraw, self).__init__()
+        self.w_mu = nn.Linear(
+            in_features=in_channels,
+            out_features=out_channels)
+        self.w_logvar = nn.Linear(
+            in_features=in_channels,
+            out_features=out_channels)
+
+    def forward(self, x):
+        z_mu = self.w_mu(x)
+        z_logvar = self.w_logvar(x)
+        return Normal(loc=z_mu, scale=z_logvar.exp().pow(0.5))
+
+    def reparametrization(self, q):
+        if self.training:
+            z = q.rsample()
+        else:
+            z = q.loc
+        return z
 
 
 class VDecoderBlock(nn.Module):
@@ -500,9 +524,9 @@ class VAE(nn.Module):
 
     def forward(self, x):
         logger.debug("Variational decoder tensor: {0}".format(x.shape))
-        out, distr = self.vd_resample(x)
-        logger.debug("Variational decoder resampling: {0} - {1}".format(
-            out.shape, distr.shape))
+        out, resample_kwargs = self.vd_resample(x)
+        logger.debug("Variational decoder resampling: {0}".format(
+            out.shape))
         out = self.vd_block2(out, self.shapes[2])
         logger.debug("Variational decoder 1: {0}".format(out.shape))
         out = self.vd_block1(out, self.shapes[1])
@@ -511,4 +535,4 @@ class VAE(nn.Module):
         logger.debug("Variational decoder 3: {0}".format(out.shape))
         out = self.vd_end(out)
         logger.debug("Variational decoder final conv: {0}".format(out.shape))
-        return out, distr
+        return out, resample_kwargs
