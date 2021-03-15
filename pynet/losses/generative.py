@@ -15,6 +15,8 @@ Code: https://github.com/YannDubs/disentangling-vae
 
 # Imports
 import math
+import numpy as np
+from sklearn.utils.linear_assignment_ import linear_assignment
 import torch
 import torch.nn as nn
 from torch.nn import functional as func
@@ -573,14 +575,30 @@ class GMVAELoss(object):
 
         # Keep track of the clustering accuracy during training
         if labels is not None:
-            # TODO: compute accuracy from logits
-            # cluster_acc = cluster_acc(q_y.logits, labels)
-            raise NotImplementedError
+            cluster_acc = GMVAELoss.cluster_acc(
+                q_y_given_x.logits, labels, is_logits=True)
         else:
             cluster_acc = 0
 
         return loss, {"nll": nll, "kl_div_z": kl_div_z, "nent": nent,
                       "cluster_acc": cluster_acc}
+
+    @staticmethod
+    def cluster_acc(y_pred, y, is_logits=False):
+        # assert y_pred.size == y.size
+        if isinstance(y_pred, torch.Tensor):
+            y_pred = y_pred.detach().cpu().numpy()
+        if isinstance(y, torch.Tensor):
+            y = y.detach().cpu().numpy()
+        if is_logits:
+            y_pred = np.argmax(y_pred, axis=1)
+        n_classes = max(y_pred.max(), y.max()) + 1
+        gain = np.zeros((n_classes, n_classes), dtype=np.int64)
+        for idx in range(y_pred.size):
+            gain[y_pred[idx], y[idx]] += 1
+        cost = gain.max() - gain
+        ind = linear_assignment(cost)
+        return sum([gain[idx_i, idx_j] for idx_i, idx_j in ind]) / y_pred.size
 
 
 @Losses.register

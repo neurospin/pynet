@@ -221,7 +221,7 @@ class ConditionalCategorical(nn.Module):
 
 
 @Networks.register
-@DeepLearningDecorator(family=("encoder", "vae"))
+@DeepLearningDecorator(family=("encoder", "vae", "classifier"))
 class GMVAENet(nn.Module):
     """ The Gaussian Mixture VAE architecture.
 
@@ -520,7 +520,7 @@ class GMVAENet(nn.Module):
         # Sample latent Gaussian variable z
         if self.random_seed is not None:
             torch.manual_seed(self.random_seed)
-        z = q_z_given_xy.sample()
+        z = q_z_given_xy.rsample()
 
         # Generative distribution p(x | z)
         p_x_given_z = self.decoder(z)
