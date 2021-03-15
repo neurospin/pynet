@@ -16,7 +16,7 @@ Code: https://github.com/YannDubs/disentangling-vae
 # Imports
 import math
 import numpy as np
-from sklearn.utils.linear_assignment_ import linear_assignment
+from scipy.optimize import linear_sum_assignment
 import torch
 import torch.nn as nn
 from torch.nn import functional as func
@@ -597,8 +597,8 @@ class GMVAELoss(object):
         for idx in range(y_pred.size):
             gain[y_pred[idx], y[idx]] += 1
         cost = gain.max() - gain
-        ind = linear_assignment(cost)
-        return sum([gain[idx_i, idx_j] for idx_i, idx_j in ind]) / y_pred.size
+        row_ind, col_ind = linear_sum_assignment(cost)
+        return gain[row_ind, col_ind].sum() / y_pred.size
 
 
 @Losses.register
