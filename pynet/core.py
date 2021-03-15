@@ -483,7 +483,10 @@ class Base(Observable):
                 logger.debug("Mini-batch done.")
             pbar.finish()
             if concate_out:
-                y = torch.cat(y, 0)
+                try:
+                    y = torch.cat(y, 0)
+                except:
+                    warnings.warn("Impossible to concatenate y!")
             if with_logit:
                 logger.debug("Apply logit.")
                 if logit_function == "softmax":
