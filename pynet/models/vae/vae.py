@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 ##########################################################################
-# NSAp - Copyright (C) CEA, 2020
+# NSAp - Copyright (C) CEA, 2021
 # Distributed under the terms of the CeCILL-B license, as published by
 # the CEA-CNRS-INRIA. Refer to the LICENSE file or to
 # http://www.cecill.info/licences/Licence_CeCILL-B_V1-en.html
@@ -9,7 +9,7 @@
 
 
 """
-Spatio Temporal Variational auto-encoder (VAE).
+Variational Auto-Encoder (VAE).
 """
 
 
@@ -21,11 +21,32 @@ import torch.nn as nn
 import torch.nn.functional as func
 from torch.distributions import Normal
 from pynet.interfaces import DeepLearningDecorator
-from pynet.utils import Networks
+from pynet.utils import Networks, init_weight
 
 
 # Global parameters
 logger = logging.getLogger("pynet")
+
+
+class Dropout(torch.nn.modules.dropout._DropoutNd):
+    """ Dropout module that can be activated/deactivated manuually.
+    """
+    def __init__(self, p, deterministic=True, **kwargs):
+        """ Init class.
+
+        Parameters
+        ----------
+        p: float
+            the dropout probability.
+        deterministic: bool, default True
+            apply or not the dropout.
+        """
+        self.deterministic = deterministic
+        super().__init__(p, **kwargs)
+
+    def forward(self, input):
+        return func.dropout(
+            input, self.p, not self.deterministic, self.inplace)
 
 
 class Encoder(nn.Module):
@@ -97,17 +118,21 @@ class Encoder(nn.Module):
         return np.asarray(all_dims).astype(int)
 
     @staticmethod
-    def init_dense_layers(input_dim, hidden_dims, act_func, dropout):
+    def init_dense_layers(input_dim, hidden_dims, act_func, dropout,
+                          final_activation=True):
         """ Create the dense layers.
         """
         layers = []
         current_dim = input_dim
         for cnt, dim in enumerate(hidden_dims):
-            layers.extend([
-                nn.Linear(current_dim, dim),
-                act_func()])
-            if dropout > 0:
-                layers.append(nn.Dropout(dropout))
+            if not final_activation and cnt == (len(hidden_dims) - 1):
+                layers.append(nn.Linear(current_dim, dim))
+            else:
+                layers.extend([
+                    nn.Linear(current_dim, dim),
+                    act_func()])
+                if dropout > 0:
+                    layers.append(Dropout(dropout))
             current_dim = dim
         return layers
 
@@ -126,7 +151,7 @@ class Encoder(nn.Module):
                     stride=2, padding=2),
                 act_func()])
             if dropout > 0:
-                layers.append(nn.Dropout(dropout))
+                layers.append(Dropout(dropout))
             current_channels = n_filts
         return layers
 
@@ -159,7 +184,8 @@ class Decoder(nn.Module):
     """
     def __init__(self, latent_dim, conv_flts, dense_hidden_dims,
                  output_channels, output_dim, noise_out_logvar=-3,
-                 noise_fixed=True, act_func=None, dropout=0):
+                 noise_fixed=True, act_func=None, final_activation=False,
+                 dropout=0):
         """ Init class.
 
         Parameters
@@ -182,6 +208,8 @@ class Decoder(nn.Module):
             estimate the the output log var.
         act_func: callable, default None
             the activation function.
+        final_activation: bool, default False
+            apply activation function to the final layer.
         dropout: float, default 0
             define the dropout rate.
         """
@@ -208,12 +236,14 @@ class Decoder(nn.Module):
             dense_hidden_dims = []
         w_dense_layers = Encoder.init_dense_layers(
             latent_dim, dense_hidden_dims + [flatten_dim], self.act_func,
-            dropout)
+            dropout,
+            final_activation=not(not final_activation and conv_flts is None))
         self.w_dense = nn.Sequential(*w_dense_layers)
         if conv_flts is not None:
+            self.w_dense = nn.Sequential(*w_dense_layers)
             w_conv_layers = Decoder.init_conv_layers(
                 conv_flts[0], conv_flts[1:] + [output_channels], self.act_func,
-                dropout, ndim)
+                dropout, ndim, final_activation=final_activation)
             self.w_conv = nn.Sequential(*w_conv_layers)
         else:
             self.w_conv = None
@@ -223,21 +253,28 @@ class Decoder(nn.Module):
             requires_grad=(not noise_fixed))
 
     @staticmethod
-    def init_conv_layers(input_channels, flts, act_func, dropout, ndim=1):
+    def init_conv_layers(input_channels, flts, act_func, dropout, ndim=1,
+                         final_activation=True):
         """ Create the convolutional layers.
         """
         convt_fn = getattr(nn, "ConvTranspose{0}d".format(ndim))
         layers = []
         current_channels = input_channels
         for cnt, n_flts in enumerate(flts):
-            layers.extend([
-                convt_fn(
+            if not final_activation and cnt == (len(flts) - 1):
+                layers.append(convt_fn(
                     current_channels, out_channels=n_flts,
                     kernel_size=(3 if (cnt == 0) else 5),
-                    stride=2, padding=2),
-                act_func()])
-            if dropout > 0:
-                layers.append(nn.Dropout(dropout))
+                    stride=2, padding=2))
+            else:
+                layers.extend([
+                    convt_fn(
+                        current_channels, out_channels=n_flts,
+                        kernel_size=(3 if (cnt == 0) else 5),
+                        stride=2, padding=2),
+                    act_func()])
+                if dropout > 0:
+                    layers.append(Dropout(dropout))
             current_channels = n_flts
         return layers
 
@@ -267,7 +304,7 @@ class Decoder(nn.Module):
 
 @Networks.register
 @DeepLearningDecorator(family=("encoder", "vae"))
-class VAE(nn.Module):
+class VAENet(nn.Module):
     """ The VAE architecture.
 
     Spatiotemporal Trajectories in Resting-state FMRI Revealed by
@@ -283,8 +320,8 @@ class VAE(nn.Module):
     """
     def __init__(self, input_channels, input_dim, conv_flts, dense_hidden_dims,
                  latent_dim, noise_out_logvar=-3, noise_fixed=True,
-                 act_func=None, dropout=0, sparse=False, encoder=None,
-                 decoder=None):
+                 log_alpha=None, act_func=None, final_activation=False,
+                 dropout=0, sparse=False, encoder=None, decoder=None):
         """ Init class.
 
         Parameters
@@ -305,8 +342,12 @@ class VAE(nn.Module):
             the init output log var.
         noise_fixed: bool, default True
             estimate the the output log var.
+        log_alpha: nn.Parameter, default None
+            dropout probabilities estimate.
         act_func: callable, default None
             the activation function.
+        final_activation: bool, default False
+            apply activation function to the final layer.
         dropout: float, default 0
             define the dropout rate.
         sparse: bool, default False
@@ -316,13 +357,17 @@ class VAE(nn.Module):
         decoder: nn.Module, default None
             a custom decoder.
         """
-        super(VAE, self).__init__()
+        super(VAENet, self).__init__()
         if isinstance(input_dim, tuple):
             input_dim = list(input_dim)
         self.latent_dim = latent_dim
+        self.act_func = act_func
         if sparse:
-            self.log_alpha = nn.Parameter(
-                torch.FloatTensor(1, self.latent_dim).normal_(0, 0.1))
+            if log_alpha is None:
+                self.log_alpha = nn.Parameter(
+                    torch.FloatTensor(1, self.latent_dim).normal_(0, 0.1))
+            else:
+                self.log_alpha = log_alpha
         else:
             self.log_alpha = None
         encoder = encoder or Encoder
@@ -342,7 +387,10 @@ class VAE(nn.Module):
         self.decode = decoder(
             latent_dim, dec_conv_flts, dec_dense_hidden_dims,
             input_channels, input_dim, noise_out_logvar=noise_out_logvar,
-            noise_fixed=noise_fixed, act_func=act_func, dropout=dropout)
+            noise_fixed=noise_fixed, act_func=act_func,
+            final_activation=final_activation, dropout=dropout)
+        # TODO: Not working well
+        # self.kernel_initializer()
 
     def forward(self, x):
         """ The forward method.
@@ -352,6 +400,13 @@ class VAE(nn.Module):
         z = self.reparameterize(q)
         p = self.decode(z)
         return p, {"q": q, "z": z, "model": self}
+
+    def set_dropout(self, deterministic):
+        """ Reconfigure the dropout modules.
+        """
+        for module in model.modules():
+            if type(module) == Dropout:
+                module.deterministic = deterministic
 
     def reparameterize(self, q):
         """ Implement the reparametrization trick.
@@ -366,9 +421,7 @@ class VAE(nn.Module):
     def p_to_prediction(p):
         """ Get the prediction from various types of distributions.
         """
-        if isinstance(p, list):
-            return [stVAE.p_to_prediction(_p) for _p in p]
-        elif isinstance(p, Normal):
+        if isinstance(p, Normal):
             pred = p.loc.cpu().detach().numpy()
         elif isinstance(p, Bernoulli):
             pred = p.probs.cpu().detach().numpy()
@@ -428,32 +481,8 @@ class VAE(nn.Module):
         else:
             raise NotImplementedError
 
-
-if __name__ == "__main__":
-    n_samples = 10
-    n_channels = 3
-    n_dims = [33, 64, 35]
-
-    inputs = torch.zeros(n_samples, n_channels, n_dims[0])
-    for dense_hidden_dims in (None, [256], [128, 256]):
-        model = VAE(input_channels=inputs.shape[1], input_dim=inputs.shape[2],
-                    conv_flts=None, dense_hidden_dims=dense_hidden_dims,
-                    latent_dim=10, noise_out_logvar=-3, noise_fixed=False,
-                    act_func=None, dropout=0, sparse=False)
-        print(model)
-        p, dist_extra = model(inputs)
-        outputs = VAE.p_to_prediction(p)
-        print("-- dense_hidden_dims", dense_hidden_dims)
-        print("-- results", inputs.shape, outputs.shape, dist_extra["z"].shape)
-
-    for dim in (1, 2, 3):
-        inputs = torch.zeros(n_samples, n_channels, *n_dims[:dim])
-        model = VAE(input_channels=inputs.shape[1], input_dim=inputs.shape[2:],
-                    conv_flts=[128, 64, 64], dense_hidden_dims=None,
-                    latent_dim=10, noise_out_logvar=-3, noise_fixed=False,
-                    act_func=None, dropout=0, sparse=False)
-        print(model)
-        p, dist_extra = model(inputs)
-        outputs = VAE.p_to_prediction(p)
-        print("-- dim", dim)
-        print("-- results", inputs.shape, outputs.shape, dist_extra["z"].shape)
+    def kernel_initializer(self):
+        """ Init network weights.
+        """
+        for module in self.modules():
+            init_weight(module, self.act_func)

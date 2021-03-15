@@ -14,8 +14,7 @@ import torch
 import torch.nn as nn
 
 # Package import
-from pynet.losses import (
-    FocalLoss, MaskLoss, SoftDiceLoss, MSELoss, PCCLoss, NCCLoss)
+import pynet
 
 
 class TestLosses(unittest.TestCase):
@@ -24,6 +23,7 @@ class TestLosses(unittest.TestCase):
     def setUp(self):
         """ Setup test.
         """
+        self.losses = pynet.get_tools(tool_name="losses")
         self.n_classes = 3
         self.x = torch.randn(2, self.n_classes, 3, 5, 5, requires_grad=True)
         self.target = torch.empty(2, 3, 5, 5, dtype=torch.long).random_(
@@ -39,7 +39,7 @@ class TestLosses(unittest.TestCase):
     def test_focal(self):
         """ Test the FocalLoss.
         """
-        criterion = FocalLoss(
+        criterion = self.losses["FocalLoss"](
             n_classes=self.n_classes, gamma=0, reduction="mean",
             with_logit=True, alpha=self.weights.numpy().tolist())
         ref_criterion = nn.CrossEntropyLoss(weight=self.weights)
@@ -55,7 +55,7 @@ class TestLosses(unittest.TestCase):
     def test_mask(self):
         """ Test the MaskLoss.
         """
-        criterion = MaskLoss(
+        criterion = self.losses["MaskLoss"](
             n_classes=self.n_classes, beta=1., reduction="mean",
             with_logit=True, alpha=self.weights.numpy().tolist())
         ref_criterion = nn.CrossEntropyLoss(weight=self.weights)
@@ -68,7 +68,8 @@ class TestLosses(unittest.TestCase):
     def test_softdice(self):
         """ Test the SoftDiceLoss.
         """
-        criterion = SoftDiceLoss(reduction="mean", with_logit=True)
+        criterion = self.losses["SoftDiceLoss"](
+            reduction="mean", with_logit=True)
         loss = criterion(self.x, self.target)
         alt_loss = criterion._forward_without_resizing(self.x, self.target)
         loss.backward()
@@ -78,7 +79,7 @@ class TestLosses(unittest.TestCase):
     def test_mse(self):
         """ Test the MSELoss.
         """
-        criterion = MSELoss()
+        criterion = self.losses["MSELoss"]()
         ref_criterion = nn.MSELoss(reduction="mean")
         loss = criterion(self.x, self.x)
         ref_loss = ref_criterion(self.x, self.x)
@@ -89,14 +90,14 @@ class TestLosses(unittest.TestCase):
     def test_pcc(self):
         """ Test the PCCLoss.
         """
-        criterion = PCCLoss()
+        criterion = self.losses["PCCLoss"]()
         loss = criterion(self.x, self.x)
         loss.backward()
 
     def test_ncc(self):
         """ Test the NCCLoss.
         """
-        criterion = NCCLoss()
+        criterion = self.losses["NCCLoss"]()
         loss = criterion(self.x[:, :1], self.x[:, :1])
         loss.backward()
         self.assertTrue(np.allclose(np.abs(loss.detach().numpy()), 1))

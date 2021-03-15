@@ -21,7 +21,7 @@ class TestModels(unittest.TestCase):
     def setUp(self):
         """ Setup test.
         """
-        self.networks = pynet.get_tools()["networks"]
+        self.networks = pynet.get_tools(tool_name="networks")
         self.x2 = torch.randn(1, 1, 127, 128)
         self.x3 = torch.randn(1, 1, 64, 64, 64)
 
@@ -154,6 +154,53 @@ class TestModels(unittest.TestCase):
         }
         net = self.networks["DeepLabNet"](**params)
         y = net(self.x3[..., 0])
+
+    def test_vae(self):
+        """ Test the VAENet.
+        """
+        n_samples = 10
+        n_channels = 3
+        n_dims = [33, 64, 35]
+        inputs = torch.zeros(n_samples, n_channels, n_dims[0])
+        for dense_hidden_dims in (None, [256], [128, 256]):
+            model = self.networks["VAE"](
+                input_channels=inputs.shape[1], input_dim=inputs.shape[2],
+                conv_flts=None, dense_hidden_dims=dense_hidden_dims,
+                latent_dim=10, noise_out_logvar=-3, noise_fixed=False,
+                act_func=None, dropout=0, sparse=False)
+            print(model)
+            p, dist_extra = model(inputs)
+            outputs = VAE.p_to_prediction(p)
+            print("-- dense_hidden_dims", dense_hidden_dims)
+            print("-- results", inputs.shape, outputs.shape,
+                  dist_extra["z"].shape)
+        for dim in (1, 2, 3):
+            inputs = torch.zeros(n_samples, n_channels, *n_dims[:dim])
+            model = self.networks["VAE"](
+                input_channels=inputs.shape[1], input_dim=inputs.shape[2:],
+                conv_flts=[128, 64, 64], dense_hidden_dims=None,
+                latent_dim=10, noise_out_logvar=-3, noise_fixed=False,
+                act_func=None, dropout=0, sparse=False)
+            print(model)
+            p, dist_extra = model(inputs)
+            outputs = VAE.p_to_prediction(p)
+            print("-- dim", dim)
+            print("-- results", inputs.shape, outputs.shape,
+                  dist_extra["z"].shape)
+
+    def test_vae(self):
+        """ Test the GMVAENet.
+        """
+        n_samples = 5
+        n_channels = 2
+        n_data = 33
+        inputs = torch.zeros(n_samples, n_channels, n_data)
+        gmvae = self.networks["GMVAENet"](
+            input_dim=inputs.shape[2], latent_dim=10, n_mix_components=3,
+            dense_hidden_dims=[256], sigma_min=0.001, raw_sigma_bias=0.25,
+            dropout=0, temperature=1, gen_bias_init=0.)
+        print(gmvae)
+        p_x_given_z, dists = gmvae.forward(inputs)
 
 
 if __name__ == "__main__":

@@ -86,12 +86,14 @@ plot_data(dataset.outputs, channel=1, nb_samples=5)
 
 import os
 from torch.optim import lr_scheduler
+import pynet
 from pynet.losses import NvNetCombinedLoss
 from pynet.interfaces import NvNetSegmenter
 from pynet.plotting import plot_history
 from pynet.history import History
 
-my_loss = NvNetCombinedLoss(
+losses = pynet.get_tools(tool_name="losses")
+my_loss = losses["NvNetCombinedLoss"](
     num_classes=4,
     k1=0.1,
     k2=0.1)

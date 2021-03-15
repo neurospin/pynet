@@ -30,11 +30,11 @@ from nilearn.image.resampling import resample_to_img
 from nilearn.input_data import MultiNiftiMasker
 import pandas as pd
 from sklearn.linear_model import Lasso
+import pynet
 from pynet.datasets import DataManager
 from pynet.plotting import Board, update_board
 from pynet import NetParameters
-from pynet.models.vae.vunet import DecodeLoss
-from pynet.interfaces import DVAENetEncoder, STAAENetEncoder
+from pynet.interfaces import VAENetEncoder, STAAENetEncoder
 from pynet.utils import setup_logging
 from pynet.interfaces import DeepLearningInterface
 import torch
@@ -105,15 +105,19 @@ manager = DataManager.from_numpy(train_inputs=iterator, batch_size=BATCH_SIZE,
 
 # Create model
 if MODEL == "DVAE":
+    losses = pynet.get_tools(tool_name="losses")
+    loss_klass = losses["BetaHLoss"]
     params = NetParameters(
-        latent_dim=32,
+        input_channels=1,
         input_dim=iterator.shape[-1],
-        hidden_dims=[256, 128, 64])
-    interface = DVAENetEncoder(
+        conv_flts=None,
+        dense_hidden_dims=[256, 128, 64],
+        latent_dim=32)
+    interface = VAENetEncoder(
         params,
         optimizer_name="Adam",
         learning_rate=0.00001,
-        loss=DecodeLoss(rec_loss="mse"),
+        loss=loss_klass(use_mse=True, beta=1.),
         use_cuda=False)
     name = MODEL
 else:

@@ -20,10 +20,11 @@ from torch.distributions import Normal, kl_divergence
 from pynet import NetParameters
 from pynet.datasets import DataManager
 from pynet.datasets.dsprites import DSprites
-from pynet.interfaces import VAEEncoder
+from pynet.interfaces import VAENetEncoder
 from pynet.plotting import Board, update_board
-from pynet.models.vae.losses import get_loss
-from pynet.models.vae.utils import reconstruct_traverse, make_mosaic_img, add_labels
+from pynet.losses import get_vae_loss
+from pynet.models.vae.utils import (
+    reconstruct_traverse, make_mosaic_img, add_labels)
 
 
 # Global parameters
@@ -43,11 +44,11 @@ manager = DataManager.from_dataset(
 # Test different losses
 
 loss_params = {
-    "betah": {"beta": 4, "steps_anneal": 0},
+    "betah": {"beta": 4, "steps_anneal": 0, "use_mse": True},
     "betab": {"C_init": 0.5, "C_fin": 25, "gamma": 100,
-              "steps_anneal": 100000},
+              "steps_anneal": 100000, "use_mse": True},
     "btcvae": {"dataset_size": len(dataset), "alpha": 1, "beta": 1, "gamma": 6,
-               "is_mss": True, "steps_anneal": 0}
+               "is_mss": True, "steps_anneal": 0, "use_mse": True}
 }
 
 
@@ -114,9 +115,9 @@ for loss_name in ("betah", "betab", "btcvae"):
         act_func=None,
         dropout=0,
         sparse=False)
-    loss = get_loss(loss_name=loss_name, **loss_params[loss_name])
+    loss = get_vae_loss(loss_name=loss_name, **loss_params[loss_name])
     if os.path.isfile(weights_filename):
-        vae = VAEEncoder(
+        vae = VAENetEncoder(
             params,
             optimizer_name="Adam",
             learning_rate=ADAM_LR,
@@ -139,7 +140,7 @@ for loss_name in ("betah", "betab", "btcvae"):
             checkpointdir=checkpointdir,
             fold_index=0,
             with_validation=False,
-            save_after_epochs=10)
+            save_after_epochs=5)
         plot_losses(vae.loss.cache,
                     os.path.join(WDIR, "loss_{0}.png".format(loss_name)))
     print(vae.model)

@@ -22,6 +22,7 @@ from pynet.datasets import DataManager, fetch_registration
 from pynet.utils import setup_logging
 from pynet.interfaces import (
     VoxelMorphNetRegister, ADDNetRegister, VTNetRegister, RCNetRegister)
+import pynet
 from pynet.models.voxelmorphnet import FlowRegularizer
 from pynet.models.vtnet import ADDNetRegularizer
 from torch.optim import lr_scheduler
@@ -33,6 +34,7 @@ import matplotlib.pyplot as plt
 
 setup_logging(level="debug")
 logger = logging.getLogger("pynet")
+losses = pynet.get_tools(tool_name="losses")
 
 outdir = "/neurospin/nsap/tmp/registration"
 data = fetch_registration(
@@ -73,7 +75,7 @@ if base_network == "rcnet":
         rcnet_params,
         optimizer_name="Adam",
         learning_rate=1e-4,
-        loss=RCNetLoss(),
+        loss=losses["RCNetLoss"](),
         use_cuda=True)
 elif base_network == "addnet":
     addnet_params = NetParameters(
@@ -86,7 +88,7 @@ elif base_network == "addnet":
         addnet_params,
         optimizer_name="Adam",
         learning_rate=1e-4,
-        loss=PCCLoss(concat=True),
+        loss=losses["PCCLoss"](concat=True),
         use_cuda=True)
     regularizer = ADDNetRegularizer(k1=0.1, k2=0.1)
     net.add_observer("regularizer", regularizer)
@@ -102,7 +104,7 @@ elif base_network == "vtnet":
         vtnet_params,
         optimizer_name="Adam",
         learning_rate=1e-4,
-        loss=PCCLoss(concat=True),  # MSELoss(concat=True),
+        loss=losses["PCCLoss"](concat=True),  # MSELoss(concat=True),
         use_cuda=True)
     flow_regularizer = FlowRegularizer(k1=1.)
     net.add_observer("regularizer", flow_regularizer)
@@ -117,7 +119,7 @@ else:
         optimizer_name="Adam",
         learning_rate=1e-4,
         # weight_decay=1e-5,
-        loss=MSELoss(concat=True),  # NCCLoss,
+        loss=losses["MSELoss"](concat=True),  # NCCLoss,
         use_cuda=False)
     flow_regularizer = FlowRegularizer(k1=0.01)
     net.add_observer("regularizer", flow_regularizer)
