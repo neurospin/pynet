@@ -192,6 +192,21 @@ class BaseLoss(object):
         return dimension_wise_kl.sum()
 
     @staticmethod
+    def _compute_ll(p, data):
+        """ Compute log likelihood.
+
+        Parameters
+        ----------
+        p: torch.distributions
+            probabilistic decoder (or likelihood of generating true data
+            sample given the latent code).
+        data: torch.Tensor
+            reference data.
+        """
+        ll = p.log_prob(data)
+        return - ll
+
+    @staticmethod
     def kl_log_uniform(normal):
         """ Calculates the KL log uniform divergence.
 
@@ -209,6 +224,7 @@ class BaseLoss(object):
         neg_kl = (k1 * torch.sigmoid(k2 + k3 * log_alpha) - 0.5 *
                   torch.log1p(torch.exp(-log_alpha)) - k1)
         return - neg_kl.mean(dim=0).sum()
+    
 
     @staticmethod
     def compute_log_alpha(mu, logvar):
