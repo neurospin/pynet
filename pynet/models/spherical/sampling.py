@@ -156,7 +156,7 @@ def vertex_adjacency_graph(vertices, triangles):
     > [1, 3, 4]
     """
     graph = nx.Graph()
-    nodes = [(i, {'coordinates': coords}) for i, coords in enumerate(vertices)]
+    nodes = [(idx, {'coordinates': coords}) for idx, coords in enumerate(vertices)]
     graph.add_nodes_from(nodes)
     edges, edges_triangle = triangles_to_edges(triangles)
     edges_cache = []
@@ -275,6 +275,24 @@ def downsample(vertices, target_vertices):
 
 
 def downsample_data(data, down_indices, neighs):
+    """ Downsample data to smaller icosahedron
+
+    Parameters
+    ----------
+    data: array (n_samples, n_vertices, n_features)
+        data to be downsampled
+    down_indces: list
+        contains the downsample vertices indices in the upper order
+        icosahedron, for each downsampling
+    neighs: list
+        contains the neighbors of each vertex of the upper order
+        icosahedron, for each downsampling
+
+    Returns
+    -------
+    downsampled_data: array (n_samples, new_n_vertices, n_features)
+        downsampled data
+    """
     if len(data.shape) < 3:
         data = data[np.newaxis, :, :]
     data = data.transpose((0, 2, 1))

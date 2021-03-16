@@ -69,6 +69,12 @@ class SphericalUNet(nn.Module):
             convolution (1 ring), 'interp' for nearest neighbor linear
             interpolation, 'maxpad' for max pooling shifted zero padding,
             and 'zeropad' for classical zero padding.
+        merge_mode: str, default 'concat'
+            specifies how to merge to information during the reconstruction
+            step, in the UpBlocks: 'concat', 'add' or None
+        icosahedron: function, default icosahedron
+            function that return a icosahedron, taking as argument its order
+            and returning its vertices and triangles
         cachedir: str, default None
             set tthis folder tu use smart caching speedup.
         """
@@ -288,7 +294,7 @@ class UpBlock(nn.Module):
     """
     def __init__(self, conv_layer, in_ch, out_ch, conv_neigh_indices,
                  neigh_indices, up_neigh_indices, down_indices, up_mode,
-                 merge_mode="concat"):
+                 merge_mode):
         """ Init.
 
         Parameters
@@ -307,11 +313,14 @@ class UpBlock(nn.Module):
             upsampling neighborhood indices at sampling i + 1.
         down_indices: array
             downsampling indices at sampling i.
-        up_mode: str, default 'interp'
+        up_mode: str
             type of upsampling: 'transpose' for transpose
             convolution, 'interp' for nearest neighbor linear interpolation,
             'maxpad' for max pooling shifted zero padding, and 'zeropad' for
             classical zero padding.
+        merge_mode: str
+            specifies how to merge information coming from the corresponding
+            DownBlock: 'concat', 'add' or None
         """
         super(UpBlock, self).__init__()
         self.up_mode = up_mode
