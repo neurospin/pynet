@@ -534,6 +534,41 @@ class BtcvaeLoss(BaseLoss):
 
 
 @Losses.register
+class VAEGMPLoss(object):
+    """ VAEGMP Loss.
+    """
+    def __init__(self):
+        """ Init class.
+        """
+        super(VAEGMPLoss, self).__init__()
+        self.layer_outputs = None
+
+    def __call__(self, p_x_given_z, data):
+        """ Compute loss.
+        """
+        if self.layer_outputs is None:
+            raise ValueError(
+                "This loss needs intermediate layers outputs. Please register "
+                "an appropriate callback.")
+        q_z_given_x = self.layer_outputs["q_z_given_x"]
+        z = self.layer_outputs["z"]
+        p_z = self.layer_outputs["p_z"]
+
+        # Reconstruction loss term i.e. the negative log-likelihood
+        nll = - p_x_given_z.log_prob(data).sum()
+        nll /= len(data)
+
+        # Latent loss between approximate posterior and prior for z
+        kl_div_z = (q_z_given_x.log_prob(z) - p_z.log_prob(z)).sum()
+        kl_div_z /= len(data)
+
+        # Need to maximise the ELBO with respect to these weights
+        loss = nll + kl_div_z
+
+        return loss, {"nll": nll, "kl_div_z": kl_div_z}
+
+
+@Losses.register
 class GMVAELoss(object):
     """ GMVAE Loss.
     """

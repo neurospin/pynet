@@ -9,10 +9,12 @@
 
 # System import
 import unittest
+import copy
 import torch
 
 # Package import
 import pynet
+from pynet.losses import get_vae_loss
 
 
 class TestModels(unittest.TestCase):
@@ -22,6 +24,8 @@ class TestModels(unittest.TestCase):
         """ Setup test.
         """
         self.networks = pynet.get_tools(tool_name="networks")
+        self.losses = pynet.get_tools(tool_name="losses")
+        self.x1 = torch.randn(3, 1, 64)
         self.x2 = torch.randn(1, 1, 127, 128)
         self.x3 = torch.randn(1, 1, 64, 64, 64)
 
@@ -158,49 +162,145 @@ class TestModels(unittest.TestCase):
     def test_vae(self):
         """ Test the VAENet.
         """
-        n_samples = 10
-        n_channels = 3
-        n_dims = [33, 64, 35]
-        inputs = torch.zeros(n_samples, n_channels, n_dims[0])
+        # Dense network only
+        params = {
+            "input_channels": self.x1.shape[1],
+            "input_dim": self.x1.shape[2],
+            "conv_flts": None,
+            "dense_hidden_dims": None,
+            "latent_dim": 10}
+        loss_params = {
+            "betah": {"beta": 4, "steps_anneal": 0, "use_mse": True},
+            "betab": {"C_init": 0.5, "C_fin": 25, "gamma": 100,
+                      "steps_anneal": 100000, "use_mse": True},
+            "btcvae": {"dataset_size": self.x1.shape[0], "alpha": 1,
+                       "beta": 1, "gamma": 6, "is_mss": True,
+                       "steps_anneal": 0, "use_mse": True}}
         for dense_hidden_dims in (None, [256], [128, 256]):
-            model = self.networks["VAE"](
-                input_channels=inputs.shape[1], input_dim=inputs.shape[2],
-                conv_flts=None, dense_hidden_dims=dense_hidden_dims,
-                latent_dim=10, noise_out_logvar=-3, noise_fixed=False,
-                act_func=None, dropout=0, sparse=False)
-            print(model)
-            p, dist_extra = model(inputs)
-            outputs = VAE.p_to_prediction(p)
-            print("-- dense_hidden_dims", dense_hidden_dims)
-            print("-- results", inputs.shape, outputs.shape,
-                  dist_extra["z"].shape)
-        for dim in (1, 2, 3):
-            inputs = torch.zeros(n_samples, n_channels, *n_dims[:dim])
-            model = self.networks["VAE"](
-                input_channels=inputs.shape[1], input_dim=inputs.shape[2:],
-                conv_flts=[128, 64, 64], dense_hidden_dims=None,
-                latent_dim=10, noise_out_logvar=-3, noise_fixed=False,
-                act_func=None, dropout=0, sparse=False)
-            print(model)
-            p, dist_extra = model(inputs)
-            outputs = VAE.p_to_prediction(p)
-            print("-- dim", dim)
-            print("-- results", inputs.shape, outputs.shape,
-                  dist_extra["z"].shape)
+            c_params = copy.deepcopy(params)
+            c_params["dense_hidden_dims"] = dense_hidden_dims
+            net = self.networks["VAENet"](**c_params)
+            p, dists = net(self.x1)
+            outputs = self.networks["VAENet"].p_to_prediction(p)
+        for loss_name in ("betah", "betab", "btcvae"):
+            loss_instance = get_vae_loss(
+                loss_name=loss_name, **loss_params[loss_name])
+            loss_instance.layer_outputs = dists
+            loss = loss_instance(p, self.x1)
 
-    def test_vae(self):
+        # Dense + Conv Nd
+        for dim in (1, 2, 3):
+            if dim == 1:
+                x = self.x1
+            elif dim == 2:
+                x = self.x2
+            else:
+                x = self.x3
+            c_params = copy.deepcopy(params)
+            c_params["conv_flts"] = [128, 64, 64]
+            c_params["input_dim"] = x.shape[2:]
+            net = self.networks["VAENet"](**c_params)
+            p, dists = net(x)
+            outputs = self.networks["VAENet"].p_to_prediction(p)
+
+    def test_sparsevae(self):
+        """ Test the sVAENet.
+        """
+        # Dense network only
+        params = {
+            "input_channels": self.x1.shape[1],
+            "input_dim": self.x1.shape[2],
+            "conv_flts": None,
+            "dense_hidden_dims": None,
+            "latent_dim": 10,
+            "noise_fixed": False,
+            "sparse": True}
+        net = self.networks["VAENet"](**params)
+        p, dists = net(self.x1)
+        outputs = self.networks["VAENet"].p_to_prediction(p)
+        loss_instance = self.losses["SparseLoss"](beta=4)
+        loss_instance.layer_outputs = dists
+        loss = loss_instance(p, self.x1)
+
+    def test_gmvae(self):
         """ Test the GMVAENet.
         """
-        n_samples = 5
-        n_channels = 2
-        n_data = 33
-        inputs = torch.zeros(n_samples, n_channels, n_data)
-        gmvae = self.networks["GMVAENet"](
-            input_dim=inputs.shape[2], latent_dim=10, n_mix_components=3,
-            dense_hidden_dims=[256], sigma_min=0.001, raw_sigma_bias=0.25,
-            dropout=0, temperature=1, gen_bias_init=0.)
-        print(gmvae)
-        p_x_given_z, dists = gmvae.forward(inputs)
+        params = {
+            "input_dim": self.x1.shape[2],
+            "latent_dim": 10,
+            "n_mix_components": 3,
+            "dense_hidden_dims": [256]
+        }
+        net = self.networks["GMVAENet"](**params)
+        p_x_given_z, dists = net(self.x1)
+        loss_instance = self.losses["GMVAELoss"]()
+        loss_instance.layer_outputs = dists
+        loss = loss_instance(p_x_given_z, self.x1)
+
+    def test_vaegmp(self):
+        """ Test the VAEGMPNet.
+        """
+        params = {
+            "input_dim": self.x1.shape[2],
+            "latent_dim": 10,
+            "n_mix_components": 3,
+            "dense_hidden_dims": [256]
+        }
+        net = self.networks["VAEGMPNet"](**params)
+        p_x_given_z, dists = net(self.x1)
+        loss_instance = self.losses["VAEGMPLoss"]()
+        loss_instance.layer_outputs = dists
+        loss = loss_instance(p_x_given_z, self.x1)
+
+    def test_vade(self):
+        """ Test the VaDE.
+        """
+        params = {
+            "n_classes": 2,
+            "input_dim": self.x1.shape[2],
+            "latent_dim": 10,
+            "hidden_dims": [500, 500, 2000],
+            "binary": True
+        }
+        net = self.networks["VaDENet"](**params)
+        x = self.x1[:, 0]
+        recon_x, dists = net(x)
+        loss_instance = self.losses["VaDELoss"](alpha=1)
+        loss_instance.layer_outputs = dists
+        loss = loss_instance(recon_x, x)
+
+    def test_mcvae(self):
+        """ Test the MCVAE.
+        """
+        params = {
+            "n_channels": 2,
+            "n_feats": [self.x1.shape[2], self.x1.shape[2]],
+            "latent_dim": 10
+        }
+        net = self.networks["MCVAE"](**params)
+        x = [self.x1, self.x1]
+        p_x_given_z, dists = net(x)
+        loss_instance = self.losses["MCVAELoss"](
+            n_channels=params["n_channels"], beta=1.)
+        loss_instance.layer_outputs = dists
+        loss = loss_instance(p_x_given_z)
+
+    def test_sphericalunet(self):
+        """ Test the SphericalUNet.
+        """
+        params = {
+            "in_order": 3,
+            "in_channels": 2,
+            "out_channels": 3,
+            "depth": 2,
+            "start_filts": 32,
+            "conv_mode": "1ring",
+            "up_mode": "transpose"
+        }
+        net = self.networks["SphericalUNet"](**params)
+        vertices = net.ico[params["in_order"]].vertices
+        x = torch.randn(1, params["in_channels"], len(vertices))
+        y = net(x)
 
 
 if __name__ == "__main__":
