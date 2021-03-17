@@ -22,7 +22,6 @@ import torch.nn as nn
 import torch.nn.functional as func
 from torch.autograd import Variable
 from pynet.observable import SignalObject
-from pynet.losses import PCCLoss
 from .vtnet import ADDNetRegularizer
 from .voxelmorphnet import FlowRegularizer
 from .voxelmorphnet import SpatialTransformer

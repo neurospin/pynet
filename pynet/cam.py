@@ -16,6 +16,7 @@ Module that provides tools to compute class activation map.
 # Imports
 import logging
 import skimage
+import skimage.transform
 import numpy as np
 import torch
 from torch.autograd import Variable

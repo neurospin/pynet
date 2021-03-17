@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 ##########################################################################
-# NSAp - Copyright (C) CEA, 2020
+# NSAp - Copyright (C) CEA, 2021
 # Distributed under the terms of the CeCILL-B license, as published by
 # the CEA-CNRS-INRIA. Refer to the LICENSE file or to
 # http://www.cecill.info/licences/Licence_CeCILL-B_V1-en.html
@@ -8,21 +8,24 @@
 ##########################################################################
 
 """
-Module containing VAE losses utilities.
+Module that provides generative losses.
 
 Code: https://github.com/YannDubs/disentangling-vae
 """
 
 # Imports
 import math
+import numpy as np
+from scipy.optimize import linear_sum_assignment
 import torch
 import torch.nn as nn
 from torch.nn import functional as func
 from torch.distributions import Bernoulli, Normal, Laplace, kl_divergence
+from pynet.utils import Losses
 
 
-def get_loss(loss_name, **kwargs):
-    """ Return the correct loss function given the input arguments.
+def get_vae_loss(loss_name, **kwargs):
+    """ Return the correct VAE loss function given the input arguments.
 
     The parameters for each loss:
 
@@ -45,7 +48,8 @@ def get_loss(loss_name, **kwargs):
     loss: @callable
         the loss function.
     """
-    common_kwargs = dict(steps_anneal=kwargs["steps_anneal"])
+    common_kwargs = dict(steps_anneal=kwargs["steps_anneal"],
+                         use_mse=kwargs["use_mse"])
 
     if loss_name == "betah":
         loss = BetaHLoss(beta=kwargs["beta"], **common_kwargs)
@@ -76,7 +80,7 @@ def get_loss(loss_name, **kwargs):
 class BaseLoss(object):
     """ Base class for losses.
     """
-    def __init__(self, steps_anneal=0):
+    def __init__(self, steps_anneal=0, use_mse=False):
         """ Init class.
 
         Parameters
@@ -84,10 +88,14 @@ class BaseLoss(object):
         steps_anneal: int, default 0
             number of annealing steps where gradually adding the
             regularisation.
+        use_mse: bool, default False
+            if set use MSE for the reconstruction loss rather than Log
+            Likelihood.
         """
         self.n_train_steps = 0
         self.layer_outputs = None
         self.steps_anneal = steps_anneal
+        self.use_mse = use_mse
         self.cache = {}
 
     def get_params(self):
@@ -140,10 +148,10 @@ class BaseLoss(object):
         if isinstance(p, Bernoulli):
             loss = func.binary_cross_entropy(p.probs, data, reduction="sum")
         elif isinstance(p, Normal):
-            # loss in [0,255] space but normalized by 255 to not be too big
-            # loss = func.mse_loss(p.loc * 255, data * 255, reduction="sum")
-            # loss /= 255
-            loss = self.compute_ll(p, data)
+            if self.use_mse:
+                loss = func.mse_loss(p.loc, data, reduction="sum")
+            else:
+                loss = self.compute_ll(p, data)
         elif isinstance(p, Laplace):
             loss = func.l1_loss(p.loc, data, reduction="sum")
             # empirical value to give similar values than bernoulli => use
@@ -155,6 +163,11 @@ class BaseLoss(object):
 
         batch_size = len(data)
         loss = loss / batch_size
+
+        if "iteration" not in self.cache:
+            self.cache["iteration"] = 0
+        self.cache["iteration"] += len(data)
+        self.cache.setdefault("ll", []).append(loss.detach().cpu().numpy())
 
         return loss
 
@@ -169,12 +182,7 @@ class BaseLoss(object):
         data: torch.Tensor
             reference data.
         """
-        ll = p.log_prob(data).sum()
-        if "iteration" not in self.cache:
-            self.cache["iteration"] = 0
-        self.cache["iteration"] += len(data)
-        self.cache.setdefault("ll", []).append(ll.detach().cpu().numpy())
-        return - ll
+        return - p.log_prob(data).sum(-1, keepdim=True)
 
     def kl_normal_loss(self, q):
         """ Calculates the KL divergence between a normal distribution
@@ -262,6 +270,7 @@ class BaseLoss(object):
         self.n_train_steps = iteration
 
 
+@Losses.register
 class BetaHLoss(BaseLoss):
     """ Compute the Beta-VAE loss.
 
@@ -297,6 +306,7 @@ class BetaHLoss(BaseLoss):
         return loss, {"rec_loss": rec_loss, "kl_loss": kl_loss}
 
 
+@Losses.register
 class BetaBLoss(BaseLoss):
     """ Compute the Beta-VAE loss.
 
@@ -337,6 +347,7 @@ class BetaBLoss(BaseLoss):
         return loss, {"rec_loss": rec_loss, "kl_loss": kl_loss}
 
 
+@Losses.register
 class SparseLoss(BaseLoss):
     """ Compute the Beta-Sparse VAE loss.
 
@@ -372,6 +383,7 @@ class SparseLoss(BaseLoss):
         return loss, {"rec_loss": rec_loss, "kl_loss": kl_loss}
 
 
+@Losses.register
 class FactorKLoss(BaseLoss):
     """ Compute the Factor-VAE loss (algorithm 2).
 
@@ -412,6 +424,7 @@ class FactorKLoss(BaseLoss):
         raise NotImplementedError
 
 
+@Losses.register
 class BtcvaeLoss(BaseLoss):
     """ Compute the decomposed KL loss with either minibatch weighted
     sampling or minibatch stratified sampling according.
@@ -534,3 +547,303 @@ class BtcvaeLoss(BaseLoss):
         W.view(-1)[1::M + 1] = strat_weight
         W[M - 1, 0] = strat_weight
         return W.log()
+
+
+@Losses.register
+class VAEGMPLoss(object):
+    """ VAEGMP Loss.
+    """
+    def __init__(self):
+        """ Init class.
+        """
+        super(VAEGMPLoss, self).__init__()
+        self.layer_outputs = None
+
+    def __call__(self, p_x_given_z, data):
+        """ Compute loss.
+        """
+        if self.layer_outputs is None:
+            raise ValueError(
+                "This loss needs intermediate layers outputs. Please register "
+                "an appropriate callback.")
+        q_z_given_x = self.layer_outputs["q_z_given_x"]
+        z = self.layer_outputs["z"]
+        p_z = self.layer_outputs["p_z"]
+
+        # Reconstruction loss term i.e. the negative log-likelihood
+        nll = - p_x_given_z.log_prob(data).sum()
+        nll /= len(data)
+
+        # Latent loss between approximate posterior and prior for z
+        kl_div_z = (q_z_given_x.log_prob(z) - p_z.log_prob(z)).sum()
+        kl_div_z /= len(data)
+
+        # Need to maximise the ELBO with respect to these weights
+        loss = nll + kl_div_z
+
+        return loss, {"nll": nll, "kl_div_z": kl_div_z}
+
+
+@Losses.register
+class GMVAELoss(object):
+    """ GMVAE Loss.
+    """
+    def __init__(self):
+        """ Init class.
+        """
+        super(GMVAELoss, self).__init__()
+        self.layer_outputs = None
+
+    def __call__(self, p_x_given_z, data, labels=None):
+        """ Compute loss.
+        """
+        if self.layer_outputs is None:
+            raise ValueError(
+                "This loss needs intermediate layers outputs. Please register "
+                "an appropriate callback.")
+        q_y_given_x = self.layer_outputs["q_y_given_x"]
+        y = self.layer_outputs["y"]
+        q_z_given_xy = self.layer_outputs["q_z_given_xy"]
+        z = self.layer_outputs["z"]
+        p_z_given_y = self.layer_outputs["p_z_given_y"]
+
+        # Reconstruction loss term i.e. the negative log-likelihood
+        nll = - p_x_given_z.log_prob(data).sum()
+        nll /= len(data)
+
+        # Latent loss between approximate posterior and prior for z
+        kl_div_z = (q_z_given_xy.log_prob(z) - p_z_given_y.log_prob(z)).sum()
+        kl_div_z /= len(data)
+
+        # Conditional entropy loss
+        logits = q_y_given_x.logits
+        probs = func.softmax(logits, dim=-1)
+        nent = (- probs * torch.log(probs)).sum()
+        nent /= len(data)
+
+        # Need to maximise the ELBO with respect to these weights
+        loss = nll + kl_div_z + nent
+
+        # Keep track of the clustering accuracy during training
+        if labels is not None:
+            cluster_acc = GMVAELoss.cluster_acc(
+                q_y_given_x.logits, labels, is_logits=True)
+        else:
+            cluster_acc = 0
+
+        return loss, {"nll": nll, "kl_div_z": kl_div_z, "nent": nent,
+                      "cluster_acc": cluster_acc}
+
+    @staticmethod
+    def cluster_acc(y_pred, y, is_logits=False):
+        # assert y_pred.size == y.size
+        if isinstance(y_pred, torch.Tensor):
+            y_pred = y_pred.detach().cpu().numpy()
+        if isinstance(y, torch.Tensor):
+            y = y.detach().cpu().numpy()
+        if is_logits:
+            y_pred = np.argmax(y_pred, axis=1)
+        n_classes = max(y_pred.max(), y.max()) + 1
+        gain = np.zeros((n_classes, n_classes), dtype=np.int64)
+        for idx in range(y_pred.size):
+            gain[y_pred[idx], y[idx]] += 1
+        cost = gain.max() - gain
+        row_ind, col_ind = linear_sum_assignment(cost)
+        return gain[row_ind, col_ind].sum() / y_pred.size
+
+
+@Losses.register
+class MCVAELoss(object):
+    """ MCVAE loss.
+
+    Sparse Multi-Channel Variational Autoencoder for the Joint Analysis of
+    Heterogeneous Data, Luigi Antelmi, Nicholas Ayache, Philippe Robert,
+    Marco Lorenzi Proceedings of the 36th International Conference on Machine
+    Learning, PMLR 97:302-311, 2019.
+
+    MCVAE consists of two loss functions:
+
+    1. KL divergence loss: how off the distribution over the latent space is
+       from the prior. Given the prior is a standard Gaussian and the inferred
+       distribution is a Gaussian with a diagonal covariance matrix,
+       the KL-divergence becomes analytically solvable.
+    2. log-likelihood LL
+
+    loss = beta * KL_loss + LL_loss.
+    """
+    def __init__(self, n_channels, beta=1., enc_channels=None,
+                 dec_channels=None, sparse=False, nodecoding=False):
+        """ Init class.
+
+        Parameters
+        ----------
+        n_channels: int
+            the number of channels.
+        beta, float, default 1.
+            for beta-VAE.
+        enc_channels: list of int, default None
+            encode only these channels (for kl computation).
+        dec_channels: list of int, default None
+            decode only these channels (for ll computation).
+        sparse: bool, default False
+            use sparsity contraint.
+        nodecoding: bool, default False
+            if set do not apply the decoding.
+        """
+        super(MCVAELoss, self).__init__()
+        self.n_channels = n_channels
+        self.beta = beta
+        self.sparse = sparse
+        self.enc_channels = enc_channels
+        self.dec_channels = dec_channels
+        if enc_channels is None:
+            self.enc_channels = list(range(n_channels))
+        else:
+            assert(len(enc_channels) <= n_channels)
+        if dec_channels is None:
+            self.dec_channels = list(range(n_channels))
+        else:
+            assert(len(dec_channels) <= n_channels)
+        self.n_enc_channels = len(self.enc_channels)
+        self.n_dec_channels = len(self.dec_channels)
+        self.nodecoding = nodecoding
+        self.layer_outputs = None
+
+    def __call__(self, p):
+        """ Compute loss.
+
+        Parameters
+        ----------
+        p: list of Normal distributions (C,) -> (N, F)
+            reconstructed channels data.
+        x: list of Tensor, (C,) -> (N, F)
+            inputs channels data.
+        """
+        if self.nodecoding:
+            return -1
+        if self.layer_outputs is None:
+            raise ValueError(
+                "This loss needs intermediate layers outputs. Please register "
+                "an appropriate callback.")
+        x = self.layer_outputs["x"]
+        q = self.layer_outputs["q"]
+        kl = self.compute_kl(q, self.beta)
+        ll = self.compute_ll(p, x)
+
+        total = kl - ll
+        return total, {"kl": kl, "ll": ll}
+
+    def compute_kl(self, q, beta):
+        kl = 0
+        if not self.sparse:
+            for c_idx, qi in enumerate(q):
+                if c_idx in self.enc_channels:
+                    kl += kl_divergence(qi, Normal(
+                        0, 1)).sum(-1, keepdim=True).mean(0)
+        else:
+            for c_idx, qi in enumerate(q):
+                if c_idx in self.enc_channels:
+                    kl += self._kl_log_uniform(qi).sum(
+                            -1, keepdim=True).mean(0)
+        return beta * kl / self.n_enc_channels
+
+    def compute_ll(self, p, x):
+        # p[x][z]: p(x|z)
+        ll = 0
+        for c_idx1 in range(self.n_channels):
+            for c_idx2 in range(self.n_channels):
+                if c_idx1 in self.dec_channels and c_idx2 in self.enc_channels:
+                    ll += self._compute_ll(
+                        p=p[c_idx1][c_idx2], x=x[c_idx1]).mean(0)
+        return ll / self.n_enc_channels / self.n_dec_channels
+
+    def compute_log_alpha(self, mu, logvar):
+        # clamp because dropout rate p in 0-99%, where p = alpha/(alpha+1)
+        return (logvar - 2 * torch.log(torch.abs(mu) + 1e-8)).clamp(
+            min=-8, max=8)
+
+    def _compute_ll(self, p, x):
+        ll = p.log_prob(x).view(len(x), -1)
+        return ll.sum(-1, keepdim=True)
+
+    def _kl_log_uniform(self, normal):
+        """
+        Paragraph 4.2 from:
+        Variational Dropout Sparsifies Deep Neural Networks
+        Molchanov, Dmitry; Ashukha, Arsenii; Vetrov, Dmitry
+        https://arxiv.org/abs/1701.05369
+        https://github.com/senya-ashukha/variational-dropout-sparsifies-dnn/
+        blob/master/KL%20approximation.ipynb
+        """
+        mu = normal.loc
+        logvar = normal.scale.pow(2).log()
+        log_alpha = self.compute_log_alpha(mu, logvar)
+        k1, k2, k3 = 0.63576, 1.8732, 1.48695
+        neg_kl = (k1 * torch.sigmoid(k2 + k3 * log_alpha) - 0.5 *
+                  torch.log1p(torch.exp(-log_alpha)) - k1)
+        return - neg_kl
+
+
+@Losses.register
+class VaDELoss(object):
+    """ VaDE loss.
+    """
+    def __init__(self, alpha=1):
+        """ Init class.
+
+        Parameters
+        ----------
+        alpha: float, default 1
+            reconstruction loss weight.
+        """
+        super(VaDELoss, self).__init__()
+        self.layer_outputs = None
+        self.alpha = alpha
+
+    def __call__(self, x_pred, x, *args, **kwargs):
+        if self.layer_outputs is None:
+            raise ValueError("The model needs to return the latent space "
+                             "distribution parameters z, z_mu, z_var.")
+        z_mu = self.layer_outputs["z_mu"]
+        z_logvar = self.layer_outputs["z_logvar"]
+        z = self.layer_outputs["z"]
+        model = self.layer_outputs["model"]
+        n_classes = model.n_classes
+        batch_size = x.size(0)
+
+        gamma = model.get_gamma(z, z_mu, z_logvar)
+        z_mu_t = z_mu.unsqueeze(dim=2).expand(
+            z_mu.size()[0], z_mu.size()[1], n_classes)
+        z_logvar_t = z_logvar.unsqueeze(dim=2).expand(
+            z_logvar.size()[0], z_logvar.size()[1], n_classes)
+        u_t = model.u_p.unsqueeze(dim=0).expand(
+            z.size()[0], model.u_p.size()[0], model.u_p.size()[1])
+        lambda_t = model.lambda_p.unsqueeze(dim=0).expand(
+            z.size()[0], model.lambda_p.size()[0], model.lambda_p.size()[1])
+        theta_t = model.theta_p.unsqueeze(dim=0).expand(
+            z.size()[0], n_classes)
+
+        if model.binary:
+            rec_loss = torch.sum(
+                func.binary_cross_entropy(x_pred, x, reduction="none"), dim=1)
+        else:
+            rec_loss = torch.sum(
+                func.mse_loss(x_pred, x, reduction="none"), dim=1)
+        # rec_loss *= self.alpha * model.input_dim
+        log_p_z_c = (
+            torch.sum(
+                0.5 * gamma
+                * torch.sum((
+                    math.log(2 * math.pi) + torch.log(lambda_t)
+                    + torch.exp(z_logvar_t) / lambda_t
+                    + (z_mu_t - u_t)**2 / lambda_t), dim=1), dim=1))
+        q_entropy = (
+            - 0.5 * torch.sum(1 + z_logvar + math.log(2 * math.pi), dim=1))
+        log_p_c = - torch.sum(gamma * torch.log(theta_t), dim=1)
+        log_q_c_x = torch.sum(gamma * torch.log(gamma), dim=1)
+
+        # Normalize by same number of elements as in reconstruction
+        loss = torch.mean(rec_loss + log_p_z_c + q_entropy + log_p_c +
+                          log_q_c_x)
+
+        return loss

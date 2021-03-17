@@ -1,28 +1,56 @@
 sudo: required
-dist: xenial
 language: python
+
+cache:
+    apt: true
+    pip: true
 
 matrix:
     include:
-        - python: 3.5
         - python: 3.6
-        - python: 3.7
+          env:
+            - TORCH_PACKAGE="1.7.1+cpu"
+            - TORCHVISION_PACKAGE="0.8.2+cpu"
           dist: xenial
-          sudo: true
+        - python: 3.7
+          env:
+            - TORCH_PACKAGE="1.7.1+cpu"
+            - TORCHVISION_PACKAGE="0.8.2+cpu"
+          dist: xenial
+        - python: 3.8
+          env:
+            - TORCH_PACKAGE="1.7.1+cpu"
+            - TORCHVISION_PACKAGE="0.8.2+cpu"
+          dist: xenial
+        - python: 3.6
+          env:
+            - TORCH_PACKAGE="1.7.1+cpu"
+            - TORCHVISION_PACKAGE="0.8.2+cpu"
+          dist: bionic
+        - python: 3.8
+          env:
+            - TORCH_PACKAGE="1.7.1+cpu"
+            - TORCHVISION_PACKAGE="0.8.2+cpu"
+          dist: focal
+        - python: 3.8
+          env:
+            - TORCH_PACKAGE="1.8.0+cpu"
+            - TORCHVISION_PACKAGE="0.9.0+cpu"
+          dist: focal
 
 before_install:
     - sudo apt-get update
     - sudo updatedb
 
 install:
-    - pip install ipython
-    - pip install nose
-    - pip install nose-exclude
-    - pip install coverage
-    - pip install coveralls
-    - pip install pycodestyle
-    - pip install torch==1.3.1+cpu torchvision==0.4.2+cpu -f https://download.pytorch.org/whl/torch_stable.html
-    - pip install .
+    - pip install --progress-bar off ipython
+    - pip install --progress-bar off nose
+    - pip install --progress-bar off nose-exclude
+    - pip install --progress-bar off coverage
+    - pip install --progress-bar off coveralls
+    - pip install --progress-bar off pycodestyle
+    - pip install --progress-bar off torch==$TORCH_PACKAGE torchvision==$TORCHVISION_PACKAGE -f https://download.pytorch.org/whl/torch_stable.html
+    - pip install --progress-bar off .
 
 script:
     - python setup.py nosetests

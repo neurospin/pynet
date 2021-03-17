@@ -1,17 +1,15 @@
+.. -*- mode: rst -*-
 
-|Python35|_ |Python36|_ |Coveralls|_ |Travis|_ |PyPi|_ |Doc|_ |CircleCI|_
+|PythonVersion|_ |Coveralls|_ |Travis|_ |PyPi|_ |Doc|_ |CircleCI|_
 
-.. |Python35| image:: https://img.shields.io/badge/python-3.5-blue.svg
-.. _Python35: https://badge.fury.io/py/python-network
-
-.. |Python36| image:: https://img.shields.io/badge/python-3.6-blue.svg
-.. _Python36: https://badge.fury.io/py/python-network
+.. |PythonVersion| image:: https://img.shields.io/badge/python-3.6%20%7C%203.7%20%7C%203.8-blue
+.. _PythonVersion: https://img.shields.io/badge/python-3.6%20%7C%203.7%20%7C%203.8-blue
 
 .. |Coveralls| image:: https://coveralls.io/repos/neurospin/pynet/badge.svg?branch=master&service=github
 .. _Coveralls: https://coveralls.io/github/neurospin/pynet
 
-.. |Travis| image:: https://travis-ci.org/neurospin/pynet.svg?branch=master
-.. _Travis: https://travis-ci.org/neurospin/pynet
+.. |Travis| image:: https://travis-ci.com/neurospin/pynet.svg?branch=master
+.. _Travis: https://travis-ci.com/neurospin/pynet
 
 .. |PyPi| image:: https://badge.fury.io/py/python-network.svg
 .. _PyPi: https://badge.fury.io/py/python-network
@@ -24,20 +22,22 @@
 
 
 
-pynet
-=====
+.. image:: https://github.com/neurospin/pynet/blob/master/doc/source/_static/pynet.png
+    :width: 400px
+
 
 Helper Module for Deep Learning with pytorch.
 
-This work is made available by a community of people, amoung which the
+This work is made available by a `community of people
+<https://github.com/neurospin/pynet/blob/master/AUTHORS.rst>`_, amoung which the
 CEA Neurospin BAOBAB laboratory.
 
 Important links
 ===============
 
-- Official source code repo: https://github.com/neurospin/pynet
-- HTML documentation (last stable release): http://neurospin.github.io/pynet
-- HTML documentation (master release): https://python-network.readthedocs.io/
+- `Official source code repo <https://github.com/neurospin/pynet>`_
+- `HTML documentation <http://neurospin.github.io/pynet>`_
+- `Release notes <https://github.com/neurospin/pynet/blob/master/CHANGELOG.rst>`_
 
 Where to start
 ==============
@@ -51,7 +51,8 @@ You can list all available Deep Learning tools by executing in a Python shell::
 The 'get_tools' function returns a dictionary with all available 'networks',
 'losses', 'regularizers', and 'metrics'.
 
-Then each network has been embeded in a Deep Learning training interface.
+Then each network has been embeded in a Deep Learning training interface
+providing a 'training' and a 'testing' method.
 Network parameters are set using the NetParameters object.
 You can list all these interfaces by executing in a Python shell::
 
@@ -73,7 +74,7 @@ You can list also all available data fetchers by executing in a Python shell::
 
 The 'get_fetchers' function returns a dictionary with all the declared
 fetchers. Finally you may want to look at the data manger class that provides
-convenient tools to split/stratify you dataset::
+convenient tools to split/stratify your dataset::
 
     from pynet.datasets import DataManager
 
@@ -81,8 +82,8 @@ Install
 =======
 
 Make sure you have installed all the package dependencies.
-Further instructions are available at
-https://neurospin.github.io/pynet/generated/installation.html
+Further instructions are available `here
+<https://python-network.readthedocs.io/en/latest/generated/installation.html>`_.
 
 
 

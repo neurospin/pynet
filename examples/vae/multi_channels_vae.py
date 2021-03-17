@@ -20,11 +20,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset
+import pynet
 from pynet import NetParameters
 from pynet.datasets import DataManager
 from pynet.datasets.core import DataItem
 from pynet.interfaces import MCVAEEncoder
-from pynet.models.vae.mcvae import MCVAELoss
 from pynet.utils import setup_logging
 
 
@@ -38,6 +38,7 @@ snr = 10
 adam_lr = 2e-3
 epochs = 5000
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+losses = pynet.get_tools(tool_name="losses")
 setup_logging(level="info")
 
 
@@ -101,7 +102,7 @@ class SyntheticDataset(Dataset):
             n_feats=self.n_feats)
         self.x = self.generator(self.z)
         self.X, self.X_noisy = preprocess_and_add_noise(self.x, snr=snr)
-        self.X = [x.astype(np.float32) for x in self.X]
+        self.X = [np.expand_dims(x.astype(np.float32), axis=1) for x in self.X]
 
     def __len__(self):
         return self.n_samples
@@ -168,7 +169,7 @@ params = NetParameters(
 models["mcvae"] = MCVAEEncoder(params,
     optimizer_name="Adam",
     learning_rate=adam_lr,
-    loss=MCVAELoss(n_channels, beta=1., sparse=False),
+    loss=losses["MCVAELoss"](n_channels, beta=1., sparse=False),
     use_cuda=False)
 torch.manual_seed(42)
 params = NetParameters(
@@ -181,7 +182,7 @@ params = NetParameters(
 models["smcvae"] = MCVAEEncoder(params,
     optimizer_name="Adam",
     learning_rate=adam_lr,
-    loss=MCVAELoss(n_channels, beta=1., sparse=True),
+    loss=losses["MCVAELoss"](n_channels, beta=1., sparse=True),
     use_cuda=False)
 print("- models:", models)
 
@@ -216,8 +217,7 @@ for model_name, interface in models.items():
         q = model.encode(X)  # encoded distribution q(z|x)
     print("-- encoded distribution q(z|x)", [n for n in q])
 
-    z[model_name] = [
-        q[i].loc.squeeze().detach().numpy() for i in range(n_channels)]
+    z[model_name] = model.p_to_prediction(q)
     print("-- z", [e.shape for e in z[model_name]])
 
     if model.sparse:
@@ -225,11 +225,9 @@ for model_name, interface in models.items():
     z[model_name] = np.array(z[model_name]).reshape(-1) # flatten
     print("-- z", z[model_name].shape)
 
-    # it will raise a warning in non-sparse mcvae
-    # x_hat[model_name] = model.reconstruct(X, dropout_threshold=0.2)  
-
     g[model_name] = [
-        model.vae[i].fc_mu.weight.detach().numpy() for i in range(n_channels)]
+        model.vae[c_idx].encode.w_mu.weight.detach().numpy()
+        for c_idx in range(n_channels)]
     g[model_name] = np.array(g[model_name]).reshape(-1)  #flatten
 
 
@@ -249,7 +247,7 @@ plt.subplot(1,2,2)
 plt.hist([g["smcvae"], g["mcvae"]], bins=20, color=["k", "gray"])
 plt.legend(["Sparse", "Non sparse"])
 plt.title(r"Generative parameters $\mathbf{\theta} = \{\mathbf{\theta}_1 "
-           "\ldots \mathbf{\theta}_C\}$")
+          r"\ldots \mathbf{\theta}_C\}$")
 plt.xlabel("Value")
 
 do = np.sort(models["smcvae"].model.dropout.detach().numpy().reshape(-1))

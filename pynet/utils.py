@@ -132,8 +132,14 @@ class Metrics(RegisteryDecorator):
     REGISTRY = {}
 
 
-def get_tools():
+def get_tools(tool_name=None):
     """ List all available Deep Learning tools.
+
+    Parameters
+    ----------
+    tool_name: str, default None
+        the tool of interset ('networks', 'regularizers', 'losses' or
+        'metrics'), if 'None' return all tools available.
 
     Returns
     -------
@@ -144,6 +150,8 @@ def get_tools():
     mod_members = dict(inspect.getmembers(sys.modules[__name__]))
     for key in ["Networks", "Regularizers", "Losses", "Metrics"]:
         tools[key.lower()] = mod_members[key].get_registry()
+    if tool_name is not None:
+        tools = tools[tool_name]
     return tools
 
 
@@ -407,3 +415,65 @@ def reset_weights(model, checkpoint=None):
             model.load_state_dict(checkpoint["model"])
         else:
             model.load_state_dict(checkpoint)
+
+
+def init_weight(module, act_func=None):
+    """ Init input module weights.
+
+    [1] Understanding the difficulty of training deep feedforward neural
+    networks, PMLR 2010.
+    [2] Delving Deep into Rectifiers: Surpassing Human-Level Performance
+    on ImageNet Classification, arXiv 2015.
+
+    Parameters
+    ----------
+    module: torch.nn.Module
+        module to initilaize.
+    act_func: torch.nn.modules.activation, default None
+        the activation functions.
+    """
+    act_name = get_activation_name(act_func)
+    if isinstance(module, (torch.nn.modules.conv._ConvNd, torch.nn.Linear)):
+        # Initialization tailored specifically for ReLU activations since
+        # they do not exhibit zero mean [2].
+        if act_name == "relu":
+            torch.nn.init.kaiming_normal_(module.weight, mode="fan_in")
+        elif act_name == "leaky_relu":
+            torch.nn.init.kaiming_uniform_(
+                module.weight, a=act_func.negative_slope,
+                nonlinearity="leaky_relu")
+        elif act_name in ("sigmoid", "tanh"):
+            torch.nn.init.xavier_uniform_(
+                module.weight, gain=torch.nn.init.calculate_gain(act_name))
+        else:
+            torch.nn.init.xavier_uniform_(module.weight)
+        if module.bias is not None:
+            torch.nn.init.constant_(module.bias, 0)
+
+
+def get_activation_name(activation):
+    """ Return the name of the activation.
+
+    Parameters
+    ----------
+    activation: torch.nn.modules.activation or str
+        the activation function.
+
+    Returns
+    -------
+    name: str
+        the name of the activation function.
+    """
+    if activation is None:
+        return "none"
+    if isinstance(activation, str):
+        return activation
+    activation = activation()
+    mapper = {torch.nn.LeakyReLU: "leaky_relu", torch.nn.ReLU: "relu",
+              torch.nn.Tanh: "tanh", torch.nn.Sigmoid: "sigmoid",
+              torch.nn.Softmax: "sigmoid"}
+    for key, val in mapper.items():
+        if isinstance(activation, key):
+            return val
+    raise ValueError(
+        "Unkown given activation type: {}.".format(activation))

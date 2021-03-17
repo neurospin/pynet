@@ -28,7 +28,6 @@ from nilearn.input_data import MultiNiftiMasker
 from pynet.datasets import DataManager
 from pynet.plotting import Board, update_board
 from pynet import NetParameters
-from pynet.models.vae.vunet import DecodeLoss
 from pynet.interfaces import ResAENetEncoder
 from pynet.utils import setup_logging
 from pynet.interfaces import DeepLearningInterface

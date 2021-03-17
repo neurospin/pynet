@@ -93,7 +93,7 @@ net_params = pynet.NetParameters(
     leaky_alpha=0.1,
     twice_e2e=False,
     dense_sml=True)
-my_loss = pynet.get_tools()["losses"]["MSELoss"]()
+my_loss = pynet.get_tools(tool_name="losses")["MSELoss"]()
 model = interfaces["BrainNetCNNGraph"](
     net_params,
     optimizer_name="Adam",
