@@ -156,7 +156,7 @@ class ConditionalBernoulli(nn.Module):
         x = torch.cat(tensor_list, dim=-1)
         logits = self.w_dense(x) + self._bias_init
         # Assuming 1-D vector inputs (bs discluded)
-        return Independent(Bernoulli(logits=logits),
+        return Independent(Bernoulli(logits=logits, validate_args=False),
                            reinterpreted_batch_ndims=1)
 
 
