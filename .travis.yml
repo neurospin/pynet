@@ -9,33 +9,33 @@ matrix:
     include:
         - python: 3.6
           env:
-            - TORCH_PACKAGE="torch==1.7.1+cpu"
-            - TORCHVISION_PACKAGE="torch==0.8.2+cpu"
+            - TORCH_PACKAGE="1.7.1+cpu"
+            - TORCHVISION_PACKAGE="0.8.2+cpu"
           dist: xenial
         - python: 3.7
           env:
-            - TORCH_PACKAGE="torch==1.7.1+cpu"
-            - TORCHVISION_PACKAGE="torch==0.8.2+cpu"
+            - TORCH_PACKAGE="1.7.1+cpu"
+            - TORCHVISION_PACKAGE="0.8.2+cpu"
           dist: xenial
         - python: 3.8
           env:
-            - TORCH_PACKAGE="torch==1.7.1+cpu"
-            - TORCHVISION_PACKAGE="torch==0.8.2+cpu"
+            - TORCH_PACKAGE="1.7.1+cpu"
+            - TORCHVISION_PACKAGE="0.8.2+cpu"
           dist: xenial
         - python: 3.6
           env:
-            - TORCH_PACKAGE="torch==1.7.1+cpu"
-            - TORCHVISION_PACKAGE="torch==0.8.2+cpu"
+            - TORCH_PACKAGE="1.7.1+cpu"
+            - TORCHVISION_PACKAGE="0.8.2+cpu"
           dist: bionic
         - python: 3.8
           env:
-            - TORCH_PACKAGE="torch==1.7.1+cpu"
-            - TORCHVISION_PACKAGE="torch==0.8.2+cpu"
+            - TORCH_PACKAGE="1.7.1+cpu"
+            - TORCHVISION_PACKAGE="0.8.2+cpu"
           dist: focal
         - python: 3.8
           env:
-            - TORCH_PACKAGE="torch==1.8.0+cpu"
-            - TORCHVISION_PACKAGE="torch==0.9.0+cpu"
+            - TORCH_PACKAGE="1.8.0+cpu"
+            - TORCHVISION_PACKAGE="0.9.0+cpu"
           dist: focal
 
 before_install:
