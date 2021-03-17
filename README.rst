@@ -36,7 +36,8 @@ Important links
 ===============
 
 - `Official source code repo <https://github.com/neurospin/pynet>`_
-- `HTML documentation <http://neurospin.github.io/pynet>`_
+- `HTML stable documentation <https://python-network.readthedocs.io/en/v0.0.1>`_
+- `HTML documentation <https://python-network.readthedocs.io/en/latest>`_
 - `Release notes <https://github.com/neurospin/pynet/blob/master/CHANGELOG.rst>`_
 
 Where to start
