@@ -1,3 +1,4 @@
+.. -*- mode: rst -*-
 
 |PythonVersion|_ |Coveralls|_ |Travis|_ |PyPi|_ |Doc|_ |CircleCI|_
 
@@ -23,7 +24,6 @@
 
 .. image:: https://github.com/neurospin/pynet/blob/master/doc/source/_static/pynet.png
     :width: 400px
-    :align: center
 
 
 Helper Module for Deep Learning with pytorch.
@@ -34,8 +34,9 @@ CEA Neurospin BAOBAB laboratory.
 Important links
 ===============
 
-- Official source code repo: https://github.com/neurospin/pynet
-- HTML documentation: http://neurospin.github.io/pynet
+- `Official source code repo <https://github.com/neurospin/pynet>`_
+- `HTML documentation <http://neurospin.github.io/pynet>`_
+- `Release notes <https://github.com/neurospin/pynet/blob/master/CHANGELOG>`_
 
 Where to start
 ==============
@@ -80,8 +81,8 @@ Install
 =======
 
 Make sure you have installed all the package dependencies.
-Further instructions are available at
-https://python-network.readthedocs.io/en/latest/generated/installation.html
+Further instructions are available `here
+<https://python-network.readthedocs.io/en/latest/generated/installation.html>`_.
 
 
 
