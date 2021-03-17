@@ -28,7 +28,8 @@
 
 Helper Module for Deep Learning with pytorch.
 
-This work is made available by a community of people, amoung which the
+This work is made available by a `community of people
+<https://github.com/neurospin/pynet/blob/master/AUTHORS.rst>`_, amoung which the
 CEA Neurospin BAOBAB laboratory.
 
 Important links
@@ -36,7 +37,7 @@ Important links
 
 - `Official source code repo <https://github.com/neurospin/pynet>`_
 - `HTML documentation <http://neurospin.github.io/pynet>`_
-- `Release notes <https://github.com/neurospin/pynet/blob/master/CHANGELOG>`_
+- `Release notes <https://github.com/neurospin/pynet/blob/master/CHANGELOG.rst>`_
 
 Where to start
 ==============
