@@ -48,7 +48,7 @@ def fetch_gradcam(datasetdir, inception=False):
     datasetdir: str
         the dataset destination folder.
     inception: bool, default True
-        if set apply the inception ttransforms on the inputs.
+        if set apply the inception transforms on the inputs.
 
     Returns
     -------
@@ -105,6 +105,7 @@ def fetch_gradcam(datasetdir, inception=False):
             transforms.ToTensor(),
             transforms.Normalize(
                 mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        dataset = datasets.ImageFolder(root=datasetdir, transform=transform)
         data = []
         for item in dataset:
             data.append(item[0].numpy())
