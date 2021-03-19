@@ -24,7 +24,6 @@ from torch.distributions import Bernoulli, Normal, Laplace, kl_divergence
 from pynet.utils import Losses
 
 
-
 def get_vae_loss(loss_name, **kwargs):
     """ Return the correct VAE loss function given the input arguments.
 
@@ -235,7 +234,6 @@ class BaseLoss(object):
         neg_kl = (k1 * torch.sigmoid(k2 + k3 * log_alpha) - 0.5 *
                   torch.log1p(torch.exp(-log_alpha)) - k1)
         return - neg_kl.mean(dim=0).sum()
-    
 
     @staticmethod
     def compute_log_alpha(mu, logvar):
