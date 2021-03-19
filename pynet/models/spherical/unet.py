@@ -46,7 +46,8 @@ class SphericalUNet(nn.Module):
     """
     def __init__(self, in_order, in_channels, out_channels, depth=5,
                  start_filts=32, conv_mode="1ring", up_mode="interp",
-                 merge_mode="concat", icosahedron=icosahedron, cachedir=None):
+                 merge_mode="concat", icosahedron=icosahedron, cachedir=None,
+                 *args, **kwargs):
         """ Initialize the Spherical UNet.
 
         Parameters
@@ -79,7 +80,7 @@ class SphericalUNet(nn.Module):
             set tthis folder tu use smart caching speedup.
         """
         logger.debug("SphericalUNet init...")
-        super(SphericalUNet, self).__init__()
+        super(SphericalUNet, self).__init__(*args, **kwargs)
         self.memory = Memory(cachedir, verbose=0)
         self.in_order = in_order
         self.depth = depth
