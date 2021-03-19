@@ -50,12 +50,12 @@ def plot_trisurf(fig, ax, vertices, triangles, texture=None, vmin=None,
         texture = np.ones((len(vertices), ))
 
     # Display tri surface
-    x, y, z = vertices[:, 0], vertices[:, 1], vertices[:, 2]
-    norm = colors.Normalize(vmin=0, vmax=vmax, clip=False)
+    norm = colors.Normalize(vmin=vmin, vmax=vmax, clip=False)
+    texture = np.array([np.mean(texture[tri]) for tri in triangles])
     facecolors = cm.coolwarm(norm(texture))
     triangle_vertices = np.array([vertices[tri] for tri in triangles])
     polygon = Poly3DCollection(triangle_vertices, facecolors=facecolors,
-                               edgecolors="black")
+                               edgecolors="white", alpha=0.5)
     ax.add_collection3d(polygon)
     ax.set_xlim(-1, 1)
     ax.set_ylim(-1, 1)

@@ -48,8 +48,9 @@ def get_vae_loss(loss_name, **kwargs):
     loss: @callable
         the loss function.
     """
-    common_kwargs = dict(steps_anneal=kwargs["steps_anneal"],
-                         use_mse=kwargs["use_mse"])
+    common_keys = ["steps_annel", "use_mse"]
+    common_kwargs = dict([(key, value) for key, value in kwargs.items()
+                          if key in common_keys])
 
     if loss_name == "betah":
         loss = BetaHLoss(beta=kwargs["beta"], **common_kwargs)
@@ -159,7 +160,7 @@ class BaseLoss(object):
             loss = loss * 3
             loss = loss * (loss != 0)  # masking to avoid nan
         else:
-            raise ValueError("Unkown distribution: {}".format(distribution))
+            raise ValueError("Unkown distribution: {}".format(p))
 
         batch_size = len(data)
         loss = loss / batch_size
@@ -182,7 +183,8 @@ class BaseLoss(object):
         data: torch.Tensor
             reference data.
         """
-        return - p.log_prob(data).sum(-1, keepdim=True)
+
+        return - p.log_prob(data).sum()
 
     def kl_normal_loss(self, q):
         """ Calculates the KL divergence between a normal distribution
@@ -198,6 +200,21 @@ class BaseLoss(object):
         self.cache.setdefault("kl", []).append(
             dimension_wise_kl.detach().cpu().numpy())
         return dimension_wise_kl.sum()
+
+    @staticmethod
+    def _compute_ll(p, data):
+        """ Compute log likelihood.
+
+        Parameters
+        ----------
+        p: torch.distributions
+            probabilistic decoder (or likelihood of generating true data
+            sample given the latent code).
+        data: torch.Tensor
+            reference data.
+        """
+        ll = p.log_prob(data)
+        return - ll
 
     @staticmethod
     def kl_log_uniform(normal):

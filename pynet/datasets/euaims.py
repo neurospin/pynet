@@ -136,7 +136,8 @@ def apply_qc(data, prefix, qc):
 
 
 def fetch_clinical_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
-                           cohort=COHORT_NAME, defaults=DEFAULTS['clinical']):
+                           cohort=COHORT_NAME,
+                           defaults=DEFAULTS['clinical']):
     """ Fetcher wrapper for clinical data
 
     Parameters
@@ -203,8 +204,6 @@ def fetch_clinical_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
         subj_test: numpy array,
             Test subjects, if return_data is True and test_size > 0
         """
-        clinical_prefix = "bloc-clinical_score-"
-        subject_column_name = "participant_id"
         path = os.path.join(datasetdir, "clinical_X_train.npy")
         meta_path = os.path.join(datasetdir, "clinical_X_train.tsv")
         path_test = None
@@ -212,8 +211,10 @@ def fetch_clinical_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
         if test_size > 0:
             path_test = os.path.join(datasetdir, "clinical_X_test.npy")
             meta_path_test = os.path.join(datasetdir, "clinical_X_test.tsv")
+        subject_column_name = "participant_id"
 
         if not os.path.isfile(path):
+            clinical_prefix = "bloc-clinical_score-"
 
             data = pd.read_csv(files["stratification"], sep="\t")
             clinical_cols = [subject_column_name]
@@ -367,9 +368,6 @@ def fetch_rois_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
         subj_test: numpy array,
             Test subjects, if return_data is True and test_size > 0
         """
-        clinical_prefix = "bloc-clinical_score-"
-        roi_prefix = "bloc-t1w_roi-"
-        subject_column_name = "participant_id"
         path = os.path.join(datasetdir, "rois_X_train.npy")
         meta_path = os.path.join(datasetdir, "rois_X_train.tsv")
         path_test = None
@@ -377,8 +375,12 @@ def fetch_rois_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
         if test_size > 0:
             path_test = os.path.join(datasetdir, "rois_X_test.npy")
             meta_path_test = os.path.join(datasetdir, "rois_X_test.tsv")
+        subject_column_name = "participant_id"
 
         if not os.path.isfile(path):
+            clinical_prefix = "bloc-clinical_score-"
+            roi_prefix = "bloc-t1w_roi-"
+
             data = pd.read_csv(files["stratification"], sep="\t")
             roi_mapper = pd.read_csv(files["rois_mapper"], sep="\t")
 
@@ -458,22 +460,11 @@ def fetch_rois_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
                                        for f in residualize_by["discrete"]]],
                             data_test[["{}{}".format(clinical_prefix, f)
                                        for f in residualize_by["continuous"]]])
+            X_train = X_train.values
+            if test_size > 0:
+                X_test = X_test.values
 
-            # Standardizes
-            if z_score:
-                scaler = RobustScaler()
-                X_train = scaler.fit_transform(X_train)
-                _path = os.path.join(datasetdir, "rois_scaler.pkl")
-                with open(_path, "wb") as f:
-                    pickle.dump(scaler, f)
-                if test_size > 0:
-                    X_test = scaler.transform(X_test)
-            else:
-                X_train = X_train.values
-                if test_size > 0:
-                    X_test = X_test.values
-
-            # Residualizes and scales
+            # Residualizes
             if residualize_by is not None or len(residualize_by) > 0:
                 regressor = LinearRegression()
                 y_train = np.concatenate([
@@ -499,6 +490,16 @@ def fetch_rois_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
                                        for f in residualize_by["discrete"]]])
                     ], axis=1)
                     X_test = X_test - regressor.predict(y_test)
+
+            # Standardizes and scales
+            if z_score:
+                scaler = RobustScaler()
+                X_train = scaler.fit_transform(X_train)
+                _path = os.path.join(datasetdir, "rois_scaler.pkl")
+                with open(_path, "wb") as f:
+                    pickle.dump(scaler, f)
+                if test_size > 0:
+                    X_test = scaler.transform(X_test)
 
             # Return data and subjects
             X_train_df = pd.DataFrame(data=X_train, columns=cols)
@@ -569,7 +570,8 @@ def fetch_surface_wrapper(hemisphere, datasetdir=SAVING_FOLDER,
             test_size=defaults["test_size"], seed=defaults["seed"],
             return_data=defaults["return_data"],
             z_score=defaults["z_score"], adjust_sites=defaults["adjust_sites"],
-            residualize_by=defaults["residualize_by"], qc=defaults["qc"]):
+            residualize_by=defaults["residualize_by"], qc=defaults["qc"],
+            downsampler=None):
         """ Fetches and preprocesses surface data
 
         Parameters
@@ -612,149 +614,206 @@ def fetch_surface_wrapper(hemisphere, datasetdir=SAVING_FOLDER,
         subj_test: numpy array,
             Test subjects, if return_data is True and test_size > 0
         """
-
-        clinical_prefix = "bloc-clinical_score-"
-
-        surf_prefix = "bloc-t1w_hemi-{}_metric".format(hemisphere)
-
-        data = pd.read_csv(files["clinical_surface"], sep="\t").drop(
-            columns=["bloc-t1w_hemi-lh_metric-area",
-                     "bloc-t1w_hemi-rh_metric-area"])
-
-        # Feature selection
-        features_list = []
-        for metric in metrics:
-            for column in data.columns:
-                if column.startswith(surf_prefix):
-                    m = column.split('-')[-1]
-                    if m == metric:
-                        features_list.append(column)
-
-        data_train = apply_qc(data, clinical_prefix, qc).sort_values(
-            "participant_id")
-
-        # Loads surface data
-        n_vertices = len(
-            surface_loader(data_train[features_list[0]].iloc[0]).get_data())
-        X_train = np.zeros((len(data_train), n_vertices, len(features_list)))
-        for i in range(len(data_train)):
-            for j, feature in enumerate(features_list):
-                path = data_train[feature].iloc[i]
-                if not pd.isnull([path]):
-                    X_train[i, :, j] = surface_loader(
-                        path).get_data().squeeze()
-
-        # Splits in train and test and removes nans
-        if test_size > 0:
-            X_train, X_test, data_train, data_test = train_test_split(
-                X_train, data_train, test_size=test_size, random_state=seed)
-
-            na_idx_test = (np.isnan(X_test).sum((1, 2)) == 0)
-            X_test = X_test[na_idx_test]
-            data_test = data_test[na_idx_test]
-            if return_data:
-                subj_test = data_test["participant_id"].values
-
-        na_idx_train = (np.isnan(X_train).sum((1, 2)) == 0)
-
-        X_train = X_train[na_idx_train]
-        data_train = data_train[na_idx_train]
-        if return_data:
-            subj_train = data_train["participant_id"].values
-
-        # Applies feature-wise preprocessing
-        for i, feature in enumerate(features_list):
-            # Correction for site effects
-            if adjust_sites:
-                non_zeros_idx = (X_train[:, :, i] > 0).sum(0) >= 1
-                adjuster = fortin_combat()
-                X_train[:, non_zeros_idx, i] = adjuster.fit_transform(
-                    X_train[:, non_zeros_idx, i],
-                    data_train[["{}{}".format(
-                        clinical_prefix, site_column_name)]],
-                    data_train[["{}{}".format(clinical_prefix, f)
-                                for f in residualize_by["discrete"]]],
-                    data_train[["{}{}".format(clinical_prefix, f)
-                                for f in residualize_by["continuous"]]])
-
-                path = os.path.join(
-                    datasetdir,
-                    "surface_{}_combat_feature{}.pkl".format(hemisphere, i))
-                with open(path, "wb") as f:
-                    pickle.dump(adjuster, f)
-
-                if test_size > 0:
-                    X_test[:, non_zeros_idx, i] = adjuster.transform(
-                        X_test[:, non_zeros_idx, i],
-                        data_test[["{}{}".format(
-                            clinical_prefix, site_column_name)]],
-                        data_test[["{}{}".format(clinical_prefix, f)
-                                   for f in residualize_by["discrete"]]],
-                        data_test[["{}{}".format(clinical_prefix, f)
-                                   for f in residualize_by["continuous"]]])
-
-            # Standardizes and scales
-            if z_score:
-                scaler = RobustScaler()
-                X_train[:, :, i] = scaler.fit_transform(X_train[:, :, i])
-
-                path = os.path.join(
-                    datasetdir,
-                    "surface_{}_scaler_feature{}.pkl".format(hemisphere, i))
-                with open(path, "wb") as f:
-                    pickle.dump(scaler, f)
-                if test_size > 0:
-                    X_test[:, :, i] = scaler.transform(X_test[:, :, i])
-
-            # Residualizes
-            if residualize_by is not None or len(residualize_by) > 0:
-                regressor = LinearRegression()
-                y_train = np.concatenate([
-                    data_train[["{}{}".format(clinical_prefix, f)
-                                for f in residualize_by["continuous"]]].values,
-                    OneHotEncoder(sparse=False).fit_transform(
-                        data_train[["{}{}".format(clinical_prefix, f)
-                                    for f in residualize_by["discrete"]]])
-                ], axis=1)
-                regressor.fit(y_train, X_train[:, :, i])
-                X_train[:, :, i] = X_train[:, :, i] - regressor.predict(
-                    y_train)
-                path = os.path.join(
-                    datasetdir,
-                    "surface_{}_residualizer_feature{}.pkl".format(
-                        hemisphere, i))
-                with open(path, "wb") as f:
-                    pickle.dump(regressor, f)
-
-                if test_size > 0:
-                    y_test = np.concatenate([
-                        data_test[["{}{}".format(clinical_prefix, f)
-                                   for f in residualize_by["continuous"]]
-                                  ].values,
-                        OneHotEncoder(sparse=False).fit_transform(
-                            data_test[["{}{}".format(clinical_prefix, f)
-                                       for f in residualize_by["discrete"]]])
-                    ], axis=1)
-                    X_test[:, :, i] = X_test[:, :, i] - regressor.predict(
-                        y_test)
-
-        # Returns data and subjects
-        if return_data:
-            if test_size > 0:
-                return X_train, X_test, subj_train, subj_test
-            return X_train, subj_train
-
-        # Saving
         path = os.path.join(
             datasetdir, "surface_{}_X_train.npy".format(hemisphere))
-        np.save(path, X_train)
+        meta_path = os.path.join(
+            datasetdir, "surface_{}_X_train.tsv".format(hemisphere))
+        path_test = None
+        meta_path_test = None
         if test_size > 0:
             path_test = os.path.join(
                 datasetdir, "surface_{}_X_test.npy".format(hemisphere))
-            np.save(path_test, X_test)
-            return path, path_test
+            meta_path_test = os.path.join(
+                datasetdir, "surface_{}_X_test.tsv".format(hemisphere))
 
-        return path
+        if downsampler is not None:
+            down_path = os.path.join(
+                datasetdir, "surface_{}_order_{}_X_train.npy".format(
+                    hemisphere, downsampler.order_low))
+            meta_path = os.path.join(
+                datasetdir, "surface_{}_order_{}_X_train.tsv".format(
+                    hemisphere, downsampler.order_low))
+            if test_size > 0:
+                down_path_test = os.path.join(
+                    datasetdir, "surface_{}_order_{}_X_test.npy".format(
+                        hemisphere, downsampler.order_low))
+                meta_path_test = os.path.join(
+                    datasetdir, "surface_{}_order_{}_X_test.tsv".format(
+                        hemisphere, downsampler.order_low))
+        subject_column_name = "participant_id"
+
+        if (not os.path.isfile(path) and
+           (downsampler is None or not os.path.isfile(down_path))):
+            clinical_prefix = "bloc-clinical_score-"
+            surf_prefix = "bloc-t1w_hemi-{}_metric".format(hemisphere)
+
+            data = pd.read_table(files["surf_stratification"]).drop(
+                columns=["bloc-t1w_hemi-lh_metric-area",
+                         "bloc-t1w_hemi-rh_metric-area"])
+
+            # Feature selection
+            features_list = []
+            for metric in metrics:
+                for column in data.columns:
+                    if column.startswith(surf_prefix):
+                        m = column.split('-')[-1]
+                        if m == metric:
+                            features_list.append(column)
+
+            data_train = apply_qc(data, clinical_prefix, qc).sort_values(
+                subject_column_name)
+
+            # Loads surface data
+            n_vertices = len(surface_loader(
+                data_train[features_list[0]].iloc[0]).get_data())
+            X_train = np.zeros(
+                (len(data_train), n_vertices, len(features_list)))
+            for i in range(len(data_train)):
+                for j, feature in enumerate(features_list):
+                    _path = data_train[feature].iloc[i]
+                    if not pd.isnull([_path]):
+                        X_train[i, :, j] = surface_loader(
+                            _path).get_data().squeeze()
+
+            # Downsamples the data if necessary
+            if downsampler is not None:
+                X_train = downsampler(X_train)
+
+            # Splits in train and test and removes nans
+            if test_size > 0:
+                X_train, X_test, data_train, data_test = train_test_split(
+                    X_train, data_train, test_size=test_size,
+                    random_state=seed)
+                na_idx_test = (np.isnan(X_test).sum((1, 2)) == 0)
+                X_test = X_test[na_idx_test]
+                data_test = data_test[na_idx_test]
+                subj_test = data_test[subject_column_name].values
+            na_idx_train = (np.isnan(X_train).sum((1, 2)) == 0)
+            X_train = X_train[na_idx_train]
+            data_train = data_train[na_idx_train]
+            subj_train = data_train[subject_column_name].values
+
+            # Applies feature-wise preprocessing
+            for i, feature in enumerate(features_list):
+                # Correction for site effects
+                if adjust_sites:
+                    non_zeros_idx = (X_train[:, :, i] > 0).sum(0) >= 1
+                    adjuster = fortin_combat()
+                    X_train[:, non_zeros_idx, i] = adjuster.fit_transform(
+                        X_train[:, non_zeros_idx, i],
+                        data_train[["{}{}".format(
+                            clinical_prefix, site_column_name)]],
+                        data_train[["{}{}".format(clinical_prefix, f)
+                                    for f in residualize_by["discrete"]]],
+                        data_train[["{}{}".format(clinical_prefix, f)
+                                    for f in residualize_by["continuous"]]])
+
+                    _path = os.path.join(
+                        datasetdir,
+                        "surface_{}_combat_feature{}.pkl".format(
+                            hemisphere, i))
+                    with open(_path, "wb") as f:
+                        pickle.dump(adjuster, f)
+
+                    if test_size > 0:
+                        X_test[:, non_zeros_idx, i] = adjuster.transform(
+                            X_test[:, non_zeros_idx, i],
+                            data_test[["{}{}".format(
+                                clinical_prefix, site_column_name)]],
+                            data_test[["{}{}".format(clinical_prefix, f)
+                                       for f in residualize_by["discrete"]]],
+                            data_test[["{}{}".format(clinical_prefix, f)
+                                       for f in residualize_by["continuous"]]])
+
+                # Residualizes
+                if residualize_by is not None or len(residualize_by) > 0:
+                    regressor = LinearRegression()
+                    y_train = np.concatenate([
+                        data_train[["{}{}".format(clinical_prefix, f)
+                                    for f in residualize_by["continuous"]
+                                    ]].values,
+                        OneHotEncoder(sparse=False).fit_transform(
+                            data_train[["{}{}".format(clinical_prefix, f)
+                                        for f in residualize_by["discrete"]]])
+                    ], axis=1)
+                    regressor.fit(y_train, X_train[:, :, i])
+                    X_train[:, :, i] = X_train[:, :, i] - regressor.predict(
+                        y_train)
+                    _path = os.path.join(
+                        datasetdir,
+                        "surface_{}_residualizer_feature{}.pkl".format(
+                            hemisphere, i))
+                    with open(_path, "wb") as f:
+                        pickle.dump(regressor, f)
+
+                    if test_size > 0:
+                        y_test = np.concatenate([
+                            data_test[["{}{}".format(clinical_prefix, f)
+                                       for f in residualize_by["continuous"]
+                                       ]].values,
+                            OneHotEncoder(sparse=False).fit_transform(
+                                data_test[["{}{}".format(clinical_prefix, f)
+                                           for f in residualize_by["discrete"]]
+                                          ])], axis=1)
+                        X_test[:, :, i] = X_test[:, :, i] - regressor.predict(
+                            y_test)
+
+                # Standardizes and scales
+                if z_score:
+                    scaler = RobustScaler()
+                    X_train[:, :, i] = scaler.fit_transform(X_train[:, :, i])
+
+                    _path = os.path.join(
+                        datasetdir,
+                        "surface_{}_scaler_feature{}.pkl".format(
+                            hemisphere, i))
+                    with open(_path, "wb") as f:
+                        pickle.dump(scaler, f)
+                    if test_size > 0:
+                        X_test[:, :, i] = scaler.transform(X_test[:, :, i])
+
+            # Return data and subjects
+            X_train_df = pd.DataFrame(
+                data=subj_train, columns=[subject_column_name])
+            X_test_df = None
+            if test_size > 0:
+                X_test_df = pd.DataFrame(
+                    data=subj_test, columns=[subject_column_name])
+
+            # Saving
+            if downsampler is not None:
+                path = down_path
+                path_test = down_path_test
+            np.save(path, X_train)
+            X_train_df.to_csv(meta_path, index=False, sep="\t")
+            if test_size > 0:
+                np.save(path_test, X_test)
+                X_test_df.to_csv(meta_path_test, index=False, sep="\t")
+        elif downsampler is not None and os.path.isfile(path):
+            X_train = np.load(path)
+            X_train = downsampler(X_train)
+            path = down_path
+            np.save(path, X_train)
+            if test_size > 0:
+                X_test = np.load(path_test)
+                path_test = down_path_test
+                X_test = downsampler(X_test)
+                np.save(path_test, X_test)
+
+        if return_data:
+            X_train = np.load(path)
+            subj_train = pd.read_csv(meta_path, sep="\t")[
+                subject_column_name].values
+            X_test, subj_test = (None, None)
+            if test_size > 0:
+                X_test = np.load(path_test)
+                subj_test = pd.read_csv(meta_path_test, sep="\t")[
+                    subject_column_name].values
+            return X_train, X_test, subj_train, subj_test
+        else:
+            return Item(train_input_path=path, test_input_path=path_test,
+                        train_metadata_path=meta_path,
+                        test_metadata_path=meta_path_test)
     return fetch_surface
 
 
@@ -824,10 +883,6 @@ def fetch_genetic_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
         subj_test: numpy array
             Test subjects, if return_data is True and test_size > 0
         """
-
-        clinical_prefix = "bloc-clinical_score-"
-        genetic_prefix = "bloc-genetic_score-"
-        subject_column_name = "participant_id"
         path = os.path.join(datasetdir, "genetic_X_train.npy")
         meta_path = os.path.join(datasetdir, "genetic_X_train.tsv")
         path_test = None
@@ -835,8 +890,11 @@ def fetch_genetic_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
         if test_size > 0:
             path_test = os.path.join(datasetdir, "genetic_X_test.npy")
             meta_path_test = os.path.join(datasetdir, "genetic_X_test.tsv")
+        subject_column_name = "participant_id"
 
         if not os.path.isfile(path):
+            clinical_prefix = "bloc-clinical_score-"
+            genetic_prefix = "bloc-genetic_score-"
 
             data = pd.read_csv(files["stratification"], sep="\t")
 
@@ -933,7 +991,7 @@ def make_fetchers(datasetdir=SAVING_FOLDER):
 
 def fetch_multiblock_wrapper(datasetdir=SAVING_FOLDER, files=FILES,
                              cohort=COHORT_NAME,
-                             subject_column_name="subjects",
+                             subject_column_name="participant_id",
                              defaults=DEFAULTS["multiblock"],
                              make_fetchers_func=make_fetchers):
     """ Fetcher wrapper for multiblock data
@@ -1094,6 +1152,16 @@ WRAPPERS = {
     "surface": fetch_surface_wrapper,
     "multiblock": fetch_multiblock_wrapper,
 }
+
+
+def make_all_fetchers(datasetdir=SAVING_FOLDER):
+    fetchers = make_fetchers(datasetdir)
+
+    fetchers["multiblock"] = fetch_multiblock_wrapper(datasetdir)
+    return fetchers
+
+
+FETCHERS = make_all_fetchers()
 
 
 def fetch_multiblock_euaims(datasetdir=SAVING_FOLDER, fetchers=make_fetchers,

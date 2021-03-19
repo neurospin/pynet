@@ -19,7 +19,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as func
-from torch.distributions import Normal
+from torch.distributions import Normal, Bernoulli
 from pynet.interfaces import DeepLearningDecorator
 from pynet.utils import Networks, init_weight
 
@@ -119,7 +119,7 @@ class Encoder(nn.Module):
 
     @staticmethod
     def init_dense_layers(input_dim, hidden_dims, act_func, dropout,
-                          final_activation=True):
+                          final_activation=False):
         """ Create the dense layers.
         """
         layers = []
@@ -217,6 +217,8 @@ class Decoder(nn.Module):
         self.act_func = act_func or nn.ReLU
         self.output_channels = output_channels
         self.conv_flts = conv_flts
+        self.noise_out_logvar = noise_out_logvar
+        self.noise_fixed = noise_fixed
         if isinstance(output_dim, torch.Size):
             output_dim = list(output_dim)
         elif not isinstance(output_dim, list):
@@ -318,10 +320,11 @@ class VAENet(nn.Module):
     Heterogeneous Data, Luigi Antelmi, Nicholas Ayache, Philippe Robert,
     Marco Lorenzi, PMLR 2019.
     """
-    def __init__(self, input_channels, input_dim, conv_flts, dense_hidden_dims,
-                 latent_dim, noise_out_logvar=-3, noise_fixed=True,
+    def __init__(self, input_channels, input_dim, latent_dim, conv_flts=None,
+                 dense_hidden_dims=None, noise_out_logvar=-3, noise_fixed=True,
                  log_alpha=None, act_func=None, final_activation=False,
-                 dropout=0, sparse=False, encoder=None, decoder=None):
+                 dropout=0, sparse=False, encoder=None, decoder=None,
+                 *args, **kwargs):
         """ Init class.
 
         Parameters
@@ -330,14 +333,14 @@ class VAENet(nn.Module):
             the number of input channels.
         input_dim: int or list of int
             the size of input.
-        conv_flts: list of int
-            the size of convolutional filters, if None do not include
-            convolutional layers.
-        dense_hidden_dims: list of int
-            the size of dense hidden dimensions, if None do not include dense
-            hidden layers.
         latent_dim: int
             the latent dimension.
+        conv_flts: list of int, default None
+            the size of convolutional filters, if None do not include
+            convolutional layers.
+        dense_hidden_dims: list of int, default None
+            the size of dense hidden dimensions, if None do not include dense
+            hidden layers.
         noise_out_logvar: float, default -3
             the init output log var.
         noise_fixed: bool, default True
@@ -357,7 +360,7 @@ class VAENet(nn.Module):
         decoder: nn.Module, default None
             a custom decoder.
         """
-        super(VAENet, self).__init__()
+        super(VAENet, self).__init__(*args, **kwargs)
         if isinstance(input_dim, tuple):
             input_dim = list(input_dim)
         self.latent_dim = latent_dim
@@ -392,23 +395,28 @@ class VAENet(nn.Module):
         # TODO: Not working well
         # self.kernel_initializer()
 
+    def _encode(self, x):
+        return self.encode(x)
+
+    def _decode(self, x):
+        return self.decode(x)
+
     def forward(self, x):
         """ The forward method.
         """
-        q = self.encode(x)
-        posterior = q
-        z = self.reparameterize(q)
-        p = self.decode(z)
+        q = self._encode(x)
+        z = self.reparametrized_sampling(q)
+        p = self._decode(z)
         return p, {"q": q, "z": z, "model": self}
 
     def set_dropout(self, deterministic):
         """ Reconfigure the dropout modules.
         """
-        for module in model.modules():
+        for module in self.modules():
             if type(module) == Dropout:
                 module.deterministic = deterministic
 
-    def reparameterize(self, q):
+    def reparametrized_sampling(self, q):
         """ Implement the reparametrization trick.
         """
         if self.training:
@@ -453,7 +461,7 @@ class VAENet(nn.Module):
                            scale=1).sample()
             z = z.to(device)
             p = self.decode(z)
-            return stVAE.p_to_prediction(p)
+            return self.p_to_prediction(p)
 
     def apply_threshold(self, z, threshold, keep_dims=True, reorder=False):
         """ Threshold the latent samples based on the estimated dropout
