@@ -40,6 +40,7 @@ from .toy import fetch_toy
 from .tcga_lgg_tif import fetch_tcga_lgg_tif
 from .primede import fetch_primede
 from .minst import fetch_minst
+from .kang import fetch_kang
 
 
 # Global parameters

@@ -15,3 +15,4 @@ from .mcvae import MCVAE
 from .vae import VAENet
 from .gmvae import GMVAENet
 from .vade import VaDENet
+from .pmvae import PMVAE
