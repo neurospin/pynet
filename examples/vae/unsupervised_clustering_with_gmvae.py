@@ -3,6 +3,15 @@ Unsupervised clustering with GMVAE
 ==================================
 
 Credit: A Grigis
+
+Unsupervised Gaussian Mixture Variational Autoencoder (GMVAE) on a synthetic
+dataset.
+
+GMVAE is an attempt to replicate the work described in this
+[blog](http://ruishu.io/2016/12/25/gmvae/) and inspired from this
+[paper](https://arxiv.org/abs/1611.02648).
+
+Let's begin with importing stuffs:
 """
 
 # Imports
@@ -27,7 +36,13 @@ from pynet.interfaces import GMVAENetClassifier
 from pynet.utils import setup_logging
 
 
-# Global parameters
+#############################################################################
+# Parameters
+# -----------------
+#
+# Define some global parameters that will be used to create and train the
+# model:
+
 n_samples = 100
 n_classes = 3
 n_feats = 4
@@ -36,15 +51,20 @@ fit_lat_dims = 5
 snr = 10
 batch_size = 10
 adam_lr = 2e-3
-epochs = 50
+epochs = 100
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 losses = pynet.get_tools(tool_name="losses")
 metrics = pynet.get_tools(tool_name="metrics")
 setup_logging(level="info")
 
 
-# Create synthetic data
-
+#############################################################################
+# Synthetic dataset
+# -----------------
+#
+# A Gaussian Linear Multi-Klass synthetic dataset is generated as follows.
+# The number of the latent dimensions used to generate the data can be
+# controlled.
 
 class GeneratorUniform(nn.Module):
     """ Generate multiple sources (channels) of data through a linear
@@ -154,27 +174,56 @@ print("- shapes:", ds_train.data.shape, ds_val.data.shape)
 
 # Display generated data
 method = manifold.TSNE(n_components=2, init="pca", random_state=0)
-y = method.fit_transform(ds_train.data)
-colors = ds_train.labels.astype(float)
-colors /= colors.max()
-fig, ax = plt.subplots()
-ax.scatter(y[:, 0], y[:, 1], c=colors, cmap=plt.cm.Spectral)
-ax.xaxis.set_major_formatter(NullFormatter())
-ax.yaxis.set_major_formatter(NullFormatter())
-ax.axis("tight")
+y_train = method.fit_transform(ds_train.data)
+y_val = method.fit_transform(ds_val.data)
+fig, axs = plt.subplots(nrows=3, ncols=2)
+for cnt, (name, y, labels) in enumerate((
+        ("train", y_train, ds_train.labels),
+        ("val", y_val, ds_val.labels))):
+    colors = labels.astype(float)
+    colors /= colors.max()
+    axs[0, cnt].scatter(y[:, 0], y[:, 1], c=colors, cmap=plt.cm.Spectral)
+    axs[0, cnt].xaxis.set_major_formatter(NullFormatter())
+    axs[0, cnt].yaxis.set_major_formatter(NullFormatter())
+    axs[0, cnt].set_title("GT clustering ({0})".format(name))
+    axs[0, cnt].axis("tight")
 
 
-# Generate GT using k-means
+
+#############################################################################
+# ML clustering
+# -------------
+#
+# As a ground truth we performed a K-means clustering of the data.
+
 kmeans = KMeans(n_clusters=n_classes, random_state=0).fit(ds_train.data)
 train_labels = kmeans.labels_
-print("-- K-Means ACC train", losses["GMVAELoss"].cluster_acc(
-    train_labels, ds_train.labels))
+train_acc = losses["GMVAELoss"].cluster_acc(train_labels, ds_train.labels)
+print("-- K-Means ACC train", train_acc)
 val_labels = kmeans.predict(ds_val.data)
-print("-- K-Means ACC val", losses["GMVAELoss"].cluster_acc(
-    val_labels, ds_val.labels))
+val_acc = losses["GMVAELoss"].cluster_acc(val_labels, ds_val.labels)
+print("-- K-Means ACC val",val_acc)
+
+for cnt, (name, y, labels, acc) in enumerate((
+        ("train", y_train, train_labels, train_acc),
+        ("val", y_val, val_labels, val_acc))):
+    colors = labels.astype(float)
+    colors /= colors.max()
+    axs[1, cnt].scatter(y[:, 0], y[:, 1], c=colors, cmap=plt.cm.Spectral)
+    axs[1, cnt].xaxis.set_major_formatter(NullFormatter())
+    axs[1, cnt].yaxis.set_major_formatter(NullFormatter())
+    axs[1, cnt].set_title(
+        "K-means clustering ({0}-ACC:{1:.3f})".format(name, acc))
+    axs[1, cnt].axis("tight")
 
 
-# Create models
+#############################################################################
+# Training
+# --------
+#
+# We'll create and train the model to optimize the losses using Adam
+# optimizer.
+
 torch.manual_seed(42)
 params = NetParameters(
     input_dim=n_feats,
@@ -190,11 +239,9 @@ model = GMVAENetClassifier(
     optimizer_name="Adam",
     learning_rate=adam_lr,
     loss=losses["GMVAELoss"](),
-    use_cuda=False)
+    use_cuda=(device.type != "cpu"))
 print("- model:", model)
 
-
-# Fit models
 print("- training...")
 train_history, valid_history = model.training(
     manager=manager,
@@ -204,6 +251,41 @@ train_history, valid_history = model.training(
     with_validation=True)
 
 
-# Display results
+#############################################################################
+# Results
+# --------
+#
+# Lets now display the clustering results.
+
+net = model.model
+net.eval()
+with torch.no_grad():
+    p_x_given_z, dists = net(
+        torch.from_numpy(ds_train.data.astype(np.float32)).to(device))
+q_y_given_x = dists["q_y_given_x"]
+train_labels = np.argmax(q_y_given_x.logits.detach().cpu().numpy(), axis=1)
+train_acc = losses["GMVAELoss"].cluster_acc(
+    q_y_given_x.logits, ds_train.labels, is_logits=True)
+print("-- GMVAE ACC train", train_acc)
+with torch.no_grad():
+    p_x_given_z, dists = net(
+            torch.from_numpy(ds_val.data.astype(np.float32)).to(device))
+q_y_given_x = dists["q_y_given_x"]
+val_labels = np.argmax(q_y_given_x.logits.detach().cpu().numpy(), axis=1)
+val_acc = losses["GMVAELoss"].cluster_acc(
+    q_y_given_x.logits, ds_val.labels, is_logits=True)
+print("-- GMVAE ACC val", val_acc)
+
+for cnt, (name, y, labels, acc) in enumerate((
+        ("train", y_train, train_labels, train_acc),
+        ("val", y_val, val_labels, val_acc))):
+    colors = labels.astype(float)
+    colors /= colors.max()
+    axs[2, cnt].scatter(y[:, 0], y[:, 1], c=colors, cmap=plt.cm.Spectral)
+    axs[2, cnt].xaxis.set_major_formatter(NullFormatter())
+    axs[2, cnt].yaxis.set_major_formatter(NullFormatter())
+    axs[2, cnt].set_title(
+        "GMVAE clustering ({0}-ACC:{1:.3f})".format(name, acc))
+    axs[2, cnt].axis("tight")
 
 plt.show()
