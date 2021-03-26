@@ -28,27 +28,6 @@ from pynet.utils import Networks, init_weight
 logger = logging.getLogger("pynet")
 
 
-class Dropout(torch.nn.modules.dropout._DropoutNd):
-    """ Dropout module that can be activated/deactivated manuually.
-    """
-    def __init__(self, p, deterministic=True, **kwargs):
-        """ Init class.
-
-        Parameters
-        ----------
-        p: float
-            the dropout probability.
-        deterministic: bool, default True
-            apply or not the dropout.
-        """
-        self.deterministic = deterministic
-        super().__init__(p, **kwargs)
-
-    def forward(self, input):
-        return func.dropout(
-            input, self.p, not self.deterministic, self.inplace)
-
-
 class Encoder(nn.Module):
     """ The encoder part of a VAE.
     """
@@ -132,7 +111,7 @@ class Encoder(nn.Module):
                     nn.Linear(current_dim, dim),
                     act_func()])
                 if dropout > 0:
-                    layers.append(Dropout(dropout))
+                    layers.append(nn.Dropout(dropout))
             current_dim = dim
         return layers
 
@@ -151,7 +130,7 @@ class Encoder(nn.Module):
                     stride=2, padding=2),
                 act_func()])
             if dropout > 0:
-                layers.append(Dropout(dropout))
+                layers.append(nn.Dropout(dropout))
             current_channels = n_filts
         return layers
 
@@ -274,7 +253,7 @@ class Decoder(nn.Module):
                         stride=2, padding=2),
                     act_func()])
                 if dropout > 0:
-                    layers.append(Dropout(dropout))
+                    layers.append(nn.Dropout(dropout))
             current_channels = n_flts
         return layers
 
@@ -401,13 +380,6 @@ class VAENet(nn.Module):
         p = self.decode(z)
         return p, {"q": q, "z": z, "model": self}
 
-    def set_dropout(self, deterministic):
-        """ Reconfigure the dropout modules.
-        """
-        for module in model.modules():
-            if type(module) == Dropout:
-                module.deterministic = deterministic
-
     def reparameterize(self, q):
         """ Implement the reparametrization trick.
         """
@@ -453,7 +425,7 @@ class VAENet(nn.Module):
                            scale=1).sample()
             z = z.to(device)
             p = self.decode(z)
-            return stVAE.p_to_prediction(p)
+            return VAENet.p_to_prediction(p)
 
     def apply_threshold(self, z, threshold, keep_dims=True, reorder=False):
         """ Threshold the latent samples based on the estimated dropout
