@@ -15,8 +15,15 @@ Code: https://github.com/YannDubs/disentangling-vae
 
 # Imports
 import math
+import warnings
 import numpy as np
 from scipy.optimize import linear_sum_assignment
+from sklearn.neighbors import NearestNeighbors
+try:
+    from umap import UMAP
+except:
+    warnings.warn("You may need to install the 'umap-learn' package to use "
+                  "some losses.")
 import torch
 import torch.nn as nn
 from torch.nn import functional as func
@@ -537,11 +544,20 @@ class BtcvaeLoss(BaseLoss):
 class VAEGMPLoss(object):
     """ VAEGMP Loss.
     """
-    def __init__(self):
+    def __init__(self, beta=1., reduction="entropy"):
         """ Init class.
+
+        Parameters
+        ----------
+        beta: float, default 1
+            the weight of KL term regularization.
+        reduction: str, default 'entropy'
+            how to reduce the loss.
         """
         super(VAEGMPLoss, self).__init__()
         self.layer_outputs = None
+        self.beta = beta
+        self.reduction = reduction
 
     def __call__(self, p_x_given_z, data):
         """ Compute loss.
@@ -555,15 +571,18 @@ class VAEGMPLoss(object):
         p_z = self.layer_outputs["p_z"]
 
         # Reconstruction loss term i.e. the negative log-likelihood
-        nll = - p_x_given_z.log_prob(data).sum()
-        nll /= len(data)
+        nll = - p_x_given_z.log_prob(data)
 
         # Latent loss between approximate posterior and prior for z
-        kl_div_z = (q_z_given_x.log_prob(z) - p_z.log_prob(z)).sum()
-        kl_div_z /= len(data)
+        kl_div_z = q_z_given_x.log_prob(z) - p_z.log_prob(z)
+
+        # Reduction
+        if self.reduction == "entropy":
+            nll = nll.sum() / len(data)
+            kl_div_z = kl_div_z.sum() / len(data)
 
         # Need to maximise the ELBO with respect to these weights
-        loss = nll + kl_div_z
+        loss = nll + self.beta * kl_div_z
 
         return loss, {"nll": nll, "kl_div_z": kl_div_z}
 
@@ -902,3 +921,149 @@ class PMVAELoss(object):
 
         return loss, {"global_recon_loss": global_recon_loss,
                       "local_recon_loss": local_recon_loss, "kl": kl}
+
+
+@Losses.register
+class MOESimVAELoss(object):
+    """ MOE-Sim_VAE Loss.
+    """
+    def __init__(self, beta=1., alpha=1., n_components_umap=2,
+                 n_neighbors_knn=10):
+        """ Init class.
+
+        Parameters
+        ----------
+        beta: float, default 1
+            the weight of KL regularization term.
+        alpha: float, default 1
+            the weight of the DEPICT term.
+        n_components_umap: int, default 2
+            the UMAP projection of the data desired number of dimensions.
+        n_neighbors_knn: int, dafault 10
+            the number of k-nearest-neighbors used to define the adjacency
+            matrix.
+        """
+        super(MOESimVAELoss, self).__init__()
+        self.layer_outputs = None
+        self.criterion = VAEGMPLoss(beta=beta, reduction="none")
+        self.alpha = alpha
+        self.n_components_umap = n_components_umap
+        self.n_neighbors_knn = n_components_umap
+
+    @staticmethod
+    def get_similarity_matrix(data, n_components_umap=2, n_neighbors_knn=10,
+                              random_state=None):
+        """ The similarity matrix is derived in an unsupervised way
+        (e.g., UMAP projection of the data and k-nearest-neighbors or
+        distance thresholding to define the adjacency matrix for the batch),
+        but can also be used to include weakly-supervised information (e.g.,
+        knowledge about diseased vs. non-diseased patients). If labels
+        are available, the model could even be used to derive a latent
+        representation with supervision. Thesimilarity feature in MoE-Sim-VAE
+        thus allows to include prior knowledge about the best similarity
+        measure on the data.
+        """
+        flat_data = data.reshape(len(data), -1)
+        reducer = UMAP(n_components=n_components_umap,
+                       random_state=random_state)
+        reducer.fit(flat_data)
+        embedding = reducer.transform(flat_data)
+        neigh = NearestNeighbors(n_neighbors=n_neighbors_knn)
+        neigh.fit(embedding)
+        similarity = neigh.kneighbors_graph(embedding).toarray()
+        similarity = similarity.astype(np.float32)
+        return similarity, embedding
+
+    @staticmethod
+    def depict(probs, probs_noisy):
+        """ The DEPICT loss encourages the model to learn invariant features
+        from the latent representation for clustering with respect to noise.
+        """
+        cluster_frequency = torch.sum(probs, dim=0)
+        y_prob = probs / torch.pow(cluster_frequency, 0.5)
+        y_prob = torch.transpose(
+            torch.transpose(y_prob, 0, 1) / torch.sum(y_prob, dim=1), 0, 1)
+        y_pred = torch.argmax(y_prob, dim=1)
+        probs_noisy += 1e-5
+        return func.nll_loss(
+            probs_noisy.log(), y_pred, reduction="none")
+
+    @staticmethod
+    def similarity(probs, similarity):
+        """ Reconstruct a data-driven similarity loss using the Binary
+        Cross-Entropy.
+        """
+        predictions = torch.mm(probs, torch.transpose(probs, 0, 1))
+        return func.binary_cross_entropy(
+            predictions, similarity, reduction="none")
+
+    def __call__(self, p_x_given_z, data, labels=None):
+        """ Compute loss.
+        """
+        if self.layer_outputs is None:
+            raise ValueError(
+                "This loss needs intermediate layers outputs. Please register "
+                "an appropriate callback.")
+        q_z_given_x = self.layer_outputs["q_z_given_x"]
+        z = self.layer_outputs["z"]
+        p_z = self.layer_outputs["p_z"]
+        probs = self.layer_outputs["probs"]
+        model = self.layer_outputs["model"]
+        device = data.device
+
+        # Reconstruction loss term i.e. the negative log-likelihood and
+        # weighted KL divergence for each decoder.
+        rec_losses = []
+        nll_losses = []
+        kl_div_z_losses = []
+        for prob in p_x_given_z:
+            self.criterion.layer_outputs = self.layer_outputs
+            loss, extra_loss = self.criterion(prob, data)
+            rec_losses.append(loss.view(-1, 1))
+            nll_losses.append(extra_loss["nll"].view(-1, 1))
+            kl_div_z_losses.append(extra_loss["kl_div_z"].view(-1, 1))
+        rec_losses = torch.cat(rec_losses, dim=1)
+        rec_loss = torch.mean(
+            torch.sum(rec_losses * probs, dim=1), dim=0)
+        nll_losses = torch.cat(nll_losses, dim=1)
+        nll_loss = torch.mean(
+            torch.sum(nll_losses * probs, dim=1), dim=0)
+        kl_div_z_losses = torch.cat(kl_div_z_losses, dim=1)
+        kl_div_z_loss = torch.mean(
+            torch.sum(kl_div_z_losses * probs, dim=1), dim=0)
+
+        # Similarity clustering loss term i.e. reconstruct a data-driven
+        # similarity matrix S, using the Binary Cross-Entropy.
+        similarity, _ = MOESimVAELoss.get_similarity_matrix(
+            data, self.n_components_umap, self.n_neighbors_knn)
+        similarity = torch.from_numpy(similarity).to(device).detach()
+        sim_loss = MOESimVAELoss.similarity(probs, similarity)
+        sim_loss = torch.mean(torch.sum(sim_loss, dim=1), dim=0)
+
+        # DEPICT clustering loss term i.e. predict the same cluster for both,
+        # the noisy pik and the clean probability pik (without applying
+        # dropout)
+        model.eval()
+        with torch.no_grad():
+            _, dists_noisy = model(data)
+        model.train()
+        probs_nonoise = dists_noisy["probs"]
+        depict_loss = torch.mean(
+            MOESimVAELoss.depict(probs_nonoise, probs.clone()), dim=0)
+
+        # Complete clustering loss
+        clus_loss = sim_loss + self.alpha * depict_loss
+
+        # MoE-Sim-VAE loss
+        loss = rec_loss + clus_loss
+
+        # Keep track of the clustering accuracy during training
+        if labels is not None:
+            cluster_acc = GMVAELoss.cluster_acc(probs, labels, is_logits=True)
+        else:
+            cluster_acc = 0
+
+        return loss, {"rec_loss": rec_loss, "clus_loss": clus_loss,
+                      "cluster_acc": cluster_acc, "nll": nll_loss,
+                      "kl_div_z": kl_div_z_loss, "sim_loss": sim_loss,
+                      "depict_loss": depict_loss}

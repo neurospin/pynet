@@ -16,3 +16,4 @@ from .vae import VAENet
 from .gmvae import GMVAENet
 from .vade import VaDENet
 from .pmvae import PMVAE
+from .moevae import MOESimVAENet
