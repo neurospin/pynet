@@ -26,6 +26,7 @@ Code: https://github.com/mazrk7/gmvae
 
 # Imports
 import logging
+import warnings
 import numpy as np
 import torch
 import torch.nn as nn
@@ -34,10 +35,11 @@ from torch.distributions import Normal, Categorical, Independent
 try:
     from torch.distributions import MixtureSameFamily
 except:
-    pass
+    warnings.warn(
+        "Impossible to import 'torch.distributions.MixtureSameFamily', some "
+        "models may not be available.")
 from pynet.interfaces import DeepLearningDecorator
 from pynet.utils import Networks, init_weight
-from pynet.models.vae.vae import Encoder
 from pynet.models.vae.distributions import (
     ConditionalNormal, Gaussian, ConditionalBernoulli, ConditionalCategorical)
 
@@ -360,7 +362,7 @@ class VAEGMPNet(nn.Module):
     """
     def __init__(self, input_dim, latent_dim, n_mix_components=1,
                  dense_hidden_dims=None, sigma_min=0.001, raw_sigma_bias=0.25,
-                 gen_bias_init=0, dropout=0, prior=None, encoder=None,
+                 gen_bias_init=0, dropout=0, encoder=None,
                  decoder=None, random_seed=None):
         """ Init class.
 
@@ -392,8 +394,6 @@ class VAEGMPNet(nn.Module):
             training set.
         dropout: float, default 0
             define the dropout rate.
-        prior: @callable, default None
-            a distribution that implements p(z).
         encoder: @callable, default None
             a distribution that implements inference q(z | x).
         decoder: @callable, default None
@@ -409,25 +409,16 @@ class VAEGMPNet(nn.Module):
 
         # Prior p(z) is a learned mixture of Gaussians, where mu and
         # sigma are output from a fully connected network
-        if prior is not None:
-            self._prior = prior
+        if self.n_mix_components > 1:
+            self.loc = nn.Parameter(torch.zeros(
+                self.n_mix_components, latent_dim), requires_grad=True)
+            self.raw_scale = nn.Parameter(torch.ones(
+                self.n_mix_components, latent_dim), requires_grad=True)
+            self.mixture_probs = nn.Parameter(torch.ones(
+                self.n_mix_components) / self.n_mix_components,
+                requires_grad=True)
         else:
-            if self.n_mix_components > 1:
-                loc = nn.Parameter(torch.zeros(
-                    self.n_mix_components, latent_dim), requires_grad=True)
-                raw_scale = nn.Parameter(torch.ones(
-                    self.n_mix_components, latent_dim), requires_grad=True)
-                mixture_probs = nn.Parameter(torch.ones(
-                    self.n_mix_components) / self.n_mix_components,
-                    requires_grad=True)
-                mix = Categorical(probs=mixture_probs)
-                comp = Independent(
-                    Normal(loc=loc, scale=func.softplus(raw_scale)),
-                    reinterpreted_batch_ndims=1)
-                self._prior = MixtureSameFamily(
-                    mixture_distribution=mix, component_distribution=comp)
-            else:
-                self._prior = Normal(loc=torch.zeros(latent_dim), scale=1)
+            self._prior = Normal(loc=torch.zeros(latent_dim), scale=1)
 
         # The generative distribution p(x | z) is conditioned on the latent
         # state variable z via a fully connected network
@@ -438,7 +429,8 @@ class VAEGMPNet(nn.Module):
                 input_dim=latent_dim,
                 final_dim=input_dim,
                 dense_hidden_dims=dense_hidden_dims,
-                bias_init=gen_bias_init)
+                bias_init=gen_bias_init,
+                dropout=dropout)
 
         # A callable that implements the inference distribution q(z | x)
         if encoder is not None:
@@ -449,7 +441,8 @@ class VAEGMPNet(nn.Module):
                 final_dim=latent_dim,
                 dense_hidden_dims=dense_hidden_dims,
                 sigma_min=sigma_min,
-                raw_sigma_bias=raw_sigma_bias)
+                raw_sigma_bias=raw_sigma_bias,
+                dropout=dropout)
 
     def prior(self):
         """ Get the prior distribution p(z).
@@ -459,7 +452,15 @@ class VAEGMPNet(nn.Module):
         p(z): @callable
             the distribution p(z) with shape (batch_size, latent_size).
         """
-        return self._prior
+        if self.n_mix_components > 1:
+            mix = Categorical(probs=self.mixture_probs)
+            comp = Independent(
+                Normal(loc=self.loc, scale=func.softplus(self.raw_scale)),
+                reinterpreted_batch_ndims=1)
+            return MixtureSameFamily(
+                mixture_distribution=mix, component_distribution=comp)
+        else:
+            return self._prior
 
     def decoder(self, z):
         """ Computes the generative distribution p(x | z).
