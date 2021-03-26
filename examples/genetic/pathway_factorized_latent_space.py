@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import rgb2hex
 from matplotlib.patches import Patch
 from sklearn.manifold import TSNE
+from umap import UMAP
 import torch
 import pynet
 from pynet import NetParameters
@@ -31,7 +32,7 @@ from pynet.utils import setup_logging
 
 #############################################################################
 # Parameters
-# -----------------
+# ----------
 #
 # Define some global parameters that will be used to create and train the
 # model:
@@ -58,7 +59,7 @@ data, trainset, testset, membership_mask = fetch_kang(
     datasetdir=datasetdir, random_state=0)
 gtpath = os.path.join(datasetdir, "kang_recons.h5ad")
 manager = DataManager.from_numpy(
-    train_inputs=trainset, validation_inputs=testset, test_inputs=data,
+    train_inputs=trainset, validation_inputs=testset, test_inputs=data.X,
     batch_size=batch_size, sampler="random", add_input=True)
 
 
@@ -115,15 +116,20 @@ def extract_pathway_cols(df, pathway):
     return df.loc[:, mask]
 
 
-def compute_tsnes(recons, pathways):
+def compute_reduction(recons, pathways, reduction="tsne"):
+    if reduction not in ("tsne", "umap"):
+        raise ValueError("Unexpected reduction type.")
     for key in pathways:
-        tsne = TSNE(n_components=2)
+        if reduction == "tsne":
+            reducer = TSNE(n_components=2)
+        else:
+            reducer = UMAP(n_components=2)
         codes = extract_pathway_cols(recons.obsm["codes"], key)
-        tsne = pd.DataFrame(
-            TSNE().fit_transform(codes.values),
+        embedding = pd.DataFrame(
+            reducer.fit_transform(codes.values),
             index=recons.obs_names,
             columns=["{0}-0".format(key), "{0}-1".format(key)])
-        yield tsne
+        yield embedding
 
 
 output_file = os.path.join(checkpointdir, "kang_recons.h5ad")
@@ -156,7 +162,10 @@ if not os.path.isfile(output_file):
         index=data.obs_names,
         columns=model.model.latent_space_names())
     recons.obsm["pathway_tsnes"] = pd.concat(
-        compute_tsnes(recons, generated_pathways),
+        compute_reduction(recons, generated_pathways, reduction="tsne"),
+        axis=1)
+    recons.obsm["pathway_umaps"] = pd.concat(
+        compute_reduction(recons, generated_pathways, reduction="umap"),
         axis=1)
     recons.write(output_file)
 
@@ -193,12 +202,14 @@ pathways = [
     "CYTOKINE_SIGNALING_IN_IMMUNE_S",
     "TCR_SIGNALING",
     "CELL_CYCLE"]
-for _name, _recons, _pathways in (
-        ("GT", recons, pathways),
-        ("GENERATED", generated_recons, generated_pathways)):
+for _name, _reduction, _recons, _pathways in (
+        ("GT", "tsne", recons, pathways),
+        ("GENERATED", "tsne", generated_recons, generated_pathways),
+        ("GENERATED", "umap", generated_recons, generated_pathways)):
     fig, axes = plt.subplots(2, len(pathways), figsize=(6 * len(_pathways), 8))
-    fig.suptitle("{0} pathway factorized latent space results".format(_name),
-                 fontsize=15, y=0.99)
+    title = "{0} pathway factorized latent space results ({1})".format(
+        _name, _reduction.upper())
+    fig.suptitle(title, fontsize=15, y=0.99)
     pairs = product(["stimulated", "control"], _pathways)
     for ax, (active, key) in zip(axes.ravel(), pairs):
         mask = (_recons.obs["condition"] == active)

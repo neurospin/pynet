@@ -103,7 +103,7 @@ def fetch_kang(datasetdir, random_state=None):
     logger.info("-- trainset: {0}".format(trainset.shape))
     logger.info("-- testset: {0}".format(testset.shape))
 
-    return Item(data=data.X, trainset=trainset, testset=testset,
+    return Item(data=data, trainset=trainset, testset=testset,
                 membership_mask=membership_mask)
 
 
