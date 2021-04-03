@@ -53,7 +53,8 @@ class Encoder(nn.Module):
     """ The encoder part of a VAE.
     """
     def __init__(self, input_channels, input_dim, conv_flts, dense_hidden_dims,
-                 latent_dim, act_func=None, dropout=0, log_alpha=None):
+                 latent_dim, act_func=None, dropout=0, log_alpha=None,
+                 final_activation=False):
         """ Init class.
 
         Parameters
@@ -80,6 +81,7 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.act_func = act_func or nn.ReLU
         self.log_alpha = log_alpha
+        self.final_activation = final_activation
         if isinstance(input_dim, torch.Size):
             input_dim = list(input_dim)
         elif not isinstance(input_dim, list):
@@ -98,7 +100,8 @@ class Encoder(nn.Module):
             flatten_dim = input_channels * np.prod(input_dim)
         if dense_hidden_dims is not None:
             w_dense_layers = Encoder.init_dense_layers(
-                flatten_dim, dense_hidden_dims, self.act_func, dropout)
+                flatten_dim, dense_hidden_dims, self.act_func, dropout,
+                final_activation)
             self.w_dense = nn.Sequential(*w_dense_layers)
             final_dim = dense_hidden_dims[-1]
         else:
@@ -119,7 +122,7 @@ class Encoder(nn.Module):
 
     @staticmethod
     def init_dense_layers(input_dim, hidden_dims, act_func, dropout,
-                          final_activation=False):
+                          final_activation=True):
         """ Create the dense layers.
         """
         layers = []
@@ -238,8 +241,7 @@ class Decoder(nn.Module):
             dense_hidden_dims = []
         w_dense_layers = Encoder.init_dense_layers(
             latent_dim, dense_hidden_dims + [flatten_dim], self.act_func,
-            dropout,
-            final_activation=not(not final_activation and conv_flts is None))
+            dropout, final_activation=final_activation)
         self.w_dense = nn.Sequential(*w_dense_layers)
         if conv_flts is not None:
             self.w_dense = nn.Sequential(*w_dense_layers)
@@ -368,7 +370,7 @@ class VAENet(nn.Module):
         if sparse:
             if log_alpha is None:
                 self.log_alpha = nn.Parameter(
-                    torch.FloatTensor(1, self.latent_dim).normal_(0, 0.1))
+                    torch.FloatTensor(1, self.latent_dim).normal_(0, 0.01))
             else:
                 self.log_alpha = log_alpha
         else:
@@ -395,18 +397,12 @@ class VAENet(nn.Module):
         # TODO: Not working well
         # self.kernel_initializer()
 
-    def _encode(self, x):
-        return self.encode(x)
-
-    def _decode(self, x):
-        return self.decode(x)
-
     def forward(self, x):
         """ The forward method.
         """
-        q = self._encode(x)
+        q = self.encode(x)
         z = self.reparametrized_sampling(q)
-        p = self._decode(z)
+        p = self.decode(z)
         return p, {"q": q, "z": z, "model": self}
 
     def set_dropout(self, deterministic):

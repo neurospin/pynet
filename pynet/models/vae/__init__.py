@@ -12,6 +12,6 @@ Module that privides common variational networks.
 """
 
 from .mcvae import MCVAE
-from .vae import VAENet
+from .vae import VAENet, Encoder, Decoder
 from .gmvae import GMVAENet
 from .vade import VaDENet

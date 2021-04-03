@@ -274,7 +274,7 @@ def downsample(vertices, target_vertices):
     return nearest_idx.squeeze()
 
 
-def downsample_data(data, down_indices, neighs):
+def downsample_data(data, down_indices, neighs, aggregation=None):
     """ Downsample data to smaller icosahedron
 
     Parameters
@@ -287,22 +287,29 @@ def downsample_data(data, down_indices, neighs):
     neighs: list
         contains the neighbors of each vertex of the upper order
         icosahedron, for each downsampling
+    aggregation: str, default None
+        aggregation strategy over the higher order neighborhoods: 'mean',
+        'median, 'max', 'min', 'sum' or None
 
     Returns
     -------
     downsampled_data: array (n_samples, new_n_vertices, n_features)
         downsampled data
     """
+    assert aggregation in ['mean', 'median', 'max', 'min', 'sum', None]
     if len(data.shape) < 3:
         data = data[np.newaxis, :, :]
     data = data.transpose((0, 2, 1))
     for i in range(len(down_indices)):
-        down_neigh_indices = neighs[i][down_indices[i]]
-        n_vertices, neigh_size = down_neigh_indices.shape
+        if aggregation is not None:
+            down_neigh_indices = neighs[i][down_indices[i]]
+            n_vertices, neigh_size = down_neigh_indices.shape
 
-        data = data[:, :, down_neigh_indices].reshape(
-                len(data), data.shape[1], n_vertices, neigh_size)
-        data = data.mean(-1)
+            data = data[:, :, down_neigh_indices].reshape(
+                    len(data), data.shape[1], n_vertices, neigh_size)
+            data = getattr(data, aggregation)(-1)
+        else:
+            data = data[:, :, down_indices[i]]
     return data.transpose(0, 2, 1).squeeze()
 
 

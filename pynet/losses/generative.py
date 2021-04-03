@@ -172,8 +172,8 @@ class BaseLoss(object):
 
         return loss
 
-    def compute_ll(self, p, data):
-        """ Compute log likelihood.
+    def compute_ll(self, p, data, reduction="sum"):
+        """ Compute log likelihood, with or without reduction
 
         Parameters
         ----------
@@ -182,9 +182,15 @@ class BaseLoss(object):
             sample given the latent code).
         data: torch.Tensor
             reference data.
+        reduction: str, default 'sum'
+            name of the aggregation function to use as reductor. Must be a
+            pytorch Tensor method's name, or None
         """
-
-        return - p.log_prob(data).sum()
+        ll = BaseLoss._compute_ll(p, data)
+        if reduction is not None:
+            assert hasattr(ll, reduction)
+            ll = getattr(ll, reduction)()
+        return ll
 
     def kl_normal_loss(self, q):
         """ Calculates the KL divergence between a normal distribution
@@ -237,8 +243,8 @@ class BaseLoss(object):
 
     @staticmethod
     def compute_log_alpha(mu, logvar):
-        return (logvar - 2 * torch.log(torch.abs(mu) + 1e-8)).clamp(
-            min=-8, max=8)
+        return (logvar - 2 * torch.log(torch.abs(mu) + 1e-8))#.clamp(
+            #min=-8, max=8)
 
     def linear_annealing(self, init, fin):
         """ Linear annealing of a parameter.
