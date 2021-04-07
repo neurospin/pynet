@@ -243,8 +243,7 @@ class BaseLoss(object):
 
     @staticmethod
     def compute_log_alpha(mu, logvar):
-        return (logvar - 2 * torch.log(torch.abs(mu) + 1e-8))#.clamp(
-            #min=-8, max=8)
+        return (logvar - 2 * torch.log(torch.abs(mu) + 1e-8))
 
     def linear_annealing(self, init, fin):
         """ Linear annealing of a parameter.

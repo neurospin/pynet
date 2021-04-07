@@ -156,7 +156,8 @@ def vertex_adjacency_graph(vertices, triangles):
     > [1, 3, 4]
     """
     graph = nx.Graph()
-    nodes = [(idx, {'coordinates': coords}) for idx, coords in enumerate(vertices)]
+    nodes = [(idx, {'coordinates': coords})
+             for idx, coords in enumerate(vertices)]
     graph.add_nodes_from(nodes)
     edges, edges_triangle = triangles_to_edges(triangles)
     edges_cache = []
