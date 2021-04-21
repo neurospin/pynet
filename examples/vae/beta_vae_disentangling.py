@@ -125,7 +125,7 @@ for loss_name in ("betah", "betab", "btcvae"):
             use_cuda=(DEVICE.type == "cuda"),
             pretrained=weights_filename)
     else:
-        vae = VAEEncoder(
+        vae = VAENetEncoder(
             params,
             optimizer_name="Adam",
             learning_rate=ADAM_LR,
