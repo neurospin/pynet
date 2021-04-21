@@ -38,7 +38,7 @@ def get_traversal_range(mean=0, std=1, max_traversal=0.475):
         traversals are assumed. If m >= 0.5 then uses absolute value traversal,
         if m < 0.5 uses a percentage of the distribution (quantile),
         e.g. for the prior the distribution is a standard normal so m = 0.45
-        corresponds to an absolute value of 1.645 because 2m = 90%% of a
+        corresponds to an absolute value of 1.645 because 2m = 90% of a
         standard normal is between -1.645 and 1.645. Note in the case
         of the posterior, the distribution is not standard normal anymore.
 
@@ -50,10 +50,10 @@ def get_traversal_range(mean=0, std=1, max_traversal=0.475):
     if max_traversal < 0.5:
         max_traversal = (1 - 2 * max_traversal) / 2
         max_traversal = stats.norm.ppf(max_traversal, loc=mean, scale=std)
-    return (- max_traversal, max_traversal)
+    return (-max_traversal, max_traversal)
 
 
-def traverse_line(model, idx, n_samples, data=None):
+def traverse_line(model, idx, n_samples, data=None, max_traversal=0.475):
     """ Return latent samples corresponding to a traversal of a latent
     variable indicated by idx.
 
@@ -70,6 +70,14 @@ def traverse_line(model, idx, n_samples, data=None):
     data: torch.Tensor (N, C, H, W), default None
         data to use for computing the posterior. If 'None' then use the
         mean of the prior (all zeros) for all other dimensions.
+    max_traversal: float, default 0.475
+        the maximum displacement induced by a latent traversal. Symmetrical
+        traversals are assumed. If m >= 0.5 then uses absolute value traversal,
+        if m < 0.5 uses a percentage of the distribution (quantile),
+        e.g. for the prior the distribution is a standard normal so m = 0.45
+        corresponds to an absolute value of 1.645 because 2m = 90% of a
+        standard normal is between -1.645 and 1.645. Note in the case
+        of the posterior, the distribution is not standard normal anymore.
 
     Returns
     -------
@@ -150,7 +158,7 @@ def reconstruct_traverse(model, data, n_per_latent=8, n_latents=None,
     is_posterior: bool, default False
         whether to sample from the posterior.
     filename: str, default None
-        path to save the finale image.
+        path to save the final image.
     """
     device = data.get_device()
     n_latents = n_latents or model.latent_dim
