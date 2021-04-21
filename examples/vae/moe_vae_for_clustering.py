@@ -89,14 +89,13 @@ manager = DataManager(
 # Data driven similarity matrix
 # -----------------------------
 #
-# The similarity matrix is derived in an unsupervised way (e.g., UMAP
-# projection of the data and k-nearest-neighbors or distance thresholding to
+# The similarity matrix is derived in an unsupervised way (eg, UMAP
+# projection of the data and k nearest neighbors or distance thresholding to
 # define the adjacency matrix for the batch), but can also be used to include
-# weakly-supervised information (e.g., knowledge about diseased vs.
-# non-diseased patients). If labels areavailable, the model could even
-# be used to derive a latent representation with supervision. Thesimilarity
-# feature in MoE-Sim-VAE thus allows to include prior knowledge about the
-# best similarity measure on the data.
+# weakly supervised information (eg, knowledge about diseased vs
+# non diseased patients). The similarity feature in MoE Sim VAE can also be
+# used to include prior knowledge about the best similarity measure on the
+# data.
 
 data = manager.inputs[:batch_size]
 labels = manager.labels[:batch_size]

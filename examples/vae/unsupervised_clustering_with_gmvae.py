@@ -62,8 +62,8 @@ setup_logging(level="info")
 # Synthetic dataset
 # -----------------
 #
-# A Gaussian Linear Multi-Klass synthetic dataset is generated as follows.
-# The number of the latent dimensions used to generate the data can be
+# A Gaussian Linear Multi-Klass synthetic dataset is generated as
+# follows. The number of the latent dimensions used to generate the data can be
 # controlled.
 
 class GeneratorUniform(nn.Module):
