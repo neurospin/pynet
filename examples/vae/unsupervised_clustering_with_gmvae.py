@@ -38,7 +38,7 @@ from pynet.utils import setup_logging
 
 #############################################################################
 # Parameters
-# -----------------
+# ----------
 #
 # Define some global parameters that will be used to create and train the
 # model:
@@ -253,7 +253,7 @@ train_history, valid_history = model.training(
 
 #############################################################################
 # Results
-# --------
+# -------
 #
 # Lets now display the clustering results.
 

@@ -1,14 +1,10 @@
-# -*- coding: utf-8 -*-
-##########################################################################
-# NSAp - Copyright (C) CEA, 2021
-# Distributed under the terms of the CeCILL-B license, as published by
-# the CEA-CNRS-INRIA. Refer to the LICENSE file or to
-# http://www.cecill.info/licences/Licence_CeCILL-B_V1-en.html
-# for details.
-##########################################################################
-
 """
-Mixture of Experts VAE with similarity prior: MoE-Sim-VAE.
+MoE-Sim-VAE
+===========
+
+Credit: A Grigis
+
+Mixture of Experts VAE with similarity prior: MoE-Sim-VAE
 
 Reference: Mixture-of-Experts Variational Autoencoder for Clustering and
 Generating from Similarity-Based Representations on Single Cell Data,
@@ -54,7 +50,7 @@ input_dim = 28 * 28
 n_components_umap = 2
 n_neighbors_knn = 10
 batch_size = 128
-n_epochs = 3 #20000
+n_epochs = 10 #20000
 learning_rate = 0.0001
 dropout_rate = 0.5
 latent_dim = 68
@@ -236,9 +232,6 @@ ax.set_title("DEPICT losses", fontsize=10)
 ax.set_xlabel("factors")
 
 
-plt.show()
-stop
-
 #############################################################################
 # The Model
 # ---------
@@ -268,7 +261,6 @@ print(interface.model)
 interface.board = Board(
     port=8097, host="http://localhost", env="moevae")
 interface.add_observer("after_epoch", update_board)
-interface.add_observer("after_epoch", sampling)
 train_history, valid_history = interface.training(
     manager=manager,
     nb_epochs=n_epochs,
