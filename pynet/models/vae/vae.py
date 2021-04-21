@@ -401,7 +401,7 @@ class VAENet(nn.Module):
             raise NotImplementedError
         return pred
 
-    def reconstruct(self, x, sample=False):
+    def reconstruct(self, x, sample=False, dropout_threshold=None):
         """ Reconstruct a new data from a given input with or without
         resampling.
         """
@@ -412,6 +412,8 @@ class VAENet(nn.Module):
                 z = posterior.sample()
             else:
                 z = posterior.loc
+            if dropout_threshold is not None:
+                z = self.apply_threshold(z, dropout_threshold)
             p = self.decode(z)
         return self.p_to_prediction(p)
 
