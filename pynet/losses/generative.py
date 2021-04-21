@@ -159,6 +159,8 @@ class BaseLoss(object):
                 loss = func.mse_loss(p.loc, data, reduction="sum")
             else:
                 loss = self.compute_ll(p, data)
+                loss = loss.mean(1)
+                loss = loss.sum(0)
         elif isinstance(p, Laplace):
             loss = func.l1_loss(p.loc, data, reduction="sum")
             # empirical value to give similar values than bernoulli => use
@@ -206,8 +208,7 @@ class BaseLoss(object):
             dimension_wise_kl.detach().cpu().numpy())
         return dimension_wise_kl.sum()
 
-    @staticmethod
-    def kl_log_uniform(normal):
+    def kl_log_uniform(self, normal):
         """ Calculates the KL log uniform divergence.
 
         Paragraph 4.2 from:
@@ -223,7 +224,9 @@ class BaseLoss(object):
         k1, k2, k3 = 0.63576, 1.8732, 1.48695
         neg_kl = (k1 * torch.sigmoid(k2 + k3 * log_alpha) - 0.5 *
                   torch.log1p(torch.exp(-log_alpha)) - k1)
-        return - neg_kl.mean(dim=0).sum()
+        neg_kl = neg_kl.mean(dim=0)
+        self.cache.setdefault("kl", []).append(neg_kl.detach().cpu().numpy())
+        return - neg_kl.sum()
 
     @staticmethod
     def compute_log_alpha(mu, logvar):
@@ -364,7 +367,7 @@ class SparseLoss(BaseLoss):
         """
         q, z, model = self.get_params()
         rec_loss = self.reconstruction_loss(p, data)
-        kl_loss = BaseLoss.kl_log_uniform(q)
+        kl_loss = self.kl_log_uniform(q)
         if model.training:
             anneal_reg = self.linear_annealing(init=0, fin=1)
         else:
@@ -928,7 +931,8 @@ class MOESimVAELoss(object):
     """ MOE-Sim_VAE Loss.
     """
     def __init__(self, beta=1., alpha=1., n_components_umap=2,
-                 n_neighbors_knn=10):
+                 n_neighbors_knn=10, use_similarity_loss=False,
+                 use_balancing_loss=True):
         """ Init class.
 
         Parameters
@@ -942,6 +946,10 @@ class MOESimVAELoss(object):
         n_neighbors_knn: int, dafault 10
             the number of k-nearest-neighbors used to define the adjacency
             matrix.
+        use_similarity_loss: bool, default False
+            activate the similarity loss.
+        use_balancing_loss: bool, default True
+            activate the balancing loss.
         """
         super(MOESimVAELoss, self).__init__()
         self.layer_outputs = None
@@ -949,6 +957,8 @@ class MOESimVAELoss(object):
         self.alpha = alpha
         self.n_components_umap = n_components_umap
         self.n_neighbors_knn = n_components_umap
+        self.use_similarity_loss = use_similarity_loss
+        self.use_balancing_loss = use_balancing_loss
 
     @staticmethod
     def get_similarity_matrix(data, n_components_umap=2, n_neighbors_knn=10,
@@ -997,6 +1007,24 @@ class MOESimVAELoss(object):
         return func.binary_cross_entropy(
             predictions, similarity, reduction="none")
 
+    @staticmethod
+    def balancing(probs):
+        """
+        One thing we need to be careful about when training this model is that
+        the manager could easily degenerate into outputting a constant vector
+        regardless of the input in hand. This results in one VAE specialized
+        in all digits, and nine VAEs specialized in nothing. One way to
+        mitigate it, is to add a balancing term to the loss. It encourages
+        the outputs of the manager over a batch of inputs to be balanced, i.e.
+        the distribution of the sum of the probabilities over the batch is
+        almost uniform.
+        """
+        experts_importance = torch.sum(probs, dim=0)
+        # Remove effect of Bessel correction
+        experts_importance_std = experts_importance.std(dim=0, unbiased=False)
+        balancing_loss = torch.pow(experts_importance_std, 2)
+        return balancing_loss
+
     def __call__(self, p_x_given_z, data, labels=None):
         """ Compute loss.
         """
@@ -1034,25 +1062,35 @@ class MOESimVAELoss(object):
 
         # Similarity clustering loss term i.e. reconstruct a data-driven
         # similarity matrix S, using the Binary Cross-Entropy.
-        similarity, _ = MOESimVAELoss.get_similarity_matrix(
-            data, self.n_components_umap, self.n_neighbors_knn)
-        similarity = torch.from_numpy(similarity).to(device).detach()
-        sim_loss = MOESimVAELoss.similarity(probs, similarity)
-        sim_loss = torch.mean(torch.sum(sim_loss, dim=1), dim=0)
+        if self.use_similarity_loss:
+            similarity, _ = MOESimVAELoss.get_similarity_matrix(
+                data, self.n_components_umap, self.n_neighbors_knn)
+            similarity = torch.from_numpy(similarity).to(device).detach()
+            sim_loss = MOESimVAELoss.similarity(probs, similarity)
+            sim_loss = torch.mean(torch.sum(sim_loss, dim=1), dim=0)
+        else:
+            sim_loss = 0
+
+        # Balancing clustering loss term, i.e. encourages the outputs of the
+        # manager over a batch of inputs to be balanced
+        if self.use_balancing_loss:
+            balancing_loss = MOESimVAELoss.balancing(probs)
+        else:
+            balancing_loss = 0
 
         # DEPICT clustering loss term i.e. predict the same cluster for both,
         # the noisy pik and the clean probability pik (without applying
         # dropout)
         model.eval()
         with torch.no_grad():
-            _, dists_noisy = model(data)
+            _, dists_nonoise = model(data)
         model.train()
-        probs_nonoise = dists_noisy["probs"]
+        probs_nonoise = dists_nonoise["probs"]
         depict_loss = torch.mean(
             MOESimVAELoss.depict(probs_nonoise, probs.clone()), dim=0)
 
         # Complete clustering loss
-        clus_loss = sim_loss + self.alpha * depict_loss
+        clus_loss = sim_loss + balancing_loss + self.alpha * depict_loss
 
         # MoE-Sim-VAE loss
         loss = rec_loss + clus_loss
@@ -1066,4 +1104,5 @@ class MOESimVAELoss(object):
         return loss, {"rec_loss": rec_loss, "clus_loss": clus_loss,
                       "cluster_acc": cluster_acc, "nll": nll_loss,
                       "kl_div_z": kl_div_z_loss, "sim_loss": sim_loss,
-                      "depict_loss": depict_loss}
+                      "depict_loss": depict_loss,
+                      "balancing_loss": balancing_loss}
